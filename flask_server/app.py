@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 import secrets
 import os
+import ssl
 
 # public parameters
 P = 2089
@@ -150,6 +151,48 @@ def forgetme():
     return jsonify({'status': 'forgotten', 'message': 'User data deleted'})
 
 
+def create_self_signed_cert():
+    """Create a self-signed certificate for HTTPS"""
+    try:
+        if not os.path.exists('cert.pem') or not os.path.exists('key.pem'):
+            import subprocess
+            subprocess.run([
+                'openssl', 'req', '-x509', '-newkey', 'rsa:4096',
+                '-keyout', 'key.pem', '-out', 'cert.pem',
+                '-days', '365', '-nodes',
+                '-subj', '/CN=localhost'
+            ], check=True)
+            print('Created self-signed certificate')
+    except Exception as e:
+        print(f'Warning: Could not create certificate: {e}')
+        print('Run without HTTPS or generate certificates manually:')
+        print('openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=localhost"')
+
+
 if __name__ == '__main__':
     init_db()
-    app.run(host='0.0.0.0', port=5000, debug=True)
+
+    print('Schnorr Authentication Server')
+    print('=' * 50)
+    print('Starting Flask server on https://localhost:5000')
+    print('=' * 50)
+
+    # Try to create self-signed certificate
+    create_self_signed_cert()
+
+    # Run with HTTPS if certificates exist
+    if os.path.exists('cert.pem') and os.path.exists('key.pem'):
+        app.run(
+            host='0.0.0.0',
+            port=5000,
+            ssl_context=('cert.pem', 'key.pem'),
+            debug=True
+        )
+    else:
+        # Fall back to HTTP
+        print('WARNING: Running without HTTPS. Certificates not found.')
+        app.run(
+            host='0.0.0.0',
+            port=5000,
+            debug=True
+        )

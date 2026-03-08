@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schnorr Auth - Login</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 Login</h1>
+            <p>Authenticate with Schnorr proof</p>
+        </div>
+
+        <div class="content">
+            <div id="alert"></div>
+
+            <div id="login-form">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" placeholder="Enter your username">
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" placeholder="Enter your password">
+                </div>
+
+                <div class="form-group">
+                    <label for="server-url">Server URL</label>
+                    <input type="text" id="server-url" placeholder="https://localhost:5000" value="https://localhost:5000">
+                </div>
+
+                <button class="btn btn-primary" id="login-btn" onclick="authenticate()">
+                    Login
+                </button>
+
+                <div class="links">
+                    <a href="register.html">Don't have an account? Register here</a>
+                </div>
+            </div>
+
+            <div id="auth-status" class="status-box" style="display: none;">
+                <h3>Authentication Progress:</h3>
+                <div id="auth-status-content"></div>
+            </div>
+
+            <div id="auth-success" class="auth-success" style="display: none;">
+                <h2>✅ Authentication Successful!</h2>
+                <p>You have been securely authenticated using zero-knowledge proof.</p>
+                <div class="token-display" id="token-display"></div>
+                <button class="btn btn-primary" onclick="resetForm()">Login Again</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/auth.js"></script>
+    <script src="js/login.js"></script>
+</body>
+</html>

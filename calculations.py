@@ -49,8 +49,14 @@ right = (commitment_t * pow(secret_y, challenge_c, global_p)) % global_p
 proof = left == right
 print("Proof valid?", proof)
 
-#
+
 # clientul are un client id pe care il trimite cand trimite prima data secret_x?
 # clientul ar avea nevoie de o identificare la server in cazul unei personalizari
 # daca clientul nu ii trimite client_id, cum mai este identificat clientul ? ( ca secretul nue unic)*
+
+
+#downsides: serverul ar trebui sa stocheze id -> secret_y
+#upside: serverul nu mai are incredere in alt server
+
+#idee: protocolul OAuth, dar se adauga pasii aditionali pentru Schnorr proof
 
