@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schnorr Authentication Client</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #e0e0e0;
+            margin-bottom: 30px;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+            color: #666;
+            font-weight: 500;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .status-box {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 5px;
+            margin-top: 20px;
+            font-size: 13px;
+            font-family: 'Courier New', monospace;
+            max-height: 200px;
+            overflow-y: auto;
+            border-left: 4px solid #667eea;
+        }
+
+        .status-box h3 {
+            margin-bottom: 10px;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .status-item {
+            padding: 5px 0;
+            word-break: break-all;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .param-display {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .param-display .label {
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .param-display .value {
+            color: #333;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 Schnorr Auth</h1>
+            <p>Zero-Knowledge Proof Authentication</p>
+        </div>
+
+        <div class="content">
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('register')">Register</div>
+                <div class="tab" onclick="switchTab('auth')">Authenticate</div>
+                <div class="tab" onclick="switchTab('delete')">Delete Account</div>
+            </div>
+
+            <div id="register" class="tab-content active">
+                <h2 style="margin-bottom: 20px; font-size: 20px;">Create Account</h2>
+                <div id="register-alert"></div>
+
+                <div class="form-group">
+                    <label for="reg-username">Username</label>
+                    <input type="text" id="reg-username" placeholder="Enter your username">
+                </div>
+
+                <div class="form-group">
+                    <label for="reg-password">Password</label>
+                    <input type="password" id="reg-password" placeholder="Enter your password">
+                </div>
+
+                <div class="form-group">
+                    <label for="reg-server">Server URL</label>
+                    <input type="text" id="reg-server" placeholder="https://localhost:5000" value="https://localhost:5000">
+                </div>
+
+                <button class="btn btn-primary" onclick="registerUser()" id="register-btn">
+                    Register
+                </button>
+
+                <div id="register-status" class="status-box" style="display: none;">
+                    <h3>Registration Details:</h3>
+                    <div id="register-status-content"></div>
+                </div>
+            </div>
+
+            <div id="auth" class="tab-content">
+                <h2 style="margin-bottom: 20px; font-size: 20px;">Authenticate</h2>
+                <div id="auth-alert"></div>
+
+                <div class="form-group">
+                    <label for="auth-username">Username</label>
+                    <input type="text" id="auth-username" placeholder="Enter your username">
+                </div>
+
+                <div class="form-group">
+                    <label for="auth-password">Password</label>
+                    <input type="password" id="auth-password" placeholder="Enter your password">
+                </div>
+
+                <div class="form-group">
+                    <label for="auth-server">Server URL</label>
+                    <input type="text" id="auth-server" placeholder="https://localhost:5000" value="https://localhost:5000">
+                </div>
+
+                <div class="button-group">
+                    <button class="btn btn-primary" onclick="startAuth()" id="auth-btn">
+                        Start Authentication
+                    </button>
+                </div>
+
+                <div id="auth-status" class="status-box" style="display: none;">
+                    <h3>Authentication Progress:</h3>
+                    <div id="auth-status-content"></div>
+                </div>
+            </div>
+
+            <div id="delete" class="tab-content">
+                <h2 style="margin-bottom: 20px; font-size: 20px;">Delete Account</h2>
+                <div id="delete-alert"></div>
+
+                <div class="alert alert-info">
+                    ⚠️ This action is permanent and cannot be undone. All your data will be deleted.
+                </div>
+
+                <div class="form-group">
+                    <label for="delete-username">Username</label>
+                    <input type="text" id="delete-username" placeholder="Enter your username">
+                </div>
+
+                <div class="form-group">
+                    <label for="delete-server">Server URL</label>
+                    <input type="text" id="delete-server" placeholder="https://localhost:5000" value="https://localhost:5000">
+                </div>
+
+                <button class="btn btn-secondary" onclick="deleteUser()" id="delete-btn">
+                    Delete My Account
+                </button>
+
+                <div id="delete-status" class="status-box" style="display: none;">
+                    <h3>Deletion Result:</h3>
+                    <div id="delete-status-content"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global parameters - must match server
+        const P = 2089;
+        const G = 2;
+
+        function switchTab(tabName) {
+            // Hide all tabs
+            const tabs = document.querySelectorAll('.tab-content');
+            tabs.forEach(tab => tab.classList.remove('active'));
+            
+            // Remove active class from all tab buttons
+            const tabButtons = document.querySelectorAll('.tab');
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            
+            // Show selected tab
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        function showAlert(containerId, message, type = 'info') {
+            const alertDiv = document.getElementById(containerId);
+            alertDiv.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+            alertDiv.style.display = 'block';
+        }
+
+        function hashPassword(password) {
+            // Simple hash for demo - in production, use proper key derivation
+            let hash = 0;
+            for (let i = 0; i < password.length; i++) {
+                const char = password.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash; // Convert to 32bit integer
+            }
+            return Math.abs(hash) % (P - 1) + 1;
+        }
+
+        async function registerUser() {
+            const username = document.getElementById('reg-username').value.trim();
+            const password = document.getElementById('reg-password').value;
+            const serverUrl = document.getElementById('reg-server').value.trim();
+
+            if (!username || !password) {
+                showAlert('register-alert', '❌ Please enter username and password', 'error');
+                return;
+            }
+
+            try {
+                const btn = document.getElementById('register-btn');
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner"></span>Registering...';
+
+                // Derive password to x
+                const password_x = hashPassword(password);
+                
+                // Compute y = g^x mod p
+                const secret_y = modpow(G, password_x, P);
+
+                // Send registration request
+                const response = await fetch(`${serverUrl}/register`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({client_id: username, secret: secret_y}),
+                    mode: 'cors'
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'registered' || result.status === 'updated') {
+                    showAlert('register-alert', `✅ ${result.status.charAt(0).toUpperCase() + result.status.slice(1)} successfully!`, 'success');
+                    
+                    // Show status details
+                    const statusDiv = document.getElementById('register-status');
+                    statusDiv.style.display = 'block';
+                    document.getElementById('register-status-content').innerHTML = `
+                        <div class="status-item"><strong>Client ID:</strong> ${username}</div>
+                        <div class="status-item"><strong>Password (x):</strong> ${password_x}</div>
+                        <div class="status-item"><strong>Secret (y):</strong> ${secret_y}</div>
+                        <div class="status-item"><strong>Server:</strong> ${serverUrl}</div>
+                    `;
+
+                    // Clear form
+                    document.getElementById('reg-username').value = '';
+                    document.getElementById('reg-password').value = '';
+                } else {
+                    showAlert('register-alert', `❌ Registration failed: ${result.reason}`, 'error');
+                }
+
+                btn.disabled = false;
+                btn.innerHTML = 'Register';
+            } catch (error) {
+                showAlert('register-alert', `❌ Error: ${error.message}`, 'error');
+                document.getElementById('register-btn').disabled = false;
+                document.getElementById('register-btn').innerHTML = 'Register';
+            }
+        }
+
+        async function startAuth() {
+            const username = document.getElementById('auth-username').value.trim();
+            const password = document.getElementById('auth-password').value;
+            const serverUrl = document.getElementById('auth-server').value.trim();
+
+            if (!username || !password) {
+                showAlert('auth-alert', '❌ Please enter username and password', 'error');
+                return;
+            }
+
+            try {
+                const btn = document.getElementById('auth-btn');
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner"></span>Authenticating...';
+
+                const statusDiv = document.getElementById('auth-status');
+                statusDiv.style.display = 'block';
+                const statusContent = document.getElementById('auth-status-content');
+                statusContent.innerHTML = '';
+
+                // Step 1: Compute password_x
+                const password_x = hashPassword(password);
+                statusContent.innerHTML += `<div class="status-item">✓ Derived password x: ${password_x}</div>`;
+
+                // Step 2: Generate random r
+                const r = Math.floor(Math.random() * (P - 2)) + 1;
+                statusContent.innerHTML += `<div class="status-item">✓ Generated random r: ${r}</div>`;
+
+                // Step 3: Compute commitment t = g^r mod p
+                const t = modpow(G, r, P);
+                statusContent.innerHTML += `<div class="status-item">✓ Computed commitment t: ${t}</div>`;
+
+                // Step 4: Send commitment to server
+                statusContent.innerHTML += `<div class="status-item">⏳ Sending commitment to server...</div>`;
+                const commitResponse = await fetch(`${serverUrl}/commit`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({client_id: username, t: t}),
+                    mode: 'cors'
+                });
+
+                const commitResult = await commitResponse.json();
+                if (commitResult.status !== 'committed') {
+                    throw new Error(commitResult.reason || 'Commit failed');
+                }
+
+                const c = commitResult.c;
+                statusContent.innerHTML += `<div class="status-item">✓ Received challenge c: ${c}</div>`;
+
+                // Step 5: Compute response s = r + c*x mod (p-1)
+                const s = (r + c * password_x) % (P - 1);
+                statusContent.innerHTML += `<div class="status-item">✓ Computed response s: ${s}</div>`;
+
+                // Step 6: Send response to server for verification
+                statusContent.innerHTML += `<div class="status-item">⏳ Sending response to server...</div>`;
+                const verifyResponse = await fetch(`${serverUrl}/verify`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({client_id: username, s: s, c: c}),
+                    mode: 'cors'
+                });
+
+                const result = await verifyResponse.json();
+
+                if (result.status === 'authenticated') {
+                    statusContent.innerHTML += `<div class="status-item">✓ Authentication successful!</div>`;
+                    statusContent.innerHTML += `<div class="status-item"><strong>Token:</strong> ${result.token}</div>`;
+                    showAlert('auth-alert', '✅ Authentication successful!', 'success');
+                    document.getElementById('auth-password').value = '';
+                } else {
+                    throw new Error(result.reason || 'Verification failed');
+                }
+
+                btn.disabled = false;
+                btn.innerHTML = 'Start Authentication';
+            } catch (error) {
+                showAlert('auth-alert', `❌ Error: ${error.message}`, 'error');
+                document.getElementById('auth-btn').disabled = false;
+                document.getElementById('auth-btn').innerHTML = 'Start Authentication';
+            }
+        }
+
+        async function deleteUser() {
+            const username = document.getElementById('delete-username').value.trim();
+            const serverUrl = document.getElementById('delete-server').value.trim();
+
+            if (!username) {
+                showAlert('delete-alert', '❌ Please enter your username', 'error');
+                return;
+            }
+
+            const confirmed = confirm('Are you sure? This cannot be undone.');
+            if (!confirmed) return;
+
+            try {
+                const btn = document.getElementById('delete-btn');
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner"></span>Deleting...';
+
+                const response = await fetch(`${serverUrl}/forgetme`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({client_id: username, token: 'yes'}),
+                    mode: 'cors'
+                });
+
+                const result = await response.json();
+
+                const statusDiv = document.getElementById('delete-status');
+                statusDiv.style.display = 'block';
+
+                if (result.status === 'forgotten') {
+                    showAlert('delete-alert', '✅ Account deleted successfully!', 'success');
+                    document.getElementById('delete-status-content').innerHTML = `
+                        <div class="status-item">All data has been permanently deleted.</div>
+                    `;
+                    document.getElementById('delete-username').value = '';
+                } else {
+                    throw new Error(result.reason || 'Deletion failed');
+                }
+
+                btn.disabled = false;
+                btn.innerHTML = 'Delete My Account';
+            } catch (error) {
+                showAlert('delete-alert', `❌ Error: ${error.message}`, 'error');
+                document.getElementById('delete-btn').disabled = false;
+                document.getElementById('delete-btn').innerHTML = 'Delete My Account';
+            }
+        }
+
+        // Modular exponentiation function
+        function modpow(base, exp, mod) {
+            let result = 1;
+            base = base % mod;
+            while (exp > 0) {
+                if (exp % 2 === 1) {
+                    result = (result * base) % mod;
+                }
+                exp = Math.floor(exp / 2);
+                base = (base * base) % mod;
+            }
+            return result;
+        }
+    </script>
+</body>
+</html>
