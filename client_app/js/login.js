@@ -50,10 +50,10 @@ async function authenticate() {
 
         // Step 4: Send commitment to server
         showStatus('⏳ Sending commitment to server...');
-        const commitResponse = await fetch(`${serverUrl}/commit`, {
+        const commitResponse = await fetch(`${serverUrl}/login/commit`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({client_id: username, t: t}),
+            body: JSON.stringify({client_id: username, commitment_t: t}),
             mode: 'cors'
         });
 
@@ -62,19 +62,19 @@ async function authenticate() {
             throw new Error(commitResult.reason || 'Commit failed');
         }
 
-        const c = commitResult.c;
-        showStatus(`✓ Received challenge c: ${c}`);
+        const challenge_c = commitResult.challenge_c;
+        showStatus(`✓ Received challenge c: ${challenge_c}`);
 
         // Step 5: Compute response s = r + c*x mod (p-1)
-        const s = (r + c * password_x) % (P - 1);
-        showStatus(`✓ Computed response s: ${s}`);
+        const solution_s = (r + challenge_c * password_x) % (P - 1);
+        showStatus(`✓ Computed response s: ${solution_s}`);
 
         // Step 6: Send response to server for verification
         showStatus('⏳ Sending response to server...');
-        const verifyResponse = await fetch(`${serverUrl}/verify`, {
+        const verifyResponse = await fetch(`${serverUrl}/login/verify`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({client_id: username, s: s, c: c}),
+            body: JSON.stringify({client_id: username, solution_s: solution_s}),
             mode: 'cors'
         });
 

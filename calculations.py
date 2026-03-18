@@ -33,30 +33,19 @@ password_hashed = hashlib.scrypt(password_string.encode(),salt=salt,n=2**11,r=8,
 password_x = int.from_bytes(password_hashed, 'big') % q
 print("Password x:", password_x)
 
-
+#0.create secret_y and register
 secret_y = pow(global_g, password_x, global_p) #y = g^x mod p
-
+#1.create commitment and send to server
 rand_r = secrets.randbelow(global_p-2) + 1 # r = random in [1, p-2]
 commitment_t = pow(global_g, rand_r, global_p)  # t = g^r mod p
-
+#2.receive challenge c from server, compute solution s and send to server
 challenge_c = secrets.randbelow(global_p-2) + 1 # c = random in [1, p-2]
-
 solution_s = (rand_r + challenge_c * password_x) % (global_p-1) # s = r + c*x mod p
-
-
+#3.server final verifies, returns true
 left = pow(global_g, solution_s, global_p)
 right = (commitment_t * pow(secret_y, challenge_c, global_p)) % global_p
 proof = left == right
 print("Proof valid?", proof)
 
 
-# clientul are un client id pe care il trimite cand trimite prima data secret_x?
-# clientul ar avea nevoie de o identificare la server in cazul unei personalizari
-# daca clientul nu ii trimite client_id, cum mai este identificat clientul ? ( ca secretul nue unic)*
-
-
-#downsides: serverul ar trebui sa stocheze id -> secret_y
-#upside: serverul nu mai are incredere in alt server
-
-#idee: protocolul OAuth, dar se adauga pasii aditionali pentru Schnorr proof
 

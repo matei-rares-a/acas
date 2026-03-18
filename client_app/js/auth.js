@@ -5,7 +5,7 @@ const P = 2089;
 const G = 2;
 
 function hashPassword(password) {
-    // simple hash for demo; replace with secure KDF in production
+    //todo replace with secure KDF in production
     let hash = 0;
     for (let i = 0; i < password.length; i++) {
         const char = password.charCodeAt(i);
