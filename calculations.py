@@ -42,8 +42,8 @@ commitment_t = pow(global_g, rand_r, global_p)  # t = g^r mod p
 challenge_c = secrets.randbelow(global_p-2) + 1 # c = random in [1, p-2]
 solution_s = (rand_r + challenge_c * password_x) % (global_p-1) # s = r + c*x mod p
 #3.server final verifies, returns true
-left = pow(global_g, solution_s, global_p)
-right = (commitment_t * pow(secret_y, challenge_c, global_p)) % global_p
+left = pow(global_g, solution_s, global_p) # left = g^s mod p
+right = (commitment_t * pow(secret_y, challenge_c, global_p)) % global_p # right = t * y^c mod p
 proof = left == right
 print("Proof valid?", proof)
 
