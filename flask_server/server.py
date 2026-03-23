@@ -13,12 +13,14 @@ SECRET= "server_secret"
 
 app = Flask(__name__)
 basedir = os.path.abspath(os.path.dirname(__file__))
+db_path = os.path.join(basedir, 'db')
+if not os.path.exists(db_path):
+    os.makedirs(db_path)
 
-app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{os.path.join(basedir, 'db', 'auth.db')}'
+app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(db_path, 'auth.db')}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 db = SQLAlchemy(app)
-
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -44,10 +46,9 @@ class PersoData(db.Model):
     user = db.relationship('User', backref=db.backref('perso_data', uselist=False))
 
 
-def init_db():
-    if not os.path.exists('flask_server/db/auth.db'):
-        db.create_all()
-        print('Initialized SQLite database')
+with app.app_context():
+    db.create_all()
+    print("Tabelele au fost create cu succes în:", app.config['SQLALCHEMY_DATABASE_URI'])
 
 
 @app.route('/health', methods=['GET'])
@@ -60,6 +61,7 @@ def registerAPI():
     data = request.get_json() or {}
     client_id = data.get('client_id')
     secret = data.get('secret_y')
+    print(client_id, secret)
     if not client_id or secret is None:
         return jsonify({'status': 'failed', 'reason': 'missing parameters'}), 400
 
@@ -218,7 +220,6 @@ def create_self_signed_cert():
 
 
 if __name__ == '__main__':
-    init_db()
 
     print('Schnorr Authentication Server')
     print('=' * 50)
