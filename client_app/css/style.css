@@ -7,7 +7,7 @@
 
 body{
     font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;
-    background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+    background:linear-gradient(135deg,#959dbf 0%,#5f554a 100%);
     min-height:100vh;
     display:flex;
     justify-content:center;
@@ -25,7 +25,7 @@ body{
 }
 
 .header{
-    background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+    background:linear-gradient(-50deg,#50556b 0%,#2e2720 100%);
     color:white;
     padding:30px;
     text-align:center;
@@ -90,7 +90,7 @@ body{
 }
 
 .btn-primary{
-    background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+    background:linear-gradient(-50deg,#50556b 0%,#2e2720 100%);
     color:white;
 }
 
@@ -145,9 +145,13 @@ body{
 }
 
 .links a{
-    color:#667eea;
+    color:#2e2720;
     text-decoration:none;
     font-size:14px;
+}
+.links p{
+    color:#2e2720;
+
 }
 
 .links a:hover{
