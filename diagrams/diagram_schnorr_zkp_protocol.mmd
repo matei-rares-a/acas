@@ -1,0 +1,66 @@
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant S as Server
+
+    Note over C,S: ── Public Parameters Setup ──
+    C->>S: GET /get-parameters
+    S-->>C: P (2048-bit safe prime), G (generator of subgroup of order Q)
+    Note over C,S: Q = (P - 1) / 2
+
+    Note over C,S: ── Key Derivation (client-side only, never transmitted) ──
+    Note over C: x = SHA-256(username ‖ ":" ‖ password) mod Q
+    Note over C: y = G^x mod P     ← public key (Schnorr public key)
+
+    rect rgb(245, 245, 245)
+    Note over C,S: REGISTRATION
+    C->>S: POST /register  { client_id, secret_y = y }
+    Note over S: Validate y is a subgroup member: y^Q ≡ 1 (mod P)
+    Note over S: Store (client_id, y) in database
+    S-->>C: 201 Created  { client_id }  — or 200 OK on re-registration
+    end
+
+    rect rgb(235, 245, 255)
+    Note over C,S: AUTHENTICATION — Schnorr Sigma Protocol (3-move)
+    Note over C: Step 1 — Commitment
+    Note over C: Pick r ←$ [1, Q-1]   (fresh CSPRNG per session)
+    Note over C: t = G^r mod P
+    C->>S: POST /login/commit  { client_id, commitment_t = t }
+    Note over S: Look up user, validate t is subgroup member
+    Note over S: Store t in memory for this session
+    Note over S: Pick c ←$ [1, Q-1]   (random challenge)
+    S-->>C: 200 OK  { challenge_c = c }
+
+    Note over C: Step 2 — Response
+    Note over C: s = (r + c · x) mod Q
+    C->>S: POST /login/verify  { client_id, solution_s = s }
+
+    Note over S: Step 3 — Verification
+    Note over S: left  = G^s mod P
+    Note over S: right = t · y^c mod P
+    Note over S: Accept iff left == right
+
+    alt Proof valid  (Zero-Knowledge: server learns nothing about x)
+        Note over S: Issue JWT token signed with server secret
+        S-->>C: 200 OK  { token (JWT), client_id }
+    else Proof invalid
+        S-->>C: 401 Unauthorized  { reason: verification failed }
+    end
+    end
+
+    rect rgb(245, 255, 245)
+    Note over C,S: AUTHENTICATED DATA ACCESS
+    C->>S: GET /data   Authorization: Bearer <token>
+    Note over S: Decode JWT → extract client_id → query PersoData
+    S-->>C: 200 OK  { data: message }
+
+    C->>S: POST /data  Authorization: Bearer <token>  { data: "..." }
+    S-->>C: 201 Created  { message: personal data updated }
+    end
+
+    rect rgb(255, 245, 245)
+    Note over C,S: ACCOUNT DELETION
+    C->>S: POST /forgetme  Authorization: Bearer <token>  { client_id }
+    Note over S: Validate token, delete AuthToken + User cascade
+    S-->>C: 200 OK  { message: User data deleted }
+    end

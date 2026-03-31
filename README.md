@@ -1,56 +1,62 @@
 # acas
-Oauth Protocol for Api Key Authentication using Schnorr
 
-This project implements an OAuth-style API key authentication using the Schnorr zero-knowledge proof.
+OAuth-style API key authentication using the Schnorr zero-knowledge protocol.
 
-### Project Structure
-- `calculations.py` - Core Schnorr protocol implementation and parameter generation
-- `flask_server/app.py` - Flask authentication server with SQLite database
-- `client_app/` - Pure HTML/JavaScript client application
-  - `index.html` - Main landing page (links to register/login)
-  - `register.html` - Registration view with external CSS/JS
-  - `login.html` - Login view with external CSS/JS
-  - `css/style.css` - Shared stylesheet
-  - `js/auth.js` - Shared authentication utilities
-  - `js/register.js` - Registration logic
-  - `js/login.js` - Login/authentication logic
-- `requirements.txt` - Python dependencies
+## Project Structure
+- `calculations.py`: Reference calculations and parameter generation notes.
+- `flask_server/server.py`: Flask authentication server (SQLite + JWT).
+- `flask_server/db/`: SQLite database folder (`auth.db`).
+- `client_app/`: HTML/JavaScript client app.
+- `client_app/index.html`: Landing page.
+- `client_app/register.html`: Registration page.
+- `client_app/login.html`: Login page.
+- `client_app/css/style.css`: Shared styles.
+- `client_app/js/auth.js`: Shared Schnorr helpers and parameter fetch.
+- `client_app/js/register.js`: Registration protocol flow.
+- `client_app/js/login.js`: Login protocol flow.
+- `client_app/js/network-monitor.js`: Real-time request/response monitor panel.
+- `requirements.txt`: Python dependencies for the Flask server.
 
-### Running the System
+## Run the System
 
-#### 1. Start the Authentication Server
+### 1. Install dependencies
 ```powershell
-cd flask_server
-pip install -r ../requirements.txt
-python app.py
+pip install -r requirements.txt
 ```
-The server will run on `https://localhost:5000` (with self-signed certificate).
 
-#### 2. Start the Client Application Server
+### 2. Start the authentication server
 ```powershell
-python serve_client.py
+python flask_server/server.py
 ```
-This will serve the HTML/JavaScript client on `http://localhost:8000`.
+Server runs on `https://localhost:5000` (self-signed cert is generated/used if available).
 
-#### 3. Open in Browser
-Navigate to `http://localhost:8000` in your web browser and choose Register or Login.
+### 3. Start a static server for the client
+```powershell
+cd client_app
+python -m http.server 8000
+```
 
-### How It Works
+### 4. Open in browser
+Navigate to `http://localhost:8000` and use Register/Login.
 
-1. **Registration**: User creates account with username/password. Password is hashed client-side and public key `y = g^x mod p` is sent to server.
+## Protocol Notes
 
-2. **Authentication**: 
-   - Client generates random `r` and computes commitment `t = g^r mod p`
-   - Server sends challenge `c`
-   - Client computes response `s = r + c*x mod (p-1)`
-   - Server verifies: `g^s ≡ t * y^c mod p`
+### Registration
+1. Client derives `x` from username+password.
+2. Client computes `y = g^x mod p`.
+3. Client sends `client_id` and `secret_y` to `/register`.
 
-3. **Zero-Knowledge**: Password `x` never leaves the client. Only cryptographic proofs are transmitted.
+### Authentication
+1. Client computes commitment `t = g^r mod p` and sends it to `/login/commit`.
+2. Server returns challenge `c`.
+3. Client computes `s = (r + c*x) mod q` and sends it to `/login/verify`.
+4. Server verifies `g^s ≡ t * y^c (mod p)` and returns JWT on success.
 
-### Security Features
-- Zero-knowledge proof authentication
-- Password never transmitted or stored
-- Secure random number generation
-- GDPR-compliant account deletion
-- HTTPS with self-signed certificates for development
+## Current Security/Implementation Details
+- Large safe-prime group parameters are used.
+- `Q` is computed on the client as `(P - 1) / 2` and is not exchanged.
+- Server validates subgroup membership for public values.
+- Password secret `x` remains client-side.
+- CSPRNG is used for protocol randomness.
+- Request/response activity can be observed in the in-app network monitor.
 

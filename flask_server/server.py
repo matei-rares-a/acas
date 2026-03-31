@@ -1,15 +1,19 @@
 from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+from extensions import db
+from models import User, AuthToken, PersoData
 import secrets
 import os
-import ssl
 import jwt
+import uuid
+import time
 
-# public parameters
-P = 2089
-G = 2
-SECRET= "server_secret"
+# public parameters for Schnorr protocol, using a 2048-bit safe prime
+P = 11731722534755988379582498904317031585514431212880510373180315650809605302410493595610739947214327053090791642864835392206070266585210162380812213540641579
+Q = (P - 1) // 2
+# generator of subgroup order Q (quadratic residue)
+G = 4
+SECRET = "server_secret"
 
 app = Flask(__name__)
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -19,31 +23,107 @@ if not os.path.exists(db_path):
 
 app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(db_path, 'auth.db')}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-CORS(app, resources={r"/*": {"origins": "*"}})
-db = SQLAlchemy(app)
+#todo everything should be in env vars, but for simplicity we keep it here for now
+CORS(
+    app,
+    resources={r"/*": {"origins": "*"}},
+  )
+db.init_app(app)
 
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    client_id = db.Column(db.String(255), unique=True, nullable=False)
-    secret_y = db.Column(db.String(255), nullable=False)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
+@app.before_request
+def before_request():
+    request.start_time = time.time()
+
+@app.after_request
+def add_rest_headers(response):
+    """Add REST compliance and security headers to all responses"""
+    # Request tracing
+    request_id = request.headers.get('Request-ID', str(uuid.uuid4()))
+    response.headers['Request-ID'] = request_id
+    
+    # Security headers
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['Content-Security-Policy'] = "default-src 'self'; base-uri 'self'; frame-ancestors 'none'"
+    response.headers['Permissions-Policy'] = 'geolocation=(), camera=(), microphone=()'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    if request.is_secure or request.headers.get('X-Forwarded-Proto', 'http') == 'https':
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    
+    # API versioning
+    response.headers['API-Version'] = '1.0'
+    response.headers['Vary'] = 'Accept, Origin'
+    
+    # Cache control (overridable per route)
+    if 'Cache-Control' not in response.headers:
+        response.headers['Cache-Control'] = 'private, no-store, no-cache, must-revalidate'
+    
+    # Performance metrics
+    response.headers['X-Response-Time'] = f"{(time.time() - request.start_time):.3f}s"
+    response.headers['Server-Timing'] = f"app;dur={(time.time() - request.start_time)*1000:.2f}"
+    
+    # Content type
+    if response.headers.get('Content-Type') is None:
+        response.headers['Content-Type'] = 'application/json; charset=utf-8'
+    
+    # Add WWW-Authenticate for 401 responses
+    if response.status_code == 401:
+        response.headers['WWW-Authenticate'] = 'Bearer realm="Schnorr Authentication", charset="UTF-8"'
+    
+    return response
+
+
 
 
 commitments={}
 challenge_c_values={}
 
-class AuthToken(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    token = db.Column(db.String(255), unique=True, nullable=False)
-    created_at = db.Column(db.DateTime, server_default=db.func.now())
-    user = db.relationship('User', backref=db.backref('auth_token', uselist=False))
+# Primary scheme: Bearer (RFC 6750). We also accept a few bearer-like schemes
+# for interoperability with existing clients/tools.
+# TODO: This multi-scheme authorization support must be extensively verified before production use.
+SUPPORTED_AUTH_SCHEMES = {"bearer", "token", "jwt", "dpop"}
 
-class PersoData(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    message = db.Column(db.String(255), unique=True, nullable=False)
-    user = db.relationship('User', backref=db.backref('perso_data', uselist=False))
+
+def validate_int_field(data, key):
+    value = data.get(key)
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def is_subgroup_member(value):
+    # Valid Schnorr group element in subgroup of order Q.
+    return 1 < value < P and pow(value, Q, P) == 1
+
+
+def extract_access_token(data=None):
+    """Extract token from Authorization header, with optional body fallback.
+
+    Accepted header formats:
+    - Authorization: Bearer <token>
+    - Authorization: Token <token>
+    - Authorization: JWT <token>
+    - Authorization: DPoP <token>
+    """
+    auth_header = request.headers.get('Authorization', '').strip()
+    if auth_header:
+        parts = auth_header.split(None, 1)
+        if len(parts) == 2:
+            scheme, token = parts[0].lower(), parts[1].strip()
+            if scheme in SUPPORTED_AUTH_SCHEMES and token:
+                return token
+        elif len(parts) == 1 and parts[0]:
+            # Compatibility path for clients sending a raw token in Authorization.
+            return parts[0]
+
+    # Backward compatibility: accept token in JSON body.
+    if data and data.get('token'):
+        return data.get('token')
+
+    return None
 
 
 with app.app_context():
@@ -53,79 +133,93 @@ with app.app_context():
 
 @app.route('/health', methods=['GET'])
 def healthAPI():
-    return jsonify({'status': 'healthy'})
+    return jsonify({"health":"healthy"})
+
+
+@app.route('/get-parameters', methods=['GET'])
+def getParametersAPI():
+    """Endpoint to exchange global parameters P and G with the client"""
+    response = jsonify({'P': str(P), 'G': str(G)})
+    response.headers['Cache-Control'] = 'public, max-age=3600'
+    response.headers['ETag'] = 'W/"v1.0-schnorr"'
+    return response
 
 
 @app.route('/register', methods=['POST'])
 def registerAPI():
     data = request.get_json() or {}
     client_id = data.get('client_id')
-    secret = data.get('secret_y')
+    secret = validate_int_field(data, 'secret_y')
     print(client_id, secret)
     if not client_id or secret is None:
-        return jsonify({'status': 'failed', 'reason': 'missing parameters'}), 400
+        return jsonify({'reason': 'missing parameters'}), 400
+    if not is_subgroup_member(secret):
+        return jsonify({'reason': 'invalid public value'}), 422
 
-    status_msg = register_user_in_db(client_id, secret)
-    return jsonify({'status': status_msg, 'client_id': client_id})
+    is_new = register_user_in_db(client_id, secret)
+    return jsonify({'client_id': client_id}), 201 if is_new else 200
 
 def register_user_in_db(client_id, secret_y):
     user = User.query.filter_by(client_id=client_id).first()
     if user:
         user.secret_y = str(secret_y)
-        status_msg = 'updated'
+        is_new = False
     else:
         user = User(client_id=client_id, secret_y=str(secret_y))
         db.session.add(user)
-        status_msg = 'registered'
+        is_new = True
     db.session.commit()
-    return status_msg
+    return is_new
 
 @app.route('/login/commit', methods=['POST'])
 def commitAPI():
     data = request.get_json() or {}
     client_id = data.get('client_id')
-    t = data.get('commitment_t')
+    t = validate_int_field(data, 'commitment_t')
     if not client_id or t is None:
-        return jsonify({'status': 'failed', 'reason': 'missing parameters'}), 400
+        return jsonify({'reason': 'missing parameters'}), 400
+    if not is_subgroup_member(t):
+        return jsonify({'reason': 'invalid commitment'}), 422
 
     # check user exists
     user = User.query.filter_by(client_id=client_id).first()
     if not user:
-        return jsonify({'status': 'failed', 'reason': 'user not registered'}), 400
+        return jsonify({'reason': 'user not registered'}), 404
     
     #if commitment already exists in inmemory dict, delete it and return error, because a new session should be started
     if client_id in commitments:
         del commitments[client_id]
-        return jsonify({'status': 'failed', 'reason': 'existing commitment found, start a new session'}), 400
+        return jsonify({'reason': 'existing commitment found, start a new session'}), 409
     # save commitment in inmemory dict, because we need it for verification
     commitments[client_id] = t
 
-    db.session.commit()
-    challenge_c = secrets.randbelow(P - 2) + 1
+    challenge_c = secrets.randbelow(Q - 1) + 1
     challenge_c_values[client_id] = challenge_c
-    return jsonify({'status': 'committed', 'challenge_c': challenge_c})
+    return jsonify({'challenge_c': str(challenge_c)})
 
 
 @app.route('/login/verify', methods=['POST'])
 def verifyAPI():
     data = request.get_json() or {}
     client_id = data.get('client_id')
-    s = data.get('solution_s')
+    s = validate_int_field(data, 'solution_s')
     if not client_id or s is None:
-        return jsonify({'status': 'failed', 'reason': 'missing parameters'}), 400
+        return jsonify({'reason': 'missing parameters'}), 400
+    if s < 0 or s >= Q:
+        return jsonify({'reason': 'invalid solution'}), 422
 
     user = User.query.filter_by(client_id=client_id).first()
     if not user:
-        return jsonify({'status': 'failed', 'reason': 'user not found'}), 400
+        return jsonify({'reason': 'user not found'}), 404
     
-    if not commitments.get(client_id):
-        return jsonify({'status': 'failed', 'reason': 'no commitment'}), 400
+    if client_id not in commitments:
+        return jsonify({'reason': 'no commitment'}), 409
     
-    if not challenge_c_values.get(client_id):
-        return jsonify({'status': 'failed', 'reason': 'no challenge c'}), 400
+    if client_id not in challenge_c_values:
+        return jsonify({'reason': 'no challenge c'}), 409
 
     y = int(user.secret_y)
-    t = int(commitments[client_id])
+    t = commitments[client_id]
     c= challenge_c_values[client_id]
     left = pow(G, s, P)
     right = (t * pow(y, c, P)) % P
@@ -139,66 +233,71 @@ def verifyAPI():
             auth = AuthToken(user_id=user.id, token=token_str)
             db.session.add(auth)
         del commitments[client_id]
+        del challenge_c_values[client_id]
         db.session.commit()
-        return jsonify({'status': 'authenticated', 'token': token_str, 'client_id': client_id})
+        return jsonify({'token': token_str, 'client_id': client_id})
     else:
-        return jsonify({'status': 'failed', 'reason': 'verification failed'})
+        return jsonify({'reason': 'verification failed'}), 401
 
 
 @app.route('/forgetme', methods=['POST'])
 def forgetmeApi():
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     client_id = data.get('client_id')
-    token = data.get('token')
+    token = extract_access_token(data)
     if not client_id:
-        return jsonify({'status': 'failed', 'reason': 'missing client_id'}), 400
+        return jsonify({'reason': 'missing client_id'}), 400
     user = User.query.filter_by(client_id=client_id).first()
     if not user:
-        return jsonify({'status': 'failed', 'reason': 'user not found'}), 400
+        return jsonify({'reason': 'user not found'}), 404
     if token:
         auth = AuthToken.query.filter_by(user_id=user.id, token=token).first()
         if not auth:
-            return jsonify({'status': 'failed', 'reason': 'invalid token'}), 400
+            return jsonify({'reason': 'invalid token'}), 401
     # delete user cascades
     AuthToken.query.filter_by(user_id=user.id).delete()
     db.session.delete(user)
     db.session.commit()
-    return jsonify({'status': 'forgotten', 'message': 'User data deleted'})
+    return jsonify({'message': 'User data deleted'})
 
 
 @app.route('/data', methods=['GET', 'POST', 'PUT'])
 def dataAcessApi():
-    data = request.get_json() or {}
-    token = data.get('token')
+    data = request.get_json(silent=True) or {}
+    token = extract_access_token(data)
     if not token:
-        return jsonify({'status': 'failed', 'reason': 'missing token'}), 400
+        return jsonify({'reason': 'missing token'}), 401
     try:
         payload = jwt.decode(token, SECRET, algorithms=['HS256'])
         client_id = payload.get('client_id')
         user = User.query.filter_by(client_id=client_id).first()
         if not user:
-            return jsonify({'status': 'failed', 'reason': 'user not found'}), 400
+            return jsonify({'reason': 'user not found'}), 404
         if request.method == 'GET':
             perso = PersoData.query.filter_by(user_id=user.id).first()
             if not perso:
-                return jsonify({'status': 'failed', 'reason': 'no personal data found'}), 404
-            return jsonify({'status': 'success', 'data': perso.message})
+                return jsonify({'reason': 'no personal data found'}), 404
+            return jsonify({'data': perso.message})
         else:
-            new_data = str(data.get('data'))
+            new_data = data.get('data')
             if new_data is None:
-                return jsonify({'status': 'failed', 'reason': 'missing data'}), 400
+                return jsonify({'reason': 'missing data'}), 400
+            if not isinstance(new_data, str):
+                new_data = str(new_data)
             perso = PersoData.query.filter_by(user_id=user.id).first()
+            was_created = False
             if perso:
                 perso.message = new_data
             else:
                 perso = PersoData(user_id=user.id, message=new_data)
                 db.session.add(perso)
+                was_created = True
             db.session.commit()
-            return jsonify({'status': 'success', 'message': 'personal data updated'})
+            return jsonify({'message': 'personal data updated'}), 201 if was_created else 200
     except jwt.ExpiredSignatureError:
-        return jsonify({'status': 'failed', 'reason': 'token expired'}), 401
+        return jsonify({'reason': 'token expired'}), 401
     except jwt.InvalidTokenError:
-        return jsonify({'status': 'failed', 'reason': 'invalid token'}), 401
+        return jsonify({'reason': 'invalid token'}), 401
     
 
 def create_self_signed_cert():

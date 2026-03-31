@@ -1,0 +1,21 @@
+flowchart TD
+    A([Start]) --> B["User enters\nusername · password · server URL"]
+    B --> C["GET /get-parameters\nReceive P, G, Q"]
+    C --> D["Derive private key\nx = SHA-256(username:password) mod Q"]
+    D --> E["Generate random r ←$ [1, Q-1]\nusing CSPRNG"]
+    E --> F["Compute commitment\nt = G^r mod P"]
+    F --> G["POST /login/commit\n{ client_id, commitment_t = t }"]
+    G --> H{Response?}
+    H -- "404 Not Found" --> I["❌ User not registered"]
+    H -- "409 Conflict" --> J["❌ Existing commitment found\nStart a new session"]
+    H -- "422 Unprocessable" --> K["❌ t is not a valid\nsubgroup member"]
+    H -- "200 OK" --> L["Receive challenge_c = c\nfrom server"]
+    L --> M["Compute response\ns = (r + c · x) mod Q"]
+    M --> N["POST /login/verify\n{ client_id, solution_s = s }"]
+    N --> O["Server verifies:\nG^s ≡ t · y^c (mod P)?"]
+    O --> P{Verification result}
+    P -- "✓ Equal — proof valid" --> Q["Receive JWT token\n{ token, client_id }"]
+    P -- "✗ Not equal — proof invalid" --> R["❌ 401 Verification failed\n(wrong password or tampered proof)"]
+    Q --> S["✅ Authenticated\nStore token, display success"]
+    I & J & K & R --> T["Show error message\nReturn to login form"]
+    S & T --> Z([End])

@@ -1,0 +1,33 @@
+stateDiagram-v2
+    [*] --> Idle : Page loaded
+
+    Idle --> FetchingParams : User submits register or login form
+
+    FetchingParams --> KeyDerivation : 200 — P, G received from server
+    FetchingParams --> KeyDerivation : Network error — fall back to hardcoded defaults
+
+    state Registration {
+        KeyDerivation --> ComputingPublicKey : x = SHA-256(username:password) mod Q
+        ComputingPublicKey --> Registering   : y = G^x mod P → POST /register
+        Registering --> RegistrationOK       : 201 New user  /  200 Key updated
+        Registering --> RegistrationFailed   : 400 Missing params  /  422 Invalid subgroup value
+    }
+
+    state Login {
+        KeyDerivation --> Committing : x derived,  t = G^r mod P → POST /login/commit
+        Committing --> Challenged    : 200 — challenge_c = c received
+        Committing --> LoginFailed   : 404 User not found  /  409 Duplicate commitment
+        Challenged --> Verifying     : s = (r + c·x) mod Q → POST /login/verify
+        Verifying --> Authenticated  : 200 — JWT token received
+        Verifying --> LoginFailed    : 401 Verification failed
+    }
+
+    RegistrationOK   --> Idle
+    RegistrationFailed --> Idle
+    LoginFailed      --> Idle
+
+    Authenticated --> AccessingData  : Bearer token in Authorization header
+    AccessingData --> Authenticated  : 200/201 — data returned
+    AccessingData --> Idle           : 401 — token invalid or expired
+
+    Authenticated --> Idle           : POST /forgetme — account deleted
