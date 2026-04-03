@@ -8,61 +8,67 @@ import jwt
 import uuid
 import time
 
+#Note: constants and settings should be in env files
+#Simplicity: hardocoded constants and settings
 # public parameters for Schnorr protocol, using a 2048-bit safe prime
 P = 11731722534755988379582498904317031585514431212880510373180315650809605302410493595610739947214327053090791642864835392206070266585210162380812213540641579
 Q = (P - 1) // 2
 # generator of subgroup order Q (quadratic residue)
 G = 4
-SECRET = "server_secret"
+
+SECRET = 'dev-only-server-secret-at-least-32-bytes-long' # Python jwt gives warning if secret is shorter than 32
 
 app = Flask(__name__)
 basedir = os.path.abspath(os.path.dirname(__file__))
 db_path = os.path.join(basedir, 'db')
 if not os.path.exists(db_path):
     os.makedirs(db_path)
-
 app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(db_path, 'auth.db')}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-#todo everything should be in env vars, but for simplicity we keep it here for now
-CORS(
-    app,
-    resources={r"/*": {"origins": "*"}},
-  )
+CORS(app,resources={r"/*": {"origins": "*"}},)
 db.init_app(app)
 
 @app.before_request
 def before_request():
     request.start_time = time.time()
 
+"""REST compliance and security headers"""
 @app.after_request
 def add_rest_headers(response):
-    """Add REST compliance and security headers to all responses"""
     # Request tracing
     request_id = request.headers.get('Request-ID', str(uuid.uuid4()))
     response.headers['Request-ID'] = request_id
     
     # Security headers
+    #Prevents browsers from guessing the response type. For an auth API returning JSON, that matters because you do not want a browser treating a JSON response like script or HTML under odd conditions. It reduces client-side misinterpretation and some XSS-style abuse paths.
     response.headers['X-Content-Type-Options'] = 'nosniff'
+    #Stops your pages or responses from being embedded in an iframe. In a browser-based login flow, that helps defend against clickjacking.
     response.headers['X-Frame-Options'] = 'DENY'
+    #it limits where scripts and other resources can load from, prevents base URL manipulation, and forbids framing. That matters because if malicious JavaScript runs in the client, it can steal the JWT returned after successful Schnorr verification or tamper with the proof flow before it reaches the server.
     response.headers['Content-Security-Policy'] = "default-src 'self'; base-uri 'self'; frame-ancestors 'none'"
+    #not needed for Schnorr correctness, but it is reasonable least-privilege hardening for a browser client.
     response.headers['Permissions-Policy'] = 'geolocation=(), camera=(), microphone=()'
+    #Limits what the browser leaks in the Referer header when navigating away or making cross-origin requests. That helps avoid exposing sensitive URL structure or workflow details
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     if request.is_secure or request.headers.get('X-Forwarded-Proto', 'http') == 'https':
         response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     
     # API versioning
-    response.headers['API-Version'] = '1.0'
-    response.headers['Vary'] = 'Accept, Origin'
+    response.headers['API-Version'] = 'S1.0'
     
     # Cache control (overridable per route)
+    # No JWTs, challenge values, or personal data cached by browsers or proxies.
     if 'Cache-Control' not in response.headers:
         response.headers['Cache-Control'] = 'private, no-store, no-cache, must-revalidate'
     
     # Performance metrics
+    #It helps you measure slow endpoints
     response.headers['X-Response-Time'] = f"{(time.time() - request.start_time):.3f}s"
+    #Similar to X-Response-Time, but standardized for browser tooling. Good for performance debugging in the frontend
     response.headers['Server-Timing'] = f"app;dur={(time.time() - request.start_time)*1000:.2f}"
     
     # Content type
+    #Consistent type
     if response.headers.get('Content-Type') is None:
         response.headers['Content-Type'] = 'application/json; charset=utf-8'
     
@@ -73,16 +79,14 @@ def add_rest_headers(response):
     return response
 
 
-
-
+# note: should be in database
+# simplicity: in memory commitments and challenges
 commitments={}
 challenge_c_values={}
 
-# Primary scheme: Bearer (RFC 6750). We also accept a few bearer-like schemes
-# for interoperability with existing clients/tools.
-# TODO: This multi-scheme authorization support must be extensively verified before production use.
+#Note: the servers choses the auth scheme
+#Simplicity: support similar schemes Bearer (RFC 6750).
 SUPPORTED_AUTH_SCHEMES = {"bearer", "token", "jwt", "dpop"}
-
 
 def validate_int_field(data, key):
     value = data.get(key)
