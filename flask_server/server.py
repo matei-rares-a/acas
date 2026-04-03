@@ -321,9 +321,11 @@ def create_self_signed_cert():
 if __name__ == '__main__':
 
     print('Schnorr Authentication Server')
+    print('\n')
     print('=' * 50)
-    print('Starting Flask server on https://localhost:5000')
+    print('Starting Flask server on https://localhost:5000 or http://localhost:5000')
     print('=' * 50)
+    print('\n')
 
     # Try to create self-signed certificate
     create_self_signed_cert()
