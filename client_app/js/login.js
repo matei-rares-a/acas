@@ -62,9 +62,8 @@ async function authenticate() {
                 'Content-Type': 'application/json; charset=utf-8',
                 'Accept': 'application/json',
                 'Accept-Language': navigator.language || 'en-US',
-                'API-Version': '1.0',
+                'API-Version': 'S1.0',
                 'Request-ID': requestId,
-                'Idempotency-Key': requestId
             },
             body: JSON.stringify({client_id: username, commitment_t: t.toString()}),
             mode: 'cors'
@@ -74,6 +73,8 @@ async function authenticate() {
         if (!commitResponse.ok) {
             throw new Error(commitResult.reason || 'Commit failed');
         }
+        //sleep for 6 seconds to test session expiration
+        //await new Promise(resolve => setTimeout(resolve, 6000));
 
         const challenge_c = BigInt(commitResult.challenge_c);
         showStatus(`Received challenge c=${challenge_c}`);
@@ -92,9 +93,9 @@ async function authenticate() {
                 'Accept-Language': navigator.language || 'en-US',
                 'API-Version': '1.0',
                 'Request-ID': requestId,
-                'Idempotency-Key': requestId
+                'X-Auth-Session': commitResult.session_id
             },
-            body: JSON.stringify({client_id: username, solution_s: solution_s.toString()}),
+            body: JSON.stringify({solution_s: solution_s.toString()}),
             mode: 'cors'
         });
 

@@ -44,8 +44,10 @@ async function fetchParameters(serverUrl) {
     }
 }
 
-async function derivePasswordX(password, username = '') {
-    const normalized = `${username}:${password}`;
+//Note: the client app should compute the secret_y using the password and the salt at registration and save the secret_y locally (in an encrypted manner) in order to be used at login
+//Simplicity: the secret_y is computed everytime using password and client_id as salt
+async function derivePasswordX(password, client_id = '') {
+    const normalized = `${client_id}:${password}`; 
 
     if (window.crypto && window.crypto.subtle) {
         const encoded = new TextEncoder().encode(normalized);

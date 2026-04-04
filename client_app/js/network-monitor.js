@@ -26,6 +26,9 @@ const NetworkMonitor = {
         const icons = {
             'request': 'OUT->',
             'response': '<-IN',
+            'response_error': '<-IN (Error)',
+            'response_server_error': '<-IN (Server Error)',
+            'redirect': '<-REDIRECT',
             'error': 'ERR',
             'info': 'INFO'
         };
@@ -130,17 +133,35 @@ window.fetch = function(...args) {
             }
 
             return bodyPromise.then(body => {
-                // Log response
-                NetworkMonitor.addLog('response', `${method} ${displayUrl} → ${response.status}`, {
+                let logType = 'error';
+
+                switch (true) {
+                    case response.status >= 500:
+                        logType = 'response_server_error';
+                        break;
+                    case response.status >= 400:
+                        logType = 'response_error';
+                        break;
+                    case response.status >= 300:
+                        logType = 'redirect';
+                        break;
+                    case response.status >= 200:
+                        logType = 'response';
+                        break;
+                    case response.status >= 100:
+                        logType = 'info';
+                        break;
+                }
+            
+                NetworkMonitor.addLog(logType, `${method} ${displayUrl} - ${response.status}`, {
                     status: response.status,
                     headers: Object.fromEntries(response.headers.entries()),
                     body: body ? tryParseJson(body) : body
                 });
 
-                // Return original response for caller to use
                 return response;
             }).catch(err => {
-                NetworkMonitor.addLog('response', `${method} ${displayUrl} → ${response.status}`, {
+                NetworkMonitor.addLog('response', `${method} ${displayUrl} - ${response.status}`, {
                     status: response.status,
                     note: 'Could not parse response body'
                 });

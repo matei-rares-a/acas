@@ -332,12 +332,17 @@ body:has(.register-container) {
     border-left-color: #28a745;
 }
 
+.log-response_error, .log-response_server_error {
+    background: #f5d6d6;
+    border-left-color: #a12591;
+}
+
 .log-error {
     background: #fee;
     border-left-color: #dc3545;
 }
 
-.log-info {
+.log-info, .log-redirect {
     background: #fff9e6;
     border-left-color: #ffc107;
 }
@@ -362,12 +367,15 @@ body:has(.register-container) {
 .log-response .log-label {
     color: #28a745;
 }
+.log-response_error .log-label, .log-response_server_error .log-label {
+    color: #a12591;
+}
 
 .log-error .log-label {
     color: #dc3545;
 }
 
-.log-info .log-label {
+.log-info .log-label, .log-redirect .log-label {
     color: #ffc107;
 }
 

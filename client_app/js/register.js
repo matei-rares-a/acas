@@ -1,10 +1,10 @@
 async function register() {
-    const username = document.getElementById('username').value.trim();
+    const client_id = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value;
     const serverUrl = document.getElementById('server-url').value.trim();
 
-    if (!username || !password) {
-        showAlert('❌ Please enter username and password', 'error');
+    if (!client_id || !password) {
+        showAlert('❌ Please enter client ID and password', 'error');
         return;
     }
 
@@ -18,7 +18,7 @@ async function register() {
         console.log(`Parameters received for registration`);
 
         // Derive password_x from password
-        const password_x = await derivePasswordX(password, username);
+        const password_x = await derivePasswordX(password, client_id);
 
         // Compute secret_y = g^x mod p
         const secret_y = modPow(G, password_x, P);
@@ -31,19 +31,18 @@ async function register() {
                 'Content-Type': 'application/json; charset=utf-8',
                 'Accept': 'application/json',
                 'Accept-Language': navigator.language || 'en-US',
-                'API-Version': '1.0',
+                'API-Version': 'S1.0',
                 'Request-ID': requestId,
                 'Idempotency-Key': requestId
             },
-            body: JSON.stringify({client_id: username, secret_y: secret_y.toString()}),
+            body: JSON.stringify({client_id: client_id, secret_y: secret_y.toString()}),
             mode: 'cors'
         });
 
         const result = await response.json();
 
         if (response.ok) {
-            const action = response.status === 201 ? 'Registered' : 'Updated';
-            showAlert(`✅ ${action} successfully!`, 'success');
+            showAlert(`✅ ${result.status} successfully!`, 'success');
 
             document.getElementById('username').value = '';
             document.getElementById('password').value = '';

@@ -8,15 +8,18 @@ import jwt
 import uuid
 import time
 
-#Note: constants and settings should be in env files
-#Simplicity: hardocoded constants and settings
+'''
+Note: constants and settings should be in env files
+Simplicity: hardcoded constants and settings
+'''
 # public parameters for Schnorr protocol, using a 2048-bit safe prime
 P = 11731722534755988379582498904317031585514431212880510373180315650809605302410493595610739947214327053090791642864835392206070266585210162380812213540641579
 Q = (P - 1) // 2
 # generator of subgroup order Q (quadratic residue)
 G = 4
 
-SECRET = 'dev-only-server-secret-at-least-32-bytes-long' # Python jwt gives warning if secret is shorter than 32
+# Python jwt gives warning if secret is shorter than 32
+SECRET = 'dev-only-server-secret-at-least-32-bytes-long' 
 
 app = Flask(__name__)
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -27,12 +30,15 @@ app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(db_path, 'auth
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 CORS(app,resources={r"/*": {"origins": "*"}},)
 db.init_app(app)
+with app.app_context():
+    db.create_all()
+    print("Tabelele au fost create cu succes în:", app.config['SQLALCHEMY_DATABASE_URI'])
 
 @app.before_request
 def before_request():
     request.start_time = time.time()
 
-"""REST compliance and security headers"""
+# Security headers
 @app.after_request
 def add_rest_headers(response):
     # Request tracing
@@ -79,13 +85,26 @@ def add_rest_headers(response):
     return response
 
 
-# note: should be in database
-# simplicity: in memory commitments and challenges
-commitments={}
-challenge_c_values={}
+'''
+note: should be in database
+simplicity: in memory commitments and challenges
+'''
+# commitments={}
+#challenge_c_values={}
+sessions = {}
+# {
+#     'session_id': {
+#         "client_id": '',
+#         "t": t,
+#         "c": challenge_c,
+#         "created_at": time.time()
+#     }
+# }
 
-#Note: the servers choses the auth scheme
-#Simplicity: support similar schemes Bearer (RFC 6750).
+'''
+Note: the servers choses the auth scheme
+Simplicity: support similar schemes Bearer (RFC 6750).
+'''
 SUPPORTED_AUTH_SCHEMES = {"bearer", "token", "jwt", "dpop"}
 
 def validate_int_field(data, key):
@@ -98,20 +117,13 @@ def validate_int_field(data, key):
         return None
 
 
+# valid Schnorr group element in subgroup of order Q.
 def is_subgroup_member(value):
-    # Valid Schnorr group element in subgroup of order Q.
     return 1 < value < P and pow(value, Q, P) == 1
 
 
+# Extract token from Authorization header, with optional body fallback
 def extract_access_token(data=None):
-    """Extract token from Authorization header, with optional body fallback.
-
-    Accepted header formats:
-    - Authorization: Bearer <token>
-    - Authorization: Token <token>
-    - Authorization: JWT <token>
-    - Authorization: DPoP <token>
-    """
     auth_header = request.headers.get('Authorization', '').strip()
     if auth_header:
         parts = auth_header.split(None, 1)
@@ -120,24 +132,14 @@ def extract_access_token(data=None):
             if scheme in SUPPORTED_AUTH_SCHEMES and token:
                 return token
         elif len(parts) == 1 and parts[0]:
-            # Compatibility path for clients sending a raw token in Authorization.
+            # maybe raw token without scheme
             return parts[0]
-
-    # Backward compatibility: accept token in JSON body.
-    if data and data.get('token'):
-        return data.get('token')
 
     return None
 
-
-with app.app_context():
-    db.create_all()
-    print("Tabelele au fost create cu succes în:", app.config['SQLALCHEMY_DATABASE_URI'])
-
-
 @app.route('/health', methods=['GET'])
 def healthAPI():
-    return jsonify({"health":"healthy"})
+    return jsonify({"health":"running"})
 
 
 @app.route('/get-parameters', methods=['GET'])
@@ -148,9 +150,17 @@ def getParametersAPI():
     response.headers['ETag'] = 'W/"v1.0-schnorr"'
     return response
 
-
+'''
+Note: the server should have the relation of client_id - secret_y,
+     this endpoint can be secured with a shared secret or other methods
+Simplicity: no authentication for this endpoint, in a real implementation it should be protected
+'''
 @app.route('/register', methods=['POST'])
 def registerAPI():
+    '''
+    User registration, client sends client_id and secret_y (y = g^x mod p) computed from password,
+    server saves it for later verification at login
+    '''
     data = request.get_json() or {}
     client_id = data.get('client_id')
     secret = validate_int_field(data, 'secret_y')
@@ -161,7 +171,8 @@ def registerAPI():
         return jsonify({'reason': 'invalid public value'}), 422
 
     is_new = register_user_in_db(client_id, secret)
-    return jsonify({'client_id': client_id}), 201 if is_new else 200
+    status = 'Registered' if is_new else 'Updated'
+    return jsonify({'status': status}), 201 if is_new else 200
 
 def register_user_in_db(client_id, secret_y):
     user = User.query.filter_by(client_id=client_id).first()
@@ -177,6 +188,9 @@ def register_user_in_db(client_id, secret_y):
 
 @app.route('/login/commit', methods=['POST'])
 def commitAPI():
+    '''
+    Login commitment, client sends client_id and commitment t, server saves it and returns challenge c
+    '''
     data = request.get_json() or {}
     client_id = data.get('client_id')
     t = validate_int_field(data, 'commitment_t')
@@ -185,46 +199,59 @@ def commitAPI():
     if not is_subgroup_member(t):
         return jsonify({'reason': 'invalid commitment'}), 422
 
-    # check user exists
     user = User.query.filter_by(client_id=client_id).first()
     if not user:
         return jsonify({'reason': 'user not registered'}), 404
     
-    #if commitment already exists in inmemory dict, delete it and return error, because a new session should be started
-    if client_id in commitments:
-        del commitments[client_id]
-        return jsonify({'reason': 'existing commitment found, start a new session'}), 409
-    # save commitment in inmemory dict, because we need it for verification
-    commitments[client_id] = t
+    #if commitment already exists in inmemory dict -> delete it and return error -> a new session should be started
+    for session_id, session in sessions.items():
+        if session['client_id'] == client_id:
+            del sessions[session_id]
+            return jsonify({'reason': 'existing commitment found, start a new session'}), 409
+    
+    # create session, save commitment for verification
+    session_id = secrets.token_urlsafe(32)
+    sessions[session_id] = {
+        "client_id": client_id,
+        "t": t,
+        "c": None, 
+        "created_at": time.time()}
 
     challenge_c = secrets.randbelow(Q - 1) + 1
-    challenge_c_values[client_id] = challenge_c
-    return jsonify({'challenge_c': str(challenge_c)})
+    sessions[session_id]["c"] = challenge_c
+    return jsonify({'challenge_c': str(challenge_c), 'session_id': session_id}), 200
 
 
 @app.route('/login/verify', methods=['POST'])
 def verifyAPI():
+    '''
+    Login verification, client sends client_id and solution s,
+    server verifies the proof using the saved commitment t and challenge c, if valid returns JWT token
+    '''
     data = request.get_json() or {}
-    client_id = data.get('client_id')
+    #session_id will be in X-Auth-Session: header
+    session_id = request.headers.get('X-Auth-Session')
     s = validate_int_field(data, 'solution_s')
-    if not client_id or s is None:
-        return jsonify({'reason': 'missing parameters'}), 400
+
+    if not session_id:
+        return jsonify({'reason': 'missing session_id in X-Auth-Session header'}), 400
+    if session_id not in sessions:
+        return jsonify({'reason': 'invalid session_id'}), 404
+    if sessions[session_id]['created_at'] < time.time() - 5: # session expires after 1 minutes
+        del sessions[session_id]
+        return jsonify({'reason': 'session expired'}), 300
     if s < 0 or s >= Q:
         return jsonify({'reason': 'invalid solution'}), 422
 
+    session = sessions[session_id]
+    client_id = session['client_id']
     user = User.query.filter_by(client_id=client_id).first()
     if not user:
         return jsonify({'reason': 'user not found'}), 404
-    
-    if client_id not in commitments:
-        return jsonify({'reason': 'no commitment'}), 409
-    
-    if client_id not in challenge_c_values:
-        return jsonify({'reason': 'no challenge c'}), 409
-
+        
     y = int(user.secret_y)
-    t = commitments[client_id]
-    c= challenge_c_values[client_id]
+    t = session['t']
+    c = session['c']
     left = pow(G, s, P)
     right = (t * pow(y, c, P)) % P
     if left == right:
@@ -236,33 +263,32 @@ def verifyAPI():
         else:
             auth = AuthToken(user_id=user.id, token=token_str)
             db.session.add(auth)
-        del commitments[client_id]
-        del challenge_c_values[client_id]
+        del sessions[session_id]
         db.session.commit()
-        return jsonify({'token': token_str, 'client_id': client_id})
+        return jsonify({'token': token_str}), 200
     else:
         return jsonify({'reason': 'verification failed'}), 401
 
 
-@app.route('/forgetme', methods=['POST'])
-def forgetmeApi():
-    data = request.get_json(silent=True) or {}
-    client_id = data.get('client_id')
-    token = extract_access_token(data)
-    if not client_id:
-        return jsonify({'reason': 'missing client_id'}), 400
-    user = User.query.filter_by(client_id=client_id).first()
-    if not user:
-        return jsonify({'reason': 'user not found'}), 404
-    if token:
-        auth = AuthToken.query.filter_by(user_id=user.id, token=token).first()
-        if not auth:
-            return jsonify({'reason': 'invalid token'}), 401
-    # delete user cascades
-    AuthToken.query.filter_by(user_id=user.id).delete()
-    db.session.delete(user)
-    db.session.commit()
-    return jsonify({'message': 'User data deleted'})
+# @app.route('/forgetme', methods=['POST'])
+# def forgetmeApi():
+#     data = request.get_json(silent=True) or {}
+#     client_id = data.get('client_id')
+#     token = extract_access_token(data)
+#     if not client_id:
+#         return jsonify({'reason': 'missing client_id'}), 400
+#     user = User.query.filter_by(client_id=client_id).first()
+#     if not user:
+#         return jsonify({'reason': 'user not found'}), 404
+#     if token:
+#         auth = AuthToken.query.filter_by(user_id=user.id, token=token).first()
+#         if not auth:
+#             return jsonify({'reason': 'invalid token'}), 401
+#     # delete user cascades
+#     AuthToken.query.filter_by(user_id=user.id).delete()
+#     db.session.delete(user)
+#     db.session.commit()
+#     return jsonify({'message': 'User data deleted'})
 
 
 @app.route('/data', methods=['GET', 'POST', 'PUT'])
