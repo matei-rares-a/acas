@@ -7,18 +7,17 @@ import os
 import jwt
 import uuid
 import time
+from cryptography.hazmat.primitives.asymmetric import dh
 
 '''
 Note: constants and settings should be in env files
 Simplicity: hardcoded constants and settings
 '''
-# public parameters for Schnorr protocol, using a 2048-bit safe prime
 P = 11731722534755988379582498904317031585514431212880510373180315650809605302410493595610739947214327053090791642864835392206070266585210162380812213540641579
 Q = (P - 1) // 2
-# generator of subgroup order Q (quadratic residue)
 G = 4
 
-# Python jwt gives warning if secret is shorter than 32
+# Python's jwt gives warning if secret is shorter than 32
 SECRET = 'dev-only-server-secret-at-least-32-bytes-long' 
 
 app = Flask(__name__)
@@ -36,7 +35,7 @@ with app.app_context():
 
 @app.before_request
 def before_request():
-    request.start_time = time.time()
+    request.start_time = time.time_ns()
 
 # Security headers
 @app.after_request
@@ -69,9 +68,9 @@ def add_rest_headers(response):
     
     # Performance metrics
     #It helps you measure slow endpoints
-    response.headers['X-Response-Time'] = f"{(time.time() - request.start_time):.3f}s"
+    response.headers['X-Response-Time'] = f"{(time.time_ns() - request.start_time) / 1000000:.6f} ms"
     #Similar to X-Response-Time, but standardized for browser tooling. Good for performance debugging in the frontend
-    response.headers['Server-Timing'] = f"app;dur={(time.time() - request.start_time)*1000:.2f}"
+    response.headers['Server-Timing'] = f"app;dur={(time.time_ns() - request.start_time) / 1000000:.6f} ms"
     
     # Content type
     #Consistent type
@@ -358,7 +357,7 @@ if __name__ == '__main__':
     print('\n')
 
     # Try to create self-signed certificate
-    create_self_signed_cert()
+    #create_self_signed_cert()
 
     # Run with HTTPS if certificates exist
     if os.path.exists('cert.pem') and os.path.exists('key.pem'):
