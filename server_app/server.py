@@ -239,7 +239,11 @@ def verifyAPI():
     if sessions[session_id]['created_at'] < time.time() - 5: # session expires after 1 minutes
         del sessions[session_id]
         return jsonify({'reason': 'session expired'}), 300
+    if s is None:
+        del sessions[session_id]
+        return jsonify({'reason': 'invalid solution'}), 422
     if s < 0 or s >= Q:
+        del sessions[session_id]
         return jsonify({'reason': 'invalid solution'}), 422
 
     session = sessions[session_id]
@@ -266,6 +270,7 @@ def verifyAPI():
         db.session.commit()
         return jsonify({'token': token_str}), 200
     else:
+        del sessions[session_id]
         return jsonify({'reason': 'verification failed'}), 401
 
 
