@@ -2,11 +2,15 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from extensions import db
 from models import User, AuthToken, PersoData
+from server_oauth import init_oauth, clear_oauth_state
+from server_authlib import init_authlib, clear_authlib_state
 import secrets
 import os
 import jwt
 import uuid
 import time
+import hashlib
+from datetime import datetime, timedelta, timezone
 from cryptography.hazmat.primitives.asymmetric import dh
 
 '''
@@ -80,6 +84,13 @@ def add_rest_headers(response):
     # Add WWW-Authenticate for 401 responses
     if response.status_code == 401:
         response.headers['WWW-Authenticate'] = 'Bearer realm="Schnorr Authentication", charset="UTF-8"'
+
+    # Emit a Werkzeug-like access log line for in-process test_client requests.
+    remote_addr = request.headers.get('X-Forwarded-For', request.remote_addr or '127.0.0.1')
+    timestamp = datetime.now().strftime('%d/%b/%Y %H:%M:%S')
+    print(
+        f'{remote_addr} - - [{timestamp}] "{request.method} {request.full_path.rstrip("?")} HTTP/1.1" {response.status_code} -'
+    )
     
     return response
 
@@ -91,6 +102,7 @@ simplicity: in memory commitments and challenges
 # commitments={}
 #challenge_c_values={}
 sessions = {}
+SESSION_TTL = 5  # seconds; window between /login/commit and /login/verify
 # {
 #     'session_id': {
 #         "client_id": '',
@@ -185,6 +197,10 @@ def register_user_in_db(client_id, secret_y):
     db.session.commit()
     return is_new
 
+
+init_oauth(app, db, User, AuthToken, SECRET)
+init_authlib(app, SECRET)
+
 @app.route('/login/commit', methods=['POST'])
 def commitAPI():
     '''
@@ -236,7 +252,7 @@ def verifyAPI():
         return jsonify({'reason': 'missing session_id in X-Auth-Session header'}), 400
     if session_id not in sessions:
         return jsonify({'reason': 'invalid session_id'}), 404
-    if sessions[session_id]['created_at'] < time.time() - 5: # session expires after 1 minutes
+    if sessions[session_id]['created_at'] < time.time() - SESSION_TTL:
         del sessions[session_id]
         return jsonify({'reason': 'session expired'}), 300
     if s is None:
@@ -258,8 +274,17 @@ def verifyAPI():
     left = pow(G, s, P)
     right = (t * pow(y, c, P)) % P
     if left == right:
-        # generate or update token
-        token_str = jwt.encode({'client_id': client_id}, SECRET, algorithm='HS256')
+        # Issue JWT with expiry consistent with OAuth2 access token TTL (1 hour).
+        now = datetime.now(timezone.utc)
+        token_str = jwt.encode(
+            {
+                'client_id': client_id,
+                'iat': now,
+                'exp': now + timedelta(seconds=3600),
+            },
+            SECRET,
+            algorithm='HS256',
+        )
         auth = AuthToken.query.filter_by(user_id=user.id).first()
         if auth:
             auth.token = token_str
@@ -353,19 +378,18 @@ def create_self_signed_cert():
 
 
 if __name__ == '__main__':
+    https=False
 
     print('Schnorr Authentication Server')
     print('\n')
     print('=' * 50)
-    print('Starting Flask server on https://localhost:5000 or http://localhost:5000')
+    print(f'Starting Flask server on { 'https://localhost:5000' if https else 'http://localhost:5000'}')
     print('=' * 50)
     print('\n')
 
-    # Try to create self-signed certificate
     #create_self_signed_cert()
 
-    # Run with HTTPS if certificates exist
-    if os.path.exists('cert.pem') and os.path.exists('key.pem'):
+    if https and os.path.exists('cert.pem') and os.path.exists('key.pem'):
         app.run(
             host='0.0.0.0',
             port=5000,
@@ -374,7 +398,6 @@ if __name__ == '__main__':
         )
     else:
         # Fall back to HTTP
-        print('WARNING: Running without HTTPS. Certificates not found.')
         app.run(
             host='0.0.0.0',
             port=5000,

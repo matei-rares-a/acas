@@ -61,11 +61,9 @@ def register_and_commit(client, client_id, password):
     return x, rand_r, int(payload["challenge_c"]), payload["session_id"]
 
 
-# ---------------------------------------------------------------------------
-# Prompt 1 – Boundary values on solution_s (s < 0 or s >= Q must be rejected)
-# ---------------------------------------------------------------------------
 @pytest.mark.parametrize("bad_s", [-1, server.Q, server.Q + 1, server.P * 10])
 def test_verify_rejects_out_of_range_solution_s(client, bad_s):
+    '''Testarea limitelor matematice ale soluiei_s (S<0 sau S>=Q trebuie respinse)'''
     """Client send out-of-range solution, server reject and clear session."""
     client_id = "boundary_s_user"
     x, rand_r, challenge_c, session_id = register_and_commit(client, client_id, "boundary-pass")
@@ -78,15 +76,12 @@ def test_verify_rejects_out_of_range_solution_s(client, bad_s):
 
     assert response.status_code == 422
     assert response.get_json() == {"reason": "invalid solution"}
-    # Session must be deleted to prevent reuse after malformed proofs.
     assert session_id not in server.sessions
 
 
-# ---------------------------------------------------------------------------
-# Prompt 2 – Trivial zero/one attack: values outside subgroup rejected
-# ---------------------------------------------------------------------------
 @pytest.mark.parametrize("trivial_y", [0, 1, -1, server.P - 1])
 def test_register_rejects_trivial_subgroup_values(client, trivial_y):
+    '''Testarea atacului trivial zero/one pe register (secret_y = 0, 1, -1, P-1)'''
     """Client send trivial subgroup value on register, server block value."""
     response = client.post(
         "/register",
@@ -218,12 +213,6 @@ def test_verify_x_auth_session_header_edge_cases(client):
 Context inițial (de reamintit agentului)
 "Acționează ca un Security QA Automation Engineer. Scrie teste de integrare avansate (corner cases/boundary tests) în Python cu pytest și Flask test_client pentru un sistem ZKP Schnorr. Concentrează-te pe endpoint-urile /register, /login/commit și /login/verify. Nu testa JWT-ul, ci strict matematica, limitele parametrilor și starea sesiunilor din memoria serverului."
 
-Prompt 1: Testarea limitelor matematice ale soluției (Boundary Values pe $S$)
-Codul tău validează if s < 0 or s >= Q:. Trebuie să ne asigurăm că extremele absolute sunt gestionate corect și nu produc crash-uri (ex: Overflow sau excepții de parsare).
-"Scrie un test parametrizat (@pytest.mark.parametrize) care să testeze limitele valorii solution_s pe endpoint-ul POST /login/verify.
-1. Formează o sesiune validă în prealabil (POST /login/commit) pentru a avea un session_id valid.
-2. Testează următoarele valori extreme (corner cases) pentru solution_s:O valoare negativă: -1Limita superioară exactă: Q (adică (P - 1) // 2)O valoare peste limită: Q + 1O valoare extrem de mare: P * 10 (pentru a testa comportamentul memoriei/parserului la BigInt)
-3. Validează (assert) că serverul respinge toate aceste cereri cu HTTP 422 Unprocessable Entity și motivul invalid solution.Asigură-te că testul verifică eliberarea dicționarului sessions chiar și după un solution_s formatat ciudat."
 
 
 Prompt 2: "The Trivial Zero/One Attack" (Extremele pe Subgrup)

@@ -1,4 +1,5 @@
 from pathlib import Path
+import base64
 import hashlib
 import importlib.util
 import secrets
@@ -29,13 +30,16 @@ class SchnorrComparisonUser(HttpUser):
         y = pow(server.G, self.x, server.P)
 
         self.client.post("/register", json={"client_id": self.client_id, "secret_y": y})
-
-        # Setup hash for /login/classic baseline path.
-        with server.app.app_context():
-            user = server.User.query.filter_by(client_id=self.client_id).first()
-            if user:
-                user._classic_hash = hashlib.sha256(self.password.encode()).hexdigest()
-                server.db.session.commit()
+        self.client.post(
+            "/oauth/pkce/register",
+            json={"client_id": self.client_id, "password": self.password},
+            name="/oauth/pkce/register",
+        )
+        self.client.post(
+            "/oauth/simple/register",
+            json={"client_id": self.client_id, "password": self.password},
+            name="/oauth/simple/register",
+        )
 
     @task(2)
     def test_schnorr_login(self):
@@ -60,9 +64,64 @@ class SchnorrComparisonUser(HttpUser):
         )
 
     @task(1)
-    def test_classic_login(self):
+    def test_oauth_pkce_login(self):
+        code_verifier = secrets.token_urlsafe(48)
+        challenge = base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode()).digest()).decode().rstrip("=")
+        authorize = self.client.post(
+            "/oauth/pkce/authorize",
+            json={
+                "response_type": "code",
+                "client_id": "acas-pkce-client",
+                "redirect_uri": "https://client.example/callback",
+                "username": self.client_id,
+                "password": self.password,
+                "scope": "openid profile",
+                "code_challenge": challenge,
+                "code_challenge_method": "S256",
+                "response_mode": "json",
+            },
+            name="/oauth/pkce/authorize",
+        )
+        if authorize.status_code != 200:
+            return
+        code = authorize.json()["code"]
         self.client.post(
-            "/login/classic",
-            json={"client_id": self.client_id, "password": self.password},
-            name="/login/classic",
+            "/oauth/pkce/token",
+            json={
+                "grant_type": "authorization_code",
+                "client_id": "acas-pkce-client",
+                "redirect_uri": "https://client.example/callback",
+                "code": code,
+                "code_verifier": code_verifier,
+            },
+            name="/oauth/pkce/token",
+        )
+
+    @task(1)
+    def test_oauth_simple_login(self):
+        authorize = self.client.post(
+            "/oauth/simple/authorize",
+            json={
+                "response_type": "code",
+                "client_id": "acas-simple-client",
+                "redirect_uri": "https://client.example/callback",
+                "username": self.client_id,
+                "password": self.password,
+                "scope": "openid profile",
+                "response_mode": "json",
+            },
+            name="/oauth/simple/authorize",
+        )
+        if authorize.status_code != 200:
+            return
+        code = authorize.json()["code"]
+        self.client.post(
+            "/oauth/simple/token",
+            json={
+                "grant_type": "authorization_code",
+                "client_id": "acas-simple-client",
+                "redirect_uri": "https://client.example/callback",
+                "code": code,
+            },
+            name="/oauth/simple/token",
         )

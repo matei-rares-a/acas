@@ -1,7 +1,7 @@
 """
 Measurement & comparison scripts for the Schnorr ZKP vs Classic authentication.
 
-Prompt 1  – /login/classic baseline (SHA-256 password check + JWT)
+Prompt 1  – /classic/login baseline (SHA-256 password check + JWT)
 Prompt 2  – Client-side micro-benchmark (JS snippet + Python equivalent)
 Prompt 3  – CPU/RAM resource monitor using psutil (requires live server)
 Prompt 4  – Locust throughput comparison (requires locust + live server)
@@ -9,6 +9,7 @@ Prompt 5  – Statistical analysis & chart generation (requires matplotlib/panda
 """
 
 from pathlib import Path
+import base64
 import csv
 import hashlib
 import importlib.util
@@ -29,42 +30,15 @@ assert spec and spec.loader
 spec.loader.exec_module(server)
 
 
-CLASSIC_PASSWORD_HASHES = {}
+# OAuth implementation constants (must match server_oauth.py)
+OAUTH_PKCE_CLIENT_ID = "acas-pkce-client"
+OAUTH_SIMPLE_CLIENT_ID = "acas-simple-client"
+OAUTH_REDIRECT_URI = "https://client.example/callback"
 
 
-# ---------------------------------------------------------------------------
-# Prompt 1 – /login/classic baseline endpoint
-# ---------------------------------------------------------------------------
-
-def ensure_classic_endpoint():
-    """Register /login/classic on the running app if not already present."""
-    import jwt as _jwt
-
-    existing = [r.rule for r in server.app.url_map.iter_rules()]
-    if "/login/classic" in existing:
-        return
-
-    @server.app.route("/login/classic", methods=["POST"])
-    def classic_login():
-        from flask import request, jsonify
-        data = request.get_json() or {}
-        client_id = data.get("client_id")
-        password = data.get("password")
-        if not client_id or not password:
-            return jsonify({"reason": "missing parameters"}), 400
-        user = server.User.query.filter_by(client_id=client_id).first()
-        if not user:
-            return jsonify({"reason": "user not found"}), 404
-        stored_hash = CLASSIC_PASSWORD_HASHES.get(client_id)
-        if stored_hash is None:
-            return jsonify({"reason": "classic auth not set up"}), 404
-        if hashlib.sha256(password.encode()).hexdigest() != stored_hash:
-            return jsonify({"reason": "invalid credentials"}), 401
-        token = _jwt.encode({"client_id": client_id}, server.SECRET, algorithm="HS256")
-        return jsonify({"token": token}), 200
-
-
-ensure_classic_endpoint()
+def _pkce_challenge(code_verifier: str) -> str:
+    digest = hashlib.sha256(code_verifier.encode()).digest()
+    return base64.urlsafe_b64encode(digest).decode().rstrip("=")
 
 
 # ---------------------------------------------------------------------------
@@ -95,14 +69,18 @@ def run_micro_benchmark(iterations: int = 100) -> dict:
         right = (t * pow(y, c, P)) % P
         return left == right
 
-    def classic_hash():
+    def oauth_pkce_challenge():
+        return _pkce_challenge("bench-code-verifier-48chars-padding000000000000")
+
+    def oauth_simple_hash():
         return hashlib.sha256(b"bench-password").hexdigest()
 
     ops = {
         "derive_password_x (scrypt)": derive,
         "commitment_t = g^r mod p": commit_math,
         "ZKP verify: g^s == t*y^c mod p": verify_math,
-        "Classic SHA-256 hash": classic_hash,
+        "OAuth2 PKCE S256 challenge": oauth_pkce_challenge,
+        "OAuth2 Simple SHA-256 hash": oauth_simple_hash,
     }
 
     results = {}
@@ -198,9 +176,16 @@ try:
                 "/register",
                 json={"client_id": self._client_id, "secret_y": self._y},
             )
-            CLASSIC_PASSWORD_HASHES[self._client_id] = hashlib.sha256(
-                self._password.encode()
-            ).hexdigest()
+            self.client.post(
+                "/oauth/pkce/register",
+                json={"client_id": self._client_id, "password": self._password},
+                name="/oauth/pkce/register",
+            )
+            self.client.post(
+                "/oauth/simple/register",
+                json={"client_id": self._client_id, "password": self._password},
+                name="/oauth/simple/register",
+            )
 
         @task(2)
         def test_schnorr_login(self):
@@ -225,11 +210,63 @@ try:
             )
 
         @task(1)
-        def test_classic_login(self):
+        def test_oauth_pkce_login(self):
+            code_verifier = secrets_module.token_urlsafe(48)
+            auth = self.client.post(
+                "/oauth/pkce/authorize",
+                json={
+                    "response_type": "code",
+                    "client_id": OAUTH_PKCE_CLIENT_ID,
+                    "redirect_uri": OAUTH_REDIRECT_URI,
+                    "username": self._client_id,
+                    "password": self._password,
+                    "scope": "openid profile",
+                    "code_challenge": _pkce_challenge(code_verifier),
+                    "code_challenge_method": "S256",
+                    "response_mode": "json",
+                },
+                name="/oauth/pkce/authorize",
+            )
+            if auth.status_code != 200:
+                return
             self.client.post(
-                "/login/classic",
-                json={"client_id": self._client_id, "password": self._password},
-                name="/login/classic",
+                "/oauth/pkce/token",
+                json={
+                    "grant_type": "authorization_code",
+                    "client_id": OAUTH_PKCE_CLIENT_ID,
+                    "redirect_uri": OAUTH_REDIRECT_URI,
+                    "code": auth.json()["code"],
+                    "code_verifier": code_verifier,
+                },
+                name="/oauth/pkce/token",
+            )
+
+        @task(1)
+        def test_oauth_simple_login(self):
+            auth = self.client.post(
+                "/oauth/simple/authorize",
+                json={
+                    "response_type": "code",
+                    "client_id": OAUTH_SIMPLE_CLIENT_ID,
+                    "redirect_uri": OAUTH_REDIRECT_URI,
+                    "username": self._client_id,
+                    "password": self._password,
+                    "scope": "openid profile",
+                    "response_mode": "json",
+                },
+                name="/oauth/simple/authorize",
+            )
+            if auth.status_code != 200:
+                return
+            self.client.post(
+                "/oauth/simple/token",
+                json={
+                    "grant_type": "authorization_code",
+                    "client_id": OAUTH_SIMPLE_CLIENT_ID,
+                    "redirect_uri": OAUTH_REDIRECT_URI,
+                    "code": auth.json()["code"],
+                },
+                name="/oauth/simple/token",
             )
 
 except ImportError:
@@ -274,7 +311,7 @@ def generate_charts(
     ax.set_xticks(range(len(labels)))
     ax.set_xticklabels(labels, rotation=15, ha="right", fontsize=9)
     ax.set_ylabel("Latenta medie (ms)")
-    ax.set_title("Comparatie latenta: ZKP Schnorr vs Clasic")
+    ax.set_title("Comparatie latenta: ZKP Schnorr vs OAuth2")
     ax.grid(axis="y", linestyle="--", alpha=0.5)
     for bar, val in zip(bars, means):
         ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.002,
@@ -312,7 +349,7 @@ def generate_charts(
             pivot = df_t.pivot(index="users", columns="method", values="rps")
             fig, ax = plt.subplots(figsize=(9, 5))
             pivot.plot(kind="bar", ax=ax)
-            ax.set_title("Throughput Comparison: RPS ZKP vs Clasic")
+            ax.set_title("Throughput Comparison: RPS ZKP vs OAuth2")
             ax.set_xlabel("Utilizatori concurenti")
             ax.set_ylabel("Requests per second (RPS)")
             ax.grid(axis="y", linestyle="--", alpha=0.4)
@@ -353,7 +390,7 @@ if __name__ == "__main__":
 '''
 1. Prompt pentru Implementarea OAuth Local (Baseline)
 Acesta este primul pas necesar pentru a avea un termen de comparație valid.
-"Acționează ca un Backend Developer. Adaugă în server.py un endpoint nou /login/classic pentru a simula un flux de autentificare tradițional.
+"Acționează ca un Backend Developer. Adaugă în server.py un endpoint nou /classic/login pentru a simula un flux de autentificare tradițional.
 Endpoint-ul trebuie să primească client_id și password în clar.
 Folosește librăria bcrypt pentru a verifica parola (simulează extragerea hash-ului din baza de date și verificarea lui).
 Dacă verificarea reușește, returnează un JWT identic cu cel din fluxul Schnorr.
@@ -376,7 +413,7 @@ Măsoară dimensiunea obiectului sessions (numărul de intrări active) la fieca
 Salvează datele într-un fișier CSV cu timestamp-uri.
 Scriptul trebuie să poată detecta momentul în care sesiunile expiră (după cele 5 secunde setate) și să evidențieze eliberarea memoriei."
 
-4. Prompt pentru Teste de Sarcină (Locust - Throughput)Acesta generează scriptul pentru a măsura câte cereri pe secundă (RPS) poate duce serverul tău."Creează un fișier locustfile.py pentru a compara Throughput-ul celor două metode:Definește două task-uri: test_schnorr_login (care face fluxul /login/commit urmat de /login/verify) și test_classic_login (care apelează /login/classic).Pentru test_schnorr_login, simulează corect logica de client: primește challenge-ul și calculează soluția $s$ înainte de a trimite verificarea.Configurează Locust să ruleze teste incrementale (10, 50, 100 de utilizatori concurenți).Raportul final trebuie să compare Requests Per Second (RPS) și Failure Rate pentru ambele metode."
+4. Prompt pentru Teste de Sarcină (Locust - Throughput)Acesta generează scriptul pentru a măsura câte cereri pe secundă (RPS) poate duce serverul tău."Creează un fișier locustfile.py pentru a compara Throughput-ul celor două metode:Definește două task-uri: test_schnorr_login (care face fluxul /login/commit urmat de /login/verify) și test_classic_login (care apelează /classic/login).Pentru test_schnorr_login, simulează corect logica de client: primește challenge-ul și calculează soluția $s$ înainte de a trimite verificarea.Configurează Locust să ruleze teste incrementale (10, 50, 100 de utilizatori concurenți).Raportul final trebuie să compare Requests Per Second (RPS) și Failure Rate pentru ambele metode."
 
 5. Prompt pentru Analiza Statistică și Vizualizare (Grafice)
 După ce ai datele, ai nevoie de o modalitate de a le prezenta academic.

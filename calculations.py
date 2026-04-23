@@ -32,6 +32,7 @@ salt = secrets.token_bytes(16)  #random 128-bit salt # todo: save salt on local 
 password_hashed = hashlib.scrypt(password_string.encode(),salt=salt,n=2**11,r=8,p=1) #key derivation function, more secure than simple hashing, but can be slow
 password_x = int.from_bytes(password_hashed, 'big') % q
 print("Password x:", password_x)
+#NOTE: good thing, if salt is used, if the password_x is compromised, then a new generation of salt will prevent the user from changing the password
 
 #0.create secret_y and register
 secret_y = pow(global_g, password_x, global_p) #y = g^x mod p

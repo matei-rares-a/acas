@@ -69,7 +69,6 @@ OVERALL STATUS: PASSED|FAILED
 No symbol markers are used in the summary lines.
 
 # From anywhere with full path
-C:/LegacyApp/Python/Python312/python.exe -m pytest c:\local_store\files\my_workspace\acas\qa\test\pos_case.py -v
 ```
 
 ## Continuous Integration

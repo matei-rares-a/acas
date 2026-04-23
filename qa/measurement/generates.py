@@ -151,6 +151,8 @@ def audit_traffic_content(output_md: str = "audit_report.md"):
     verify_body = {"solution_s": str((r + c * x) % server.Q)}
     client.post("/login/verify", headers={"X-Auth-Session": sid}, json=verify_body)
 
+    import base64 as _base64
+
     forbidden = {"password", "parola", "x"}
 
     def find_hits(body):
@@ -164,23 +166,55 @@ def audit_traffic_content(output_md: str = "audit_report.md"):
 
     commit_hits = find_hits(commit_body)
     verify_hits = find_hits(verify_body)
-    classic_body = {"client_id": client_id, "password": "audit-password"}
-    classic_hits = find_hits(classic_body)
+
+    # OAuth PKCE authorize body – credentials travel to the authorization server
+    # (not forwarded to any third-party client), and the code_challenge replaces
+    # the verifier in transit for the token exchange step.
+    code_verifier = secrets.token_urlsafe(48)
+    code_challenge = _base64.urlsafe_b64encode(
+        __import__("hashlib").sha256(code_verifier.encode()).digest()
+    ).decode().rstrip("=")
+    oauth_pkce_body = {
+        "response_type": "code",
+        "client_id": "acas-pkce-client",
+        "redirect_uri": "https://client.example/callback",
+        "username": client_id,
+        "password": "audit-password",   # resource-owner cred, sent to auth server only
+        "scope": "openid profile",
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
+    }
+    oauth_token_body = {
+        "grant_type": "authorization_code",
+        "client_id": "acas-pkce-client",
+        "redirect_uri": "https://client.example/callback",
+        "code": "<opaque-auth-code>",
+        "code_verifier": code_verifier,  # sent only to token endpoint, never to client
+    }
+    oauth_pkce_hits = find_hits(oauth_pkce_body)
+    oauth_token_hits = find_hits(oauth_token_body)
 
     report = [
-        "# Audit trafic - ZKP vs Clasic",
+        "# Audit trafic - ZKP vs OAuth2",
         "",
-        "## /login/commit payload",
+        "## /login/commit payload (ZKP)",
         f"`{commit_body}`",
-        f"Hits interzise: {commit_hits if commit_hits else 'niciunul (PASS)' }",
+        f"Hits interzise: {commit_hits if commit_hits else 'niciunul (PASS)'}",
         "",
-        "## /login/verify payload",
+        "## /login/verify payload (ZKP)",
         f"`{verify_body}`",
-        f"Hits interzise: {verify_hits if verify_hits else 'niciunul (PASS)' }",
+        f"Hits interzise: {verify_hits if verify_hits else 'niciunul (PASS)'}",
         "",
-        "## /login/classic payload (comparatie)",
-        f"`{classic_body}`",
-        f"Hits interzise: {classic_hits if classic_hits else 'niciunul' }",
+        "## /oauth/pkce/authorize payload (OAuth2 PKCE - comparatie)",
+        f"`{oauth_pkce_body}`",
+        f"Hits interzise: {oauth_pkce_hits}",
+        "Nota: parola este trimisa catre authorization server (acelasi domeniu), nu catre client.",
+        "Securitatea depinde de confidentialitatea canalului HTTPS, nu de zero-knowledge.",
+        "",
+        "## /oauth/pkce/token payload (OAuth2 PKCE - code exchange)",
+        f"`{oauth_token_body}`",
+        f"Hits interzise: {oauth_token_hits if oauth_token_hits else 'niciunul (PASS)'}",
+        "Nota: code_verifier este un secret de scurta durata, parola nu mai apare in aceasta cerere.",
     ]
     Path(output_md).write_text("\n".join(report), encoding="utf-8")
     print(f"Wrote {output_md}")
@@ -232,7 +266,7 @@ def generate_charts(output_dir: str = "charts"):
     client = server.app.test_client()
 
     verify_ms = []
-    classic_ms = []
+    oauth_ms = []
     for _ in range(100):
         server.sessions.clear()
         r = secrets.randbelow(server.P - 2) + 1
@@ -251,7 +285,7 @@ def generate_charts(output_dir: str = "charts"):
         t2 = time.perf_counter_ns()
         hashlib.sha256(b"chart-password").hexdigest()
         t3 = time.perf_counter_ns()
-        classic_ms.append((t3 - t2) / 1e6)
+        oauth_ms.append((t3 - t2) / 1e6)
 
     out_dir = Path(output_dir)
     out_dir.mkdir(exist_ok=True)
@@ -267,14 +301,14 @@ def generate_charts(output_dir: str = "charts"):
 
     fig, ax = plt.subplots(figsize=(9, 5))
     ax.hist(verify_ms, bins=20, alpha=0.7, label="ZKP verify")
-    ax.hist(classic_ms, bins=20, alpha=0.7, label="Classic hash")
-    ax.set_title("Comparatie latenta ZKP vs Clasic")
+    ax.hist(oauth_ms, bins=20, alpha=0.7, label="OAuth2 hash")
+    ax.set_title("Comparatie latenta ZKP vs OAuth2")
     ax.set_xlabel("ms")
     ax.set_ylabel("frecventa")
     ax.legend()
     ax.grid(linestyle="--", alpha=0.4)
     fig.tight_layout()
-    fig.savefig(out_dir / "histogram_zkp_vs_classic.png", dpi=300)
+    fig.savefig(out_dir / "histogram_zkp_vs_oauth2.png", dpi=300)
     plt.close(fig)
     print(f"Charts saved to {out_dir}")
 

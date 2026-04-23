@@ -2,6 +2,13 @@
 
 OAuth-style API key authentication using the Schnorr zero-knowledge protocol.
 
+
+####
+#TODO Pentru fiecare dintre aceste teste, adaugă în documentație log-urile din consola serverului Flask (unde se vede generarea request-urilor) alături de explicația pe care am conturat-o mai sus. Acest lucru arată comisiei că sistemul chiar a rulat și nu este doar o teorie.
+#TODO Pentru testele de performanță, adaugă în documentație și graficele generate (ex: din benchmark.py sau raportul HTML din Locust) pentru a susține afirmațiile din disertație legate de performanță.
+###
+
+
 ## Project Structure
 - `calculations.py`: Reference calculations and parameter generation notes.
 - `flask_server/server.py`: Flask authentication server (SQLite + JWT).

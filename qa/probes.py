@@ -169,7 +169,7 @@ def audit_traffic_content(output_md: str = "audit_report.md"):
     verify_hits = scan("POST /login/verify", verify_body)
 
     classic_example_body = {"client_id": client_id, "password": password}
-    classic_hits = scan("POST /login/classic (clasic)", classic_example_body)
+    classic_hits = scan("POST /classic/login (clasic)", classic_example_body)
 
     report_lines = [
         "# Audit Trafic ZKP vs Clasic",
@@ -188,7 +188,7 @@ def audit_traffic_content(output_md: str = "audit_report.md"):
         "```",
         "Cuvinte interzise gasite: " + (", ".join(verify_hits) if verify_hits else "Niciuna (PASS)"),
         "",
-        "## POST /login/classic (COMPARATIE – Autentificare Clasica)",
+        "## POST /classic/login (COMPARATIE – Autentificare Clasica)",
         "```json",
         str(classic_example_body),
         "```",
