@@ -99,10 +99,8 @@ def add_rest_headers(response):
 note: should be in database
 simplicity: in memory commitments and challenges
 '''
-# commitments={}
-#challenge_c_values={}
-sessions = {}
-SESSION_TTL = 5  # seconds; window between /login/commit and /login/verify
+class _SessionStore(dict):
+    """dict with a built-in reverse index: client_id -> session_id."""
 # {
 #     'session_id': {
 #         "client_id": '',
@@ -111,6 +109,33 @@ SESSION_TTL = 5  # seconds; window between /login/commit and /login/verify
 #         "created_at": time.time()
 #     }
 # }
+    def __init__(self):
+        super().__init__()
+        self._client_sessions: dict[str, str] = {}
+
+    def __setitem__(self, session_id, value):
+        super().__setitem__(session_id, value)
+        self._client_sessions[value["client_id"]] = session_id
+
+    def __delitem__(self, session_id):
+        session = self.get(session_id)
+        if session:
+            self._client_sessions.pop(session["client_id"], None)
+        super().__delitem__(session_id)
+
+    def pop(self, session_id, *args):
+        session = self.get(session_id)
+        if session:
+            self._client_sessions.pop(session["client_id"], None)
+        return super().pop(session_id, *args)
+
+    def clear(self):
+        super().clear()
+        self._client_sessions.clear()
+
+
+sessions = _SessionStore()
+SESSION_TTL = 5  # seconds; window between /login/commit and /login/verify
 
 '''
 Note: the servers choses the auth scheme
@@ -218,22 +243,20 @@ def commitAPI():
     if not user:
         return jsonify({'reason': 'user not registered'}), 404
     
-    #if commitment already exists in inmemory dict -> delete it and return error -> a new session should be started
-    for session_id, session in sessions.items():
-        if session['client_id'] == client_id:
-            del sessions[session_id]
-            return jsonify({'reason': 'existing commitment found, start a new session'}), 409
+    #if commitment already exists -> delete old session
+    existing_sid = sessions._client_sessions.get(client_id)
+    if existing_sid:
+        del sessions[existing_sid]
     
     # create session, save commitment for verification
     session_id = secrets.token_urlsafe(32)
+    challenge_c = secrets.randbelow(Q - 1) + 1
     sessions[session_id] = {
         "client_id": client_id,
         "t": t,
-        "c": None, 
+        "c": challenge_c, 
         "created_at": time.time()}
-
-    challenge_c = secrets.randbelow(Q - 1) + 1
-    sessions[session_id]["c"] = challenge_c
+    
     return jsonify({'challenge_c': str(challenge_c), 'session_id': session_id}), 200
 
 

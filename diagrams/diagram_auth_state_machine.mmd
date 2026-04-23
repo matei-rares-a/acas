@@ -15,9 +15,9 @@ stateDiagram-v2
 
     state Login {
         KeyDerivation --> Committing : x derived,  t = G^r mod P → POST /login/commit
-        Committing --> Challenged    : 200 — challenge_c = c received
+        Committing --> Challenged    : 200 — challenge_c = c, session_id received
         Committing --> LoginFailed   : 404 User not found  /  409 Duplicate commitment
-        Challenged --> Verifying     : s = (r + c·x) mod Q → POST /login/verify
+        Challenged --> Verifying     : s = (r + c·x) mod Q → POST /login/verify  (X-Auth-Session: session_id)
         Verifying --> Authenticated  : 200 — JWT token received
         Verifying --> LoginFailed    : 401 Verification failed
     }
@@ -30,4 +30,3 @@ stateDiagram-v2
     AccessingData --> Authenticated  : 200/201 — data returned
     AccessingData --> Idle           : 401 — token invalid or expired
 
-    Authenticated --> Idle           : POST /forgetme — account deleted

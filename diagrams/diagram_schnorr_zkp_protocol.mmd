@@ -17,7 +17,7 @@ sequenceDiagram
     C->>S: POST /register  { client_id, secret_y = y }
     Note over S: Validate y is a subgroup member: y^Q ≡ 1 (mod P)
     Note over S: Store (client_id, y) in database
-    S-->>C: 201 Created  { client_id }  — or 200 OK on re-registration
+    S-->>C: 201 Created  { status: "Registered" }  — or 200 OK  { status: "Updated" } on re-registration
     end
 
     rect rgb(235, 245, 255)
@@ -27,13 +27,13 @@ sequenceDiagram
     Note over C: t = G^r mod P
     C->>S: POST /login/commit  { client_id, commitment_t = t }
     Note over S: Look up user, validate t is subgroup member
-    Note over S: Store t in memory for this session
     Note over S: Pick c ←$ [1, Q-1]   (random challenge)
-    S-->>C: 200 OK  { challenge_c = c }
+    Note over S: Create session_id, store (client_id, t, c) in memory
+    S-->>C: 200 OK  { challenge_c = c, session_id }
 
     Note over C: Step 2 — Response
     Note over C: s = (r + c · x) mod Q
-    C->>S: POST /login/verify  { client_id, solution_s = s }
+    C->>S: POST /login/verify  X-Auth-Session: session_id  { solution_s = s }
 
     Note over S: Step 3 — Verification
     Note over S: left  = G^s mod P
@@ -42,7 +42,7 @@ sequenceDiagram
 
     alt Proof valid  (Zero-Knowledge: server learns nothing about x)
         Note over S: Issue JWT token signed with server secret
-        S-->>C: 200 OK  { token (JWT), client_id }
+        S-->>C: 200 OK  { token (JWT) }
     else Proof invalid
         S-->>C: 401 Unauthorized  { reason: verification failed }
     end
@@ -58,9 +58,4 @@ sequenceDiagram
     S-->>C: 201 Created  { message: personal data updated }
     end
 
-    rect rgb(255, 245, 245)
-    Note over C,S: ACCOUNT DELETION
-    C->>S: POST /forgetme  Authorization: Bearer <token>  { client_id }
-    Note over S: Validate token, delete AuthToken + User cascade
-    S-->>C: 200 OK  { message: User data deleted }
-    end
+

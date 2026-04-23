@@ -10,7 +10,7 @@ spec = importlib.util.spec_from_file_location("server", ROOT / "server_app" / "s
 server = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(server)
 
-import perf_load as pl
+import qa.test.perf_load as pl
 
 server.app.config["TESTING"] = True
 with server.app.app_context():
