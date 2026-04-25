@@ -1,22 +1,14 @@
-from pathlib import Path
 import concurrent.futures
-import hashlib
-import importlib.util
+from pathlib import Path
 import secrets as secrets_module
 import sys
 
 import pytest
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SERVER_APP_PATH = PROJECT_ROOT / "server_app"
-SERVER_MODULE_PATH = SERVER_APP_PATH / "server.py"
-if str(SERVER_APP_PATH) not in sys.path:
-    sys.path.insert(0, str(SERVER_APP_PATH))
-spec = importlib.util.spec_from_file_location("server", SERVER_MODULE_PATH)
-server = importlib.util.module_from_spec(spec)
-assert spec and spec.loader
-spec.loader.exec_module(server)
+_QA_PATH = Path(__file__).resolve().parent.parent
+if str(_QA_PATH) not in sys.path:
+    sys.path.insert(0, str(_QA_PATH))
+from qa_utils import server, derive_password_x
 
 
 @pytest.fixture(autouse=True)
@@ -40,10 +32,6 @@ def client():
     return server.app.test_client()
 
 
-def derive_password_x(password_string):
-    salt = secrets_module.token_bytes(16)
-    hashed = hashlib.scrypt(password_string.encode(), salt=salt, n=2**11, r=8, p=1)
-    return int.from_bytes(hashed, "big") % server.Q
 
 
 def register_and_commit(client, client_id, password):

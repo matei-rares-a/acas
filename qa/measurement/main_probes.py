@@ -9,32 +9,20 @@ Probe 4  – Chart generator (box plot + histogram)
 
 from pathlib import Path
 import hashlib
-import importlib.util
 import secrets as secrets_module
 import statistics
 import sys
 import time
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SERVER_APP_PATH = PROJECT_ROOT / "server_app"
-SERVER_MODULE_PATH = SERVER_APP_PATH / "server.py"
-if str(SERVER_APP_PATH) not in sys.path:
-    sys.path.insert(0, str(SERVER_APP_PATH))
-_spec = importlib.util.spec_from_file_location("server", SERVER_MODULE_PATH)
-server = importlib.util.module_from_spec(_spec)
-assert _spec and _spec.loader
-_spec.loader.exec_module(server)
+_QA_PATH = Path(__file__).resolve().parents[1]
+if str(_QA_PATH) not in sys.path:
+    sys.path.insert(0, str(_QA_PATH))
+from qa_utils import server, derive_password_x, SERVER_MODULE_PATH
 
 
 # ---------------------------------------------------------------------------
 # Probe 1 – Latency table
 # ---------------------------------------------------------------------------
-
-def _derive_x(password: str) -> int:
-    salt = secrets_module.token_bytes(16)
-    hashed = hashlib.scrypt(password.encode(), salt=salt, n=2**11, r=8, p=1)
-    return int.from_bytes(hashed, "big") % server.Q
-
 
 def generate_latency_table(iterations: int = 100) -> str:
     """
@@ -45,7 +33,7 @@ def generate_latency_table(iterations: int = 100) -> str:
 
     password = "probe-password"
     client_id = "probe_latency_user"
-    x = _derive_x(password)
+    x = derive_password_x(password)
     y = pow(server.G, x, server.P)
 
     with server.app.app_context():
@@ -130,7 +118,7 @@ def audit_traffic_content(output_md: str = "audit_report.md"):
 
     client_id = "audit_traffic_user"
     password = "audit-secret"
-    x = _derive_x(password)
+    x = derive_password_x(password)
     y = pow(server.G, x, server.P)
 
     with server.app.app_context():
@@ -303,7 +291,7 @@ def generate_charts(latency_data: dict | None = None, output_dir: str = "charts"
         server.app.config["TESTING"] = True
         client_id = "chart_probe_user"
         password = "chart-probe-pw"
-        x = _derive_x(password)
+        x = derive_password_x(password)
         y = pow(server.G, x, server.P)
         with server.app.app_context():
             server.db.session.remove()

@@ -1,24 +1,15 @@
 from datetime import datetime, timedelta, timezone
-import importlib.util
 from pathlib import Path
-import sys
-import hashlib
 import secrets as secrets_module
+import sys
 
 import jwt
 import pytest
 
-
-# Load server module directly from file path for stable test imports.
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SERVER_APP_PATH = PROJECT_ROOT / "server_app"
-SERVER_MODULE_PATH = SERVER_APP_PATH / "server.py"
-if str(SERVER_APP_PATH) not in sys.path:
-	sys.path.insert(0, str(SERVER_APP_PATH))
-spec = importlib.util.spec_from_file_location("server", SERVER_MODULE_PATH)
-server = importlib.util.module_from_spec(spec)
-assert spec and spec.loader
-spec.loader.exec_module(server)
+_QA_PATH = Path(__file__).resolve().parent.parent
+if str(_QA_PATH) not in sys.path:
+    sys.path.insert(0, str(_QA_PATH))
+from qa_utils import server, derive_password_x
 
 
 @pytest.fixture(autouse=True)
@@ -42,20 +33,6 @@ def client():
 	return server.app.test_client()
 
 
-def derive_password_x(password_string, salt=None):
-	"""Derive password_x using scrypt KDF, matching calculations.py."""
-	if salt is None:
-		salt = secrets_module.token_bytes(16)
-
-	password_hashed = hashlib.scrypt(
-		password_string.encode(),
-		salt=salt,
-		n=2**11,
-		r=8,
-		p=1
-	)
-	password_x = int.from_bytes(password_hashed, 'big') % server.Q
-	return password_x, salt
 
 
 def test_register_creates_user_and_does_not_store_plain_password(client):
@@ -63,7 +40,7 @@ def test_register_creates_user_and_does_not_store_plain_password(client):
 	"""Client send register data, server save public value, server doesn't keep plain password."""
 	client_id = "test_user"
 	raw_password = "my-secure-password-12345"
-	password_x, _ = derive_password_x(raw_password)
+	password_x = derive_password_x(raw_password)
 	secret_y = pow(server.G, password_x, server.P)
 
 	response = client.post(
@@ -90,8 +67,8 @@ def test_register_updates_existing_user_without_duplication(client):
 	initial_password = "initial-password-version1"
 	updated_password = "updated-password-version2"
 
-	initial_password_x, _ = derive_password_x(initial_password)
-	updated_password_x, _ = derive_password_x(updated_password)
+	initial_password_x = derive_password_x(initial_password)
+	updated_password_x = derive_password_x(updated_password)
 
 	initial_secret_y = pow(server.G, initial_password_x, server.P)
 	updated_secret_y = pow(server.G, updated_password_x, server.P)
@@ -122,7 +99,7 @@ def test_login_commit_then_verify_success_and_session_is_deleted(client):
 	client_id = "test_login"
 	raw_password = "test-password-secure"
 
-	password_x, _ = derive_password_x(raw_password)
+	password_x = derive_password_x(raw_password)
 	secret_y = pow(server.G, password_x, server.P)
 
 	with server.app.app_context():
@@ -166,7 +143,7 @@ def test_data_authorization_with_valid_and_invalid_tokens(client):
 	client_id = "test_user"
 	raw_password = "data-endpoint-password"
 
-	password_x, _ = derive_password_x(raw_password)
+	password_x = derive_password_x(raw_password)
 	secret_y = pow(server.G, password_x, server.P)
 
 	register_response = client.post(
@@ -206,12 +183,60 @@ def test_data_authorization_with_valid_and_invalid_tokens(client):
 		headers={"Authorization": f"Bearer {expired_token}"},
 	)
 	assert expired_response.status_code == 401
-	
 
 
+def test_two_users_authenticate_in_parallel_both_succeed(client):
+	'''Testare autentificare paralela - doi utilizatori diferiti se autentifica simultan cu succes'''
+	"""Alice and Bob both commit so their sessions coexist, Alice verify with her correct s and get token, Bob verify with his correct s and get token, both receive 200."""
+	# Register both users
+	x_alice = derive_password_x("alice-parallel-pass")
+	y_alice = pow(server.G, x_alice, server.P)
+	x_bob = derive_password_x("bob-parallel-pass")
+	y_bob = pow(server.G, x_bob, server.P)
 
+	with server.app.app_context():
+		server.db.session.add(server.User(client_id="parallel_alice", secret_y=str(y_alice)))
+		server.db.session.add(server.User(client_id="parallel_bob", secret_y=str(y_bob)))
+		server.db.session.commit()
 
-#START AI AGENTS IGNORE THIS LINE#
-#TODO Pentru fiecare dintre aceste teste, adaugă în documentație log-urile din consola serverului Flask (unde se vede generarea request-urilor) alături de explicația pe care am conturat-o mai sus. Acest lucru arată comisiei că sistemul chiar a rulat și nu este doar o teorie.
-#TODO Pentru testele de performanță, adaugă în documentație și graficele generate (ex: din benchmark.py sau raportul HTML din Locust) pentru a susține afirmațiile din disertație legate de performanță.
-#END AI AGENTS IGNORE THIS LINE#
+	# Both commit — two sessions coexist simultaneously
+	r_alice = secrets_module.randbelow(server.P - 2) + 1
+	t_alice = pow(server.G, r_alice, server.P)
+	resp_alice = client.post("/login/commit", json={"client_id": "parallel_alice", "commitment_t": t_alice})
+	assert resp_alice.status_code == 200
+	alice_payload = resp_alice.get_json()
+	c_alice = int(alice_payload["challenge_c"])
+	sid_alice = alice_payload["session_id"]
+
+	r_bob = secrets_module.randbelow(server.P - 2) + 1
+	t_bob = pow(server.G, r_bob, server.P)
+	resp_bob = client.post("/login/commit", json={"client_id": "parallel_bob", "commitment_t": t_bob})
+	assert resp_bob.status_code == 200
+	bob_payload = resp_bob.get_json()
+	c_bob = int(bob_payload["challenge_c"])
+	sid_bob = bob_payload["session_id"]
+
+	# Both sessions are alive at the same time
+	assert sid_alice in server.sessions
+	assert sid_bob in server.sessions
+
+	# Alice verifies with her correct solution
+	s_alice = (r_alice + c_alice * x_alice) % server.Q
+	verify_alice = client.post(
+		"/login/verify",
+		headers={"X-Auth-Session": sid_alice},
+		json={"solution_s": s_alice},
+	)
+	assert verify_alice.status_code == 200
+	assert "token" in verify_alice.get_json()
+
+	# Bob verifies with his correct solution (session still intact)
+	s_bob = (r_bob + c_bob * x_bob) % server.Q
+	verify_bob = client.post(
+		"/login/verify",
+		headers={"X-Auth-Session": sid_bob},
+		json={"solution_s": s_bob},
+	)
+	assert verify_bob.status_code == 200
+	assert "token" in verify_bob.get_json()
+

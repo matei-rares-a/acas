@@ -1,3 +1,13 @@
+# conftest.py — pytest find this file by name, load before all tests, no import needed.
+# Two jobs:
+#   1. gevent patch — must run before ssl imported (jwt pulls ssl in). patch here = first.
+#   2. hooks — collect results, print summary after each run. reset between runs (main_test calls pytest many times).
+try:
+    from gevent import monkey as _monkey
+    _monkey.patch_all()
+except ImportError:
+    pass
+
 import pytest
 from pathlib import Path
 
@@ -35,8 +45,10 @@ class TestReporter:
                 self.use_case = "Negative Test Cases"
             elif "corner_case" in file_name:
                 self.use_case = "Corner Test Cases"
-            elif "perf_load" in file_name:
-                self.use_case = "Performance & Load Tests"
+            elif "oauth_case" in file_name:
+                self.use_case = "OAuth2 Functional Tests"
+            elif "security_case" in file_name:
+                self.use_case = "Security Tests"
             else:
                 self.use_case = "Test Cases"
     

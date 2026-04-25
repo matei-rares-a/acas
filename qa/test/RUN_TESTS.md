@@ -14,7 +14,35 @@ Current suites in `main_test.py`:
 1. Positive Test Cases (`pos_case.py`)
 2. Negative Test Cases (`neg_case.py`)
 3. Corner Cases (`corner_case.py`)
-4. Performance & Load Tests (`perf_load.py`)
+4. Security Tests (`security_case.py`)
+5. OAuth2 Functional Tests (`oauth_case.py`)
+
+## QA Folder Layout
+
+```
+qa/
+├── qa_utils.py               # shared helpers: derive_password_x, register_user, start_commit, pkce_challenge
+├── attack_simulation/
+│   ├── automated.py          # automated attack scenarios
+│   └── manual.py             # manual attack scripts
+├── measurement/
+│   ├── benchmark.py          # pytest-based latency & memory benchmarks
+│   ├── brute_force_dlp.py    # DLP brute-force demo (standalone)
+│   ├── locustfile.py         # Locust load-test scenarios
+│   ├── main_probes.py        # dissertation data-collection probes
+│   ├── comparision.py        # protocol comparison measurements
+│   ├── generates.py          # data generators for measurements
+│   └── run_all_measurements.py
+└── test/
+    ├── main_test.py          # suite runner with statistics
+    ├── pos_case.py           # positive (happy-path) tests
+    ├── neg_case.py           # negative / attack tests
+    ├── corner_case.py        # boundary & edge cases
+    ├── security_case.py      # cryptographic attack vectors & protocol security
+    ├── oauth_case.py         # OAuth2 PKCE & Simple authorization code flow
+    ├── conftest.py
+    └── perf/                 # (empty — benchmarks moved to qa/measurement/)
+```
 
 ## Install Dependencies
 
@@ -33,25 +61,13 @@ C:/LegacyApp/Python/Python312/python.exe -m pytest qa/test/pos_case.py -v
 Run selected suites:
 
 ```bash
-C:/LegacyApp/Python/Python312/python.exe -m pytest qa/test/pos_case.py qa/test/neg_case.py qa/test/corner_case.py -v
+C:/LegacyApp/Python/Python312/python.exe -m pytest qa/test/pos_case.py qa/test/neg_case.py qa/test/corner_case.py qa/test/security_case.py qa/test/oauth_case.py -v
 ```
 
 Run all tests in `qa/test`:
 
 ```bash
 C:/LegacyApp/Python/Python312/python.exe -m pytest qa/test/ -v
-```
-
-Run benchmark test from perf_load.py (prints latency table):
-
-```bash
-C:/LegacyApp/Python/Python312/python.exe -m pytest qa/test/perf_load.py -k benchmark_prints_latency_table -v -s
-```
-
-Run Locust script requested by prompts:
-
-```bash
-locust -f qa/test/locustfile.py --host=http://localhost:5000
 ```
 
 ## Output Format
@@ -68,15 +84,12 @@ OVERALL STATUS: PASSED|FAILED
 
 No symbol markers are used in the summary lines.
 
-# From anywhere with full path
-```
-
 ## Continuous Integration
 
 To run tests in CI/CD pipelines, use:
 
 ```bash
-C:/LegacyApp/Python/Python312/python.exe -m pytest qa/test/pos_case.py -v --tb=short
+C:/LegacyApp/Python/Python312/python.exe -m pytest qa/test/ -v --tb=short
 ```
 
 The `--tb=short` flag provides concise traceback output suitable for CI logs.
@@ -95,5 +108,5 @@ The `--tb=short` flag provides concise traceback output suitable for CI logs.
 
 Example:
 ```bash
-C:/LegacyApp/Python/Python312/python.exe -m pytest qa/test/pos_case.py -v -s
+C:/LegacyApp/Python/Python312/python.exe -m pytest qa/test/security_case.py -v -s
 ```

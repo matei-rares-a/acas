@@ -9,7 +9,7 @@ import os
 import jwt
 import uuid
 import time
-import hashlib
+import threading
 from datetime import datetime, timedelta, timezone
 from cryptography.hazmat.primitives.asymmetric import dh
 
@@ -86,11 +86,12 @@ def add_rest_headers(response):
         response.headers['WWW-Authenticate'] = 'Bearer realm="Schnorr Authentication", charset="UTF-8"'
 
     # Emit a Werkzeug-like access log line for in-process test_client requests.
-    remote_addr = request.headers.get('X-Forwarded-For', request.remote_addr or '127.0.0.1')
-    timestamp = datetime.now().strftime('%d/%b/%Y %H:%M:%S')
-    print(
-        f'{remote_addr} - - [{timestamp}] "{request.method} {request.full_path.rstrip("?")} HTTP/1.1" {response.status_code} -'
-    )
+    # if not app.config.get("TESTING"):
+    #     remote_addr = request.headers.get('X-Forwarded-For', request.remote_addr or '127.0.0.1')
+    #     timestamp = datetime.now().strftime('%d/%b/%Y %H:%M:%S')
+    #     print(
+    #         f'{remote_addr} - - [{timestamp}] "{request.method} {request.full_path.rstrip("?")} HTTP/1.1" {response.status_code} -'
+    #     )
     
     return response
 
@@ -101,17 +102,18 @@ simplicity: in memory commitments and challenges
 '''
 class _SessionStore(dict):
     """dict with a built-in reverse index: client_id -> session_id."""
-# {
-#     'session_id': {
-#         "client_id": '',
-#         "t": t,
-#         "c": challenge_c,
-#         "created_at": time.time()
-#     }
-# }
+    '''{
+        'session_id': {
+            "client_id": '',
+            "t": t,
+            "c": challenge_c,
+            "created_at": time.time()
+        }
+    }'''
     def __init__(self):
         super().__init__()
         self._client_sessions: dict[str, str] = {}
+        self._lock = threading.Lock()
 
     def __setitem__(self, session_id, value):
         super().__setitem__(session_id, value)
@@ -136,6 +138,9 @@ class _SessionStore(dict):
 
 sessions = _SessionStore()
 SESSION_TTL = 5  # seconds; window between /login/commit and /login/verify
+# Second commit within 50 ms = race, first writer wins.
+# Second commit after 50 ms = hijack attempt, both sessions invalidated.
+COMMIT_RACE_WINDOW_S = 0.050  # 50 ms
 
 '''
 Note: the servers choses the auth scheme
@@ -243,20 +248,30 @@ def commitAPI():
     if not user:
         return jsonify({'reason': 'user not registered'}), 404
     
-    #if commitment already exists -> delete old session
-    existing_sid = sessions._client_sessions.get(client_id)
-    if existing_sid:
-        del sessions[existing_sid]
-    
-    # create session, save commitment for verification
-    session_id = secrets.token_urlsafe(32)
-    challenge_c = secrets.randbelow(Q - 1) + 1
-    sessions[session_id] = {
-        "client_id": client_id,
-        "t": t,
-        "c": challenge_c, 
-        "created_at": time.time()}
-    
+    with sessions._lock:
+        existing_sid = sessions._client_sessions.get(client_id)
+        if existing_sid:
+            age = time.time() - sessions[existing_sid]["created_at"]
+            if age <= COMMIT_RACE_WINDOW_S:
+                # Concurrent race: first writer already owns this session.
+                # Reject newcomer but leave the session intact.
+                return jsonify({'reason': 'existing commitment found, start a new session'}), 409
+            else:
+                # Session is established; new commit looks like a hijacking attempt.
+                # Invalidate the existing session so neither party can use it.
+                del sessions[existing_sid]
+                return jsonify({'reason': 'existing commitment found, start a new session'}), 409
+
+        # No conflict – create the session atomically inside the lock.
+        session_id = secrets.token_urlsafe(32)
+        challenge_c = secrets.randbelow(Q - 1) + 1
+        sessions[session_id] = {
+            "client_id": client_id,
+            "t": t,
+            "c": challenge_c,
+            "created_at": time.time(),
+        }
+
     return jsonify({'challenge_c': str(challenge_c), 'session_id': session_id}), 200
 
 

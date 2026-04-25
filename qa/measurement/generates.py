@@ -10,8 +10,6 @@ Includes:
 """
 
 from pathlib import Path
-import hashlib
-import importlib.util
 import secrets
 import statistics
 import sys
@@ -19,16 +17,10 @@ import time
 
 from cryptography.hazmat.primitives.asymmetric import dh
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SERVER_APP_PATH = PROJECT_ROOT / "server_app"
-SERVER_MODULE_PATH = SERVER_APP_PATH / "server.py"
-if str(SERVER_APP_PATH) not in sys.path:
-    sys.path.insert(0, str(SERVER_APP_PATH))
-spec = importlib.util.spec_from_file_location("server", SERVER_MODULE_PATH)
-server = importlib.util.module_from_spec(spec)
-assert spec and spec.loader
-spec.loader.exec_module(server)
+_QA_PATH = Path(__file__).resolve().parents[1]
+if str(_QA_PATH) not in sys.path:
+    sys.path.insert(0, str(_QA_PATH))
+from qa_utils import server, derive_password_x
 
 
 P, Q, G = None, None, None
@@ -64,12 +56,6 @@ def generate_global_parameters(generate_new=False, use_library=False, generator=
     print(f"Q = {Q}")
     print(f"P este prim sigur (p = 2q + 1)? -> {P == 2 * Q + 1}")
     return {"P": P, "Q": Q, "G": G, "elapsed_ms": elapsed_ms}
-
-
-def derive_password_x(password: str) -> int:
-    salt = secrets.token_bytes(16)
-    hashed = hashlib.scrypt(password.encode(), salt=salt, n=2**11, r=8, p=1)
-    return int.from_bytes(hashed, "big") % server.Q
 
 
 def generate_latency_table(iterations: int = 100) -> str:

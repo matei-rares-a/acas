@@ -1,20 +1,7 @@
-#!/usr/bin/env python
-"""
-Main test runner for Schnorr ZKP Authentication Protocol tests.
-
-This script runs all test suites and displays a comprehensive test report
-with statistics. It can be executed directly without using pytest CLI.
-
-Usage:
-    python main_test.py
-    C:/LegacyApp/Python/Python312/python.exe main_test.py
-"""
-
 import sys
 import os
 from pathlib import Path
 
-# Add project root to path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -39,7 +26,7 @@ class SuiteResultCollector:
             self.failed += 1
 
 
-class TestExecutor:
+class SuiteExecutor:
     """Execute test suites and display results."""
     
     def __init__(self):
@@ -61,9 +48,14 @@ class TestExecutor:
                 'description': 'Boundary & Edge Cases'
             },
             {
-                'name': 'Performance & Load Tests',
-                'path': str(self.test_dir / 'perf_load.py'),
-                'description': 'Latency Benchmarks & Memory Footprint'
+                'name': 'Security Tests',
+                'path': str(self.test_dir / 'security_case.py'),
+                'description': 'Cryptographic Attack Vectors & Protocol Security'
+            },
+            {
+                'name': 'OAuth2 Functional Tests',
+                'path': str(self.test_dir / 'oauth_case.py'),
+                'description': 'OAuth2 PKCE & Simple Authorization Code Flow'
             },
         ]
     
@@ -160,7 +152,7 @@ class TestExecutor:
 
 def main():
     """Entry point for the test executor."""
-    executor = TestExecutor()
+    executor = SuiteExecutor()
     exit_code = executor.execute()
     sys.exit(exit_code)
 

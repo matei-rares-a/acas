@@ -12,22 +12,16 @@ from pathlib import Path
 import base64
 import csv
 import hashlib
-import importlib.util
 import secrets as secrets_module
 import statistics
 import sys
 import time
 import timeit
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SERVER_APP_PATH = PROJECT_ROOT / "server_app"
-SERVER_MODULE_PATH = SERVER_APP_PATH / "server.py"
-if str(SERVER_APP_PATH) not in sys.path:
-    sys.path.insert(0, str(SERVER_APP_PATH))
-spec = importlib.util.spec_from_file_location("server", SERVER_MODULE_PATH)
-server = importlib.util.module_from_spec(spec)
-assert spec and spec.loader
-spec.loader.exec_module(server)
+_QA_PATH = Path(__file__).resolve().parents[1]
+if str(_QA_PATH) not in sys.path:
+    sys.path.insert(0, str(_QA_PATH))
+from qa_utils import server, derive_password_x
 
 
 # OAuth implementation constants (must match server_oauth.py)
@@ -49,9 +43,7 @@ def run_micro_benchmark(iterations: int = 100) -> dict:
     P, Q, G = server.P, server.Q, server.G
 
     def derive():
-        salt = secrets_module.token_bytes(16)
-        h = hashlib.scrypt(b"bench-password", salt=salt, n=2**11, r=8, p=1)
-        return int.from_bytes(h, "big") % Q
+        return derive_password_x("bench-password")
 
     x = derive()
     y = pow(G, x, P)
@@ -166,11 +158,7 @@ try:
         def on_start(self):
             self._client_id = f"locust_{secrets_module.token_hex(8)}"
             self._password = secrets_module.token_hex(16)
-            salt = secrets_module.token_bytes(16)
-            hashed = hashlib.scrypt(
-                self._password.encode(), salt=salt, n=2**11, r=8, p=1
-            )
-            self._x = int.from_bytes(hashed, "big") % server.Q
+            self._x = derive_password_x(self._password)
             self._y = pow(server.G, self._x, server.P)
             self.client.post(
                 "/register",

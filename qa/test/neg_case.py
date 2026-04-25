@@ -1,22 +1,14 @@
-from pathlib import Path
-import hashlib
-import importlib.util
 import secrets as secrets_module
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SERVER_APP_PATH = PROJECT_ROOT / "server_app"
-SERVER_MODULE_PATH = SERVER_APP_PATH / "server.py"
-if str(SERVER_APP_PATH) not in sys.path:
-	sys.path.insert(0, str(SERVER_APP_PATH))
-spec = importlib.util.spec_from_file_location("server", SERVER_MODULE_PATH)
-server = importlib.util.module_from_spec(spec)
-assert spec and spec.loader
-spec.loader.exec_module(server)
+_QA_PATH = Path(__file__).resolve().parent.parent
+if str(_QA_PATH) not in sys.path:
+    sys.path.insert(0, str(_QA_PATH))
+from qa_utils import server, derive_password_x, register_user, start_commit
 
 
 @pytest.fixture(autouse=True)
@@ -40,37 +32,6 @@ def client():
 	return server.app.test_client()
 
 
-def derive_password_x(password_string, salt=None):
-	if salt is None:
-		salt = secrets_module.token_bytes(16)
-	password_hashed = hashlib.scrypt(
-		password_string.encode(),
-		salt=salt,
-		n=2**11,
-		r=8,
-		p=1,
-	)
-	return int.from_bytes(password_hashed, "big") % server.Q
-
-
-def register_user(client, client_id, password):
-	x = derive_password_x(password)
-	y = pow(server.G, x, server.P)
-	response = client.post("/register", json={"client_id": client_id, "secret_y": y})
-	assert response.status_code in (200, 201)
-	return x, y
-
-
-def start_commit(client, client_id, rand_r=None):
-	if rand_r is None:
-		rand_r = secrets_module.randbelow(server.P - 2) + 1
-	commitment_t = pow(server.G, rand_r, server.P)
-	commit_response = client.post(
-		"/login/commit", json={"client_id": client_id, "commitment_t": commitment_t}
-	)
-	assert commit_response.status_code == 200
-	payload = commit_response.get_json()
-	return rand_r, int(payload["challenge_c"]), payload["session_id"]
 
 
 def test_wrong_password_proof_is_rejected_and_session_is_deleted(client):
@@ -156,6 +117,8 @@ def test_second_commit_same_user_returns_conflict_and_invalidates_old_session(cl
 
 	_, _, session_id_1 = start_commit(client, client_id)
 
+	time.sleep(0.1)
+
 	second_commit = client.post(
 		"/login/commit",
 		json={
@@ -170,5 +133,5 @@ def test_second_commit_same_user_returns_conflict_and_invalidates_old_session(cl
 	)
 	assert session_id_1 not in server.sessions
 	active_for_client = [s for s in server.sessions.values() if s["client_id"] == client_id]
-	assert len(active_for_client) <= 1
+	assert len(active_for_client) == 0  
 	

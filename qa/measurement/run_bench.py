@@ -2,15 +2,17 @@
 import sys, importlib.util, statistics
 from pathlib import Path
 
-ROOT = Path(__file__).parent
-sys.path.insert(0, str(ROOT / "server_app"))
-sys.path.insert(0, str(ROOT / "qa" / "test"))
+ROOT = Path(__file__).resolve().parents[2]   # workspace root (acas/)
+_QA_PATH = Path(__file__).resolve().parents[1]  # qa/
+if str(_QA_PATH) not in sys.path:
+    sys.path.insert(0, str(_QA_PATH))
 
-spec = importlib.util.spec_from_file_location("server", ROOT / "server_app" / "server.py")
-server = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(server)
+from qa_utils import server
 
-import qa.test.perf_load as pl
+import importlib.util as _ilu
+_spec = _ilu.spec_from_file_location("benchmark", Path(__file__).resolve().parent / "benchmark.py")
+pl = _ilu.module_from_spec(_spec)
+_spec.loader.exec_module(pl)
 
 server.app.config["TESTING"] = True
 with server.app.app_context():
@@ -24,7 +26,7 @@ data = pl._benchmark_e2e_flows(iterations=30)
 
 col = 54
 print()
-print("END-TO-END PROTOCOL COMPARISON  (30 iterations, client-side crypto excluded)")
+print("END-TO-END PROTOCOL COMPARISON  (30 iterations, full auth latency including client-side crypto)")
 print(f"| {'Protocol Flow':<{col}} | {'Mean':>10} | {'Min':>10} | {'Max':>10} | {'P95':>10} |")
 print("|" + "-" * (col + 2) + "|" + ("-" * 12 + "|") * 4)
 for k, v in data.items():

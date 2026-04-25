@@ -328,7 +328,12 @@ def init_authlib(app, secret: str) -> None:
                 }), 401
 
             # Hand control to Authlib; grant_user is the authenticated subject.
-            resp = authorization.create_authorization_response(grant_user=username)
+            # Build the OAuth2Request from the current Flask request, then
+            # resolve the grant instance explicitly to avoid the DeprecationWarning
+            # that fires when grant= is omitted (will become mandatory in v1.8).
+            _oauth2_req = authorization.create_oauth2_request(None)
+            grant = authorization.get_authorization_grant(_oauth2_req)
+            resp = authorization.create_authorization_response(grant_user=username, grant=grant)
 
             # Authlib returns a redirect (302) with ?code=... in Location.
             # Convert to JSON for test/benchmark clients that expect JSON.

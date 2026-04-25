@@ -1,21 +1,13 @@
 from pathlib import Path
-import hashlib
-import importlib.util
 import secrets as secrets_module
 import sys
 
 import pytest
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SERVER_APP_PATH = PROJECT_ROOT / "server_app"
-SERVER_MODULE_PATH = SERVER_APP_PATH / "server.py"
-if str(SERVER_APP_PATH) not in sys.path:
-    sys.path.insert(0, str(SERVER_APP_PATH))
-spec = importlib.util.spec_from_file_location("server", SERVER_MODULE_PATH)
-server = importlib.util.module_from_spec(spec)
-assert spec and spec.loader
-spec.loader.exec_module(server)
+_QA_PATH = Path(__file__).resolve().parents[1]
+if str(_QA_PATH) not in sys.path:
+    sys.path.insert(0, str(_QA_PATH))
+from qa_utils import server, derive_password_x, register_user, start_commit
 
 
 @pytest.fixture(autouse=True)
@@ -39,29 +31,6 @@ def client():
     return server.app.test_client()
 
 
-def derive_x(password: str) -> int:
-    salt = secrets_module.token_bytes(16)
-    hashed = hashlib.scrypt(password.encode(), salt=salt, n=2**11, r=8, p=1)
-    return int.from_bytes(hashed, "big") % server.Q
-
-
-def register(client, client_id: str, password: str):
-    x = derive_x(password)
-    y = pow(server.G, x, server.P)
-    resp = client.post("/register", json={"client_id": client_id, "secret_y": y})
-    assert resp.status_code in (200, 201)
-    return x, y
-
-
-def commit(client, client_id: str):
-    rand_r = secrets_module.randbelow(server.P - 2) + 1
-    t = pow(server.G, rand_r, server.P)
-    resp = client.post(
-        "/login/commit", json={"client_id": client_id, "commitment_t": t}
-    )
-    assert resp.status_code == 200
-    payload = resp.get_json()
-    return rand_r, int(payload["challenge_c"]), payload["session_id"]
 
 
 # ---------------------------------------------------------------------------
@@ -69,12 +38,13 @@ def commit(client, client_id: str):
 # ---------------------------------------------------------------------------
 
 def test_stolen_public_key_cannot_authenticate(client):
+    '''Testare atac cu cheia publica furata din baza de date (simulare data breach)'''
     """Attacker steal public value from DB, attacker try login, server reject fake proof."""
     client_id = "alice_test"
     password = "alices-secure-password"
 
-    x, _ = register(client, client_id, password)
-    rand_r, challenge_c, session_id = commit(client, client_id)
+    x, _ = register_user(client, client_id, password)
+    rand_r, challenge_c, session_id = start_commit(client, client_id)
 
     # Attacker reads secret_y directly from the database
     with server.app.app_context():
@@ -100,12 +70,13 @@ def test_stolen_public_key_cannot_authenticate(client):
 # ---------------------------------------------------------------------------
 
 def test_replay_attack_on_verify_payload_rejected(client):
+    '''Testare replay attack - refolosire session_id si solution_s capturate anterior'''
     """Attacker copy old verify request, server reject reused session data."""
     client_id = "replay_sim_user"
     password = "replay-sim-password"
 
-    x, _ = register(client, client_id, password)
-    rand_r, challenge_c, session_id = commit(client, client_id)
+    x, _ = register_user(client, client_id, password)
+    rand_r, challenge_c, session_id = start_commit(client, client_id)
     solution_s = (rand_r + challenge_c * x) % server.Q
 
     # Legitimate login succeeds
@@ -131,9 +102,10 @@ def test_replay_attack_on_verify_payload_rejected(client):
 # ---------------------------------------------------------------------------
 
 def test_challenge_and_session_id_uniqueness_over_1000_commits(client):
+    '''Testare unicitate challenge_c si session_id pe 1000 commit-uri (validare entropia RNG)'''
     """Client ask commit many times, server make unique challenge and unique session id."""
     client_id = "entropy_test_user"
-    x = derive_x("entropy-password")
+    x = derive_password_x("entropy-password")
     y = pow(server.G, x, server.P)
     with server.app.app_context():
         server.db.session.add(server.User(client_id=client_id, secret_y=str(y)))
