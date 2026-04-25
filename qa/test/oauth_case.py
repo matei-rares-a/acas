@@ -1,20 +1,12 @@
-from pathlib import Path
 import secrets as secrets_module
-import sys
 
 import pytest
 
-_QA_PATH = Path(__file__).resolve().parents[1]
-if str(_QA_PATH) not in sys.path:
-    sys.path.insert(0, str(_QA_PATH))
 from qa_utils import (
-    server,
-    pkce_challenge,
-    OAUTH_PKCE_CLIENT_ID,
-    OAUTH_SIMPLE_CLIENT_ID,
-    OAUTH_REDIRECT_URI,
-    AUTHLIB_CLIENT_ID,
-    AUTHLIB_REDIRECT_URI,
+    server, pkce_challenge,
+    OAUTH_PKCE_CLIENT_ID, OAUTH_SIMPLE_CLIENT_ID, OAUTH_REDIRECT_URI,
+    AUTHLIB_CLIENT_ID, AUTHLIB_REDIRECT_URI,
+    OAuthTestSuite,
 )
 
 
@@ -90,127 +82,103 @@ def _exchange_oauth_simple_code(client, code):
         },
     )
 
+class TestOAuthCases(OAuthTestSuite):
 
-@pytest.fixture(autouse=True)
-def reset_state():
-    server.app.config["TESTING"] = True
-    with server.app.app_context():
-        server.db.session.remove()
-        server.db.drop_all()
-        server.db.create_all()
-    server.sessions.clear()
-    server.clear_oauth_state()
-    server.clear_authlib_state()
-    yield
-    with server.app.app_context():
-        server.db.session.remove()
-        server.db.drop_all()
-        server.db.create_all()
-    server.sessions.clear()
-    server.clear_oauth_state()
-    server.clear_authlib_state()
+    def test_oauth_pkce_authorize_returns_authorization_code(self, client):
+        '''Testare endpoint authorize OAuth PKCE - emitere cod de autorizare dupa autentificare'''
+        """OAuth PKCE authorize endpoint should issue an authorization code after user login."""
+        _register_oauth(client, "oauth_user", "oauth-pass")
+        resp, _ = _authorize_oauth_pkce(client, "oauth_user", "oauth-pass")
+        assert resp.status_code == 200
+        payload = resp.get_json()
+        assert "code" in payload
+        assert payload.get("redirect_uri") == OAUTH_REDIRECT_URI
+        assert payload.get("expires_in") > 0
+        assert "X-Response-Time" in resp.headers
 
 
-@pytest.fixture
-def client():
-    return server.app.test_client()
+    def test_oauth_pkce_token_returns_bearer_and_refresh_tokens(self, client):
+        '''Testare endpoint token OAuth PKCE - schimb cod de autorizare contra tokeni bearer'''
+        """OAuth PKCE token endpoint should exchange a valid authorization code for bearer tokens."""
+        _register_oauth(client, "oauth_user", "oauth-pass")
+        auth_resp, code_verifier = _authorize_oauth_pkce(client, "oauth_user", "oauth-pass")
+        resp = _exchange_oauth_pkce_code(client, auth_resp.get_json()["code"], code_verifier)
+        assert resp.status_code == 200
+        payload = resp.get_json()
+        assert "access_token" in payload
+        assert "refresh_token" in payload
+        assert payload.get("token_type") == "Bearer"
+        assert isinstance(payload.get("expires_in"), int)
 
 
-def test_oauth_pkce_authorize_returns_authorization_code(client):
-    '''Testare endpoint authorize OAuth PKCE - emitere cod de autorizare dupa autentificare'''
-    """OAuth PKCE authorize endpoint should issue an authorization code after user login."""
-    _register_oauth(client, "oauth_user", "oauth-pass")
-    resp, _ = _authorize_oauth_pkce(client, "oauth_user", "oauth-pass")
-    assert resp.status_code == 200
-    payload = resp.get_json()
-    assert "code" in payload
-    assert payload.get("redirect_uri") == OAUTH_REDIRECT_URI
-    assert payload.get("expires_in") > 0
-    assert "X-Response-Time" in resp.headers
+    def test_oauth_pkce_authorize_wrong_password_returns_access_denied(self, client):
+        '''Testare respingere autentificare OAuth PKCE cu parola gresita'''
+        """OAuth PKCE authorize should deny resource owner authentication failures."""
+        _register_oauth(client, "oauth_user2", "correct-pass")
+        resp, _ = _authorize_oauth_pkce(client, "oauth_user2", "wrong-pass")
+        assert resp.status_code == 401
+        assert resp.get_json().get("error") == "access_denied"
 
 
-def test_oauth_pkce_token_returns_bearer_and_refresh_tokens(client):
-    '''Testare endpoint token OAuth PKCE - schimb cod de autorizare contra tokeni bearer'''
-    """OAuth PKCE token endpoint should exchange a valid authorization code for bearer tokens."""
-    _register_oauth(client, "oauth_user", "oauth-pass")
-    auth_resp, code_verifier = _authorize_oauth_pkce(client, "oauth_user", "oauth-pass")
-    resp = _exchange_oauth_pkce_code(client, auth_resp.get_json()["code"], code_verifier)
-    assert resp.status_code == 200
-    payload = resp.get_json()
-    assert "access_token" in payload
-    assert "refresh_token" in payload
-    assert payload.get("token_type") == "Bearer"
-    assert isinstance(payload.get("expires_in"), int)
+    def test_oauth_pkce_token_wrong_verifier_returns_invalid_grant(self, client):
+        '''Testare respingere schimb token OAuth PKCE cu code_verifier nepotrivit'''
+        """OAuth PKCE token exchange must reject mismatched PKCE verifiers."""
+        _register_oauth(client, "oauth_user3", "oauth-pass")
+        auth_resp, _ = _authorize_oauth_pkce(client, "oauth_user3", "oauth-pass", code_verifier="expected-verifier")
+        resp = _exchange_oauth_pkce_code(client, auth_resp.get_json()["code"], "wrong-verifier")
+        assert resp.status_code == 400
+        assert resp.get_json().get("error") == "invalid_grant"
 
 
-def test_oauth_pkce_authorize_wrong_password_returns_access_denied(client):
-    '''Testare respingere autentificare OAuth PKCE cu parola gresita'''
-    """OAuth PKCE authorize should deny resource owner authentication failures."""
-    _register_oauth(client, "oauth_user2", "correct-pass")
-    resp, _ = _authorize_oauth_pkce(client, "oauth_user2", "wrong-pass")
-    assert resp.status_code == 401
-    assert resp.get_json().get("error") == "access_denied"
+    def test_oauth_pkce_refresh_token_returns_new_access_token(self, client):
+        '''Testare refresh token OAuth PKCE - emitere token nou si rotatie refresh token'''
+        """OAuth PKCE refresh_token grant should issue a new bearer token and rotate refresh tokens."""
+        _register_oauth(client, "oauth_user4", "oauth-pass")
+        auth_resp, code_verifier = _authorize_oauth_pkce(client, "oauth_user4", "oauth-pass")
+        token_resp = _exchange_oauth_pkce_code(client, auth_resp.get_json()["code"], code_verifier)
+        refresh_token = token_resp.get_json()["refresh_token"]
+        refresh_resp = client.post(
+            "/oauth/pkce/token",
+            json={
+                "grant_type": "refresh_token",
+                "client_id": OAUTH_PKCE_CLIENT_ID,
+                "refresh_token": refresh_token,
+            },
+        )
+        assert refresh_resp.status_code == 200
+        payload = refresh_resp.get_json()
+        assert payload.get("token_type") == "Bearer"
+        assert payload.get("refresh_token") != refresh_token
 
 
-def test_oauth_pkce_token_wrong_verifier_returns_invalid_grant(client):
-    '''Testare respingere schimb token OAuth PKCE cu code_verifier nepotrivit'''
-    """OAuth PKCE token exchange must reject mismatched PKCE verifiers."""
-    _register_oauth(client, "oauth_user3", "oauth-pass")
-    auth_resp, _ = _authorize_oauth_pkce(client, "oauth_user3", "oauth-pass", code_verifier="expected-verifier")
-    resp = _exchange_oauth_pkce_code(client, auth_resp.get_json()["code"], "wrong-verifier")
-    assert resp.status_code == 400
-    assert resp.get_json().get("error") == "invalid_grant"
+    def test_oauth_simple_token_flow_returns_bearer_and_refresh_tokens(self, client):
+        '''Testare flux simplu OAuth - schimb cod fara PKCE contra tokeni bearer'''
+        """Simple OAuth flow should exchange authorization code without PKCE verifier."""
+        _register_oauth(client, "oauth_simple_user", "oauth-pass")
+        auth_resp = _authorize_oauth_simple(client, "oauth_simple_user", "oauth-pass")
+        assert auth_resp.status_code == 200
+        resp = _exchange_oauth_simple_code(client, auth_resp.get_json()["code"])
+        assert resp.status_code == 200
+        payload = resp.get_json()
+        assert payload.get("token_type") == "Bearer"
+        assert "access_token" in payload
+        assert "refresh_token" in payload
 
 
-def test_oauth_pkce_refresh_token_returns_new_access_token(client):
-    '''Testare refresh token OAuth PKCE - emitere token nou si rotatie refresh token'''
-    """OAuth PKCE refresh_token grant should issue a new bearer token and rotate refresh tokens."""
-    _register_oauth(client, "oauth_user4", "oauth-pass")
-    auth_resp, code_verifier = _authorize_oauth_pkce(client, "oauth_user4", "oauth-pass")
-    token_resp = _exchange_oauth_pkce_code(client, auth_resp.get_json()["code"], code_verifier)
-    refresh_token = token_resp.get_json()["refresh_token"]
-    refresh_resp = client.post(
-        "/oauth/pkce/token",
-        json={
-            "grant_type": "refresh_token",
-            "client_id": OAUTH_PKCE_CLIENT_ID,
-            "refresh_token": refresh_token,
-        },
-    )
-    assert refresh_resp.status_code == 200
-    payload = refresh_resp.get_json()
-    assert payload.get("token_type") == "Bearer"
-    assert payload.get("refresh_token") != refresh_token
-
-
-def test_oauth_simple_token_flow_returns_bearer_and_refresh_tokens(client):
-    '''Testare flux simplu OAuth - schimb cod fara PKCE contra tokeni bearer'''
-    """Simple OAuth flow should exchange authorization code without PKCE verifier."""
-    _register_oauth(client, "oauth_simple_user", "oauth-pass")
-    auth_resp = _authorize_oauth_simple(client, "oauth_simple_user", "oauth-pass")
-    assert auth_resp.status_code == 200
-    resp = _exchange_oauth_simple_code(client, auth_resp.get_json()["code"])
-    assert resp.status_code == 200
-    payload = resp.get_json()
-    assert payload.get("token_type") == "Bearer"
-    assert "access_token" in payload
-    assert "refresh_token" in payload
-
-
-def test_oauth_simple_refresh_token_returns_new_access_token(client):
-    '''Testare refresh token OAuth simplu - emitere token nou si rotatie refresh token'''
-    """Simple OAuth refresh_token grant should issue a new bearer token and rotate refresh tokens."""
-    _register_oauth(client, "oauth_simple_user2", "oauth-pass")
-    auth_resp = _authorize_oauth_simple(client, "oauth_simple_user2", "oauth-pass")
-    token_resp = _exchange_oauth_simple_code(client, auth_resp.get_json()["code"])
-    refresh_token = token_resp.get_json()["refresh_token"]
-    refresh_resp = client.post(
-        "/oauth/simple/token",
-        json={
-            "grant_type": "refresh_token",
-            "client_id": OAUTH_SIMPLE_CLIENT_ID,
-            "refresh_token": refresh_token,
-        },
-    )
-    assert refresh_resp.status_code == 200
-    assert refresh_resp.get_json().get("refresh_token") != refresh_token
+    def test_oauth_simple_refresh_token_returns_new_access_token(self, client):
+        '''Testare refresh token OAuth simplu - emitere token nou si rotatie refresh token'''
+        """Simple OAuth refresh_token grant should issue a new bearer token and rotate refresh tokens."""
+        _register_oauth(client, "oauth_simple_user2", "oauth-pass")
+        auth_resp = _authorize_oauth_simple(client, "oauth_simple_user2", "oauth-pass")
+        token_resp = _exchange_oauth_simple_code(client, auth_resp.get_json()["code"])
+        refresh_token = token_resp.get_json()["refresh_token"]
+        refresh_resp = client.post(
+            "/oauth/simple/token",
+            json={
+                "grant_type": "refresh_token",
+                "client_id": OAUTH_SIMPLE_CLIENT_ID,
+                "refresh_token": refresh_token,
+            },
+        )
+        assert refresh_resp.status_code == 200
+        assert refresh_resp.get_json().get("refresh_token") != refresh_token

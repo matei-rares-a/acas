@@ -76,3 +76,67 @@ def pkce_challenge(code_verifier: str) -> str:
     """Compute PKCE S256 code_challenge from a code_verifier."""
     digest = hashlib.sha256(code_verifier.encode()).digest()
     return base64.urlsafe_b64encode(digest).decode().rstrip("=")
+
+
+# ---------------------------------------------------------------------------
+# Shared pytest base classes
+# ---------------------------------------------------------------------------
+
+import pytest  # noqa: E402  (import after heavy server load to avoid circular issues)
+
+
+class BaseTestSuite:
+    """Base class for ZKP test suites.
+
+    Provides autouse ``reset_state`` (wipes DB + sessions before/after every
+    test) and the ``client`` fixture.  Inherit from this class in every test
+    file to avoid repeating the boilerplate.
+    """
+
+    @pytest.fixture(autouse=True)
+    def reset_state(self):
+        server.app.config["TESTING"] = True
+        with server.app.app_context():
+            server.db.session.remove()
+            server.db.drop_all()
+            server.db.create_all()
+        server.sessions.clear()
+        yield
+        with server.app.app_context():
+            server.db.session.remove()
+            server.db.drop_all()
+            server.db.create_all()
+        server.sessions.clear()
+
+    @pytest.fixture
+    def client(self):
+        return server.app.test_client()
+
+
+class OAuthTestSuite(BaseTestSuite):
+    """Extended base class that also clears OAuth / Authlib state.
+
+    Use this for test files that exercise OAuth2 endpoints (oauth_case,
+    perf_load) where ``clear_oauth_state`` and ``clear_authlib_state`` must
+    run around every test.
+    """
+
+    @pytest.fixture(autouse=True)
+    def reset_state(self):
+        server.app.config["TESTING"] = True
+        with server.app.app_context():
+            server.db.session.remove()
+            server.db.drop_all()
+            server.db.create_all()
+        server.sessions.clear()
+        server.clear_oauth_state()
+        server.clear_authlib_state()
+        yield
+        with server.app.app_context():
+            server.db.session.remove()
+            server.db.drop_all()
+            server.db.create_all()
+        server.sessions.clear()
+        server.clear_oauth_state()
+        server.clear_authlib_state()
+

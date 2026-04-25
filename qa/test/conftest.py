@@ -8,6 +8,14 @@ try:
 except ImportError:
     pass
 
+# Ensure qa/ is on sys.path so every test file (including perf/) can
+# do `from qa_utils import ...` without carrying its own path-setup block.
+import sys as _sys
+from pathlib import Path as _Path
+_QA_ROOT = _Path(__file__).resolve().parent.parent  # qa/test/ → qa/
+if str(_QA_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_QA_ROOT))
+
 import pytest
 from pathlib import Path
 

@@ -1,50 +1,20 @@
-from pathlib import Path
 import secrets as secrets_module
-import sys
 import timeit
 import statistics
 
 import pytest
 
-_QA_PATH = Path(__file__).resolve().parents[1]
-if str(_QA_PATH) not in sys.path:
-    sys.path.insert(0, str(_QA_PATH))
 from qa_utils import (
-    server,
-    derive_password_x,
-    pkce_challenge,
-    OAUTH_PKCE_CLIENT_ID,
-    OAUTH_SIMPLE_CLIENT_ID,
-    OAUTH_REDIRECT_URI,
-    AUTHLIB_CLIENT_ID,
-    AUTHLIB_REDIRECT_URI,
+    server, derive_password_x, pkce_challenge,
+    OAUTH_PKCE_CLIENT_ID, OAUTH_SIMPLE_CLIENT_ID, OAUTH_REDIRECT_URI,
+    AUTHLIB_CLIENT_ID, AUTHLIB_REDIRECT_URI,
+    OAuthTestSuite,
 )
 
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-@pytest.fixture(autouse=True)
-def reset_state():
-    server.app.config["TESTING"] = True
-    with server.app.app_context():
-        server.db.session.remove()
-        server.db.drop_all()
-        server.db.create_all()
-    server.sessions.clear()
-    server.clear_oauth_state()
-    server.clear_authlib_state()
-    yield
-    with server.app.app_context():
-        server.db.session.remove()
-        server.db.drop_all()
-        server.db.create_all()
-    server.sessions.clear()
-    server.clear_oauth_state()
-    server.clear_authlib_state()
-
-
 # ---------------------------------------------------------------------------
 # Prompt 2 – Micro-benchmark: ZKP component latency vs Classic (timeit)
 # ---------------------------------------------------------------------------
@@ -120,35 +90,36 @@ def _benchmark_latency(iterations=100):
 
     return results
 
+class TestBenchmark(OAuthTestSuite):
 
-def test_benchmark_prints_latency_table(capsys):
-    '''Testare benchmark micro-latenta operatii criptografice - afisare tabel rezultate'''
-    """Test run benchmark loop, test print table, server math stay measurable."""
-    data = _benchmark_latency(iterations=100)
-    header = f"| {'Operation':<40} | {'Mean (ms)':>10} | {'Min (ms)':>10} | {'Max (ms)':>10} | {'P95 (ms)':>10} |"
-    sep = "|" + "-" * 42 + "|" + ("-" * 12 + "|") * 4
-    print()
-    print(header)
-    print(sep)
-    for op, vals in data.items():
-        print(
-            f"| {op:<40} | {vals['mean']:>10.4f} | {vals['min']:>10.4f}"
-            f" | {vals['max']:>10.4f} | {vals['p95']:>10.4f} |"
-        )
-    output = capsys.readouterr().out
-    assert "Operation" in output
-    assert "Mean (ms)" in output
-    assert "derive_password_x (ms)" in output
-    assert all(v["mean"] >= 0 for v in data.values())
+    def test_benchmark_prints_latency_table(self, capsys):
+        '''Testare benchmark micro-latenta operatii criptografice - afisare tabel rezultate'''
+        """Test run benchmark loop, test print table, server math stay measurable."""
+        data = _benchmark_latency(iterations=100)
+        header = f"| {'Operation':<40} | {'Mean (ms)':>10} | {'Min (ms)':>10} | {'Max (ms)':>10} | {'P95 (ms)':>10} |"
+        sep = "|" + "-" * 42 + "|" + ("-" * 12 + "|") * 4
+        print()
+        print(header)
+        print(sep)
+        for op, vals in data.items():
+            print(
+                f"| {op:<40} | {vals['mean']:>10.4f} | {vals['min']:>10.4f}"
+                f" | {vals['max']:>10.4f} | {vals['p95']:>10.4f} |"
+            )
+        output = capsys.readouterr().out
+        assert "Operation" in output
+        assert "Mean (ms)" in output
+        assert "derive_password_x (ms)" in output
+        assert all(v["mean"] >= 0 for v in data.values())
 
 
-# ---------------------------------------------------------------------------
-# Prompt 2b – End-to-end protocol comparison: ZKP vs OAuth2, equal footing
-# ---------------------------------------------------------------------------
-# Both protocols complete exactly 2 HTTP round-trips per authentication.
-# The timer covers the FULL client-side authentication work:
-#   ZKP   : rand_r + g^r mod P + 2 HTTP calls + s = (r + c·x) mod Q
-#   OAuth2: code_verifier + SHA-256 PKCE challenge + 2 HTTP calls
+    # ---------------------------------------------------------------------------
+    # Prompt 2b – End-to-end protocol comparison: ZKP vs OAuth2, equal footing
+    # ---------------------------------------------------------------------------
+    # Both protocols complete exactly 2 HTTP round-trips per authentication.
+    # The timer covers the FULL client-side authentication work:
+    #   ZKP   : rand_r + g^r mod P + 2 HTTP calls + s = (r + c·x) mod Q
+    #   OAuth2: code_verifier + SHA-256 PKCE challenge + 2 HTTP calls
 
 def _benchmark_e2e_flows(iterations=50):
     """Full end-to-end authentication latency including all client-side crypto."""
@@ -276,118 +247,118 @@ def _benchmark_e2e_flows(iterations=50):
     return results
 
 
-def test_benchmark_e2e_protocol_comparison(capsys):
-    '''Testare comparatie latenta end-to-end ZKP vs OAuth2 inclusiv crypto client'''
-    """Compare ZKP vs OAuth2 end-to-end: full authentication latency including all client-side crypto."""
-    data = _benchmark_e2e_flows(iterations=50)
-    header = (
-        f"| {'Protocol Flow':<52} | {'Mean (ms)':>10} | {'Min (ms)':>10}"
-        f" | {'Max (ms)':>10} | {'P95 (ms)':>10} |"
-    )
-    sep = "|" + "-" * 54 + "|" + ("-" * 12 + "|") * 4
-    print()
-    print("END-TO-END PROTOCOL COMPARISON  (full auth latency: client-side crypto + 2 HTTP calls each)")
-    print(header)
-    print(sep)
-    for op, vals in data.items():
-        print(
-            f"| {op:<52} | {vals['mean']:>10.4f} | {vals['min']:>10.4f}"
-            f" | {vals['max']:>10.4f} | {vals['p95']:>10.4f} |"
+    def test_benchmark_e2e_protocol_comparison(self, capsys):
+        '''Testare comparatie latenta end-to-end ZKP vs OAuth2 inclusiv crypto client'''
+        """Compare ZKP vs OAuth2 end-to-end: full authentication latency including all client-side crypto."""
+        data = _benchmark_e2e_flows(iterations=50)
+        header = (
+            f"| {'Protocol Flow':<52} | {'Mean (ms)':>10} | {'Min (ms)':>10}"
+            f" | {'Max (ms)':>10} | {'P95 (ms)':>10} |"
         )
-    output = capsys.readouterr().out
-    assert "ZKP full flow" in output
-    assert "OAuth2 PKCE full flow" in output
-    assert "Authlib PKCE full flow" in output
-    assert all(v["mean"] >= 0 for v in data.values())
-
-
-# ---------------------------------------------------------------------------
-# Prompt 4 – Memory footprint: sessions dict under DoS-style commit flood
-# ---------------------------------------------------------------------------
-
-def test_sessions_dict_memory_footprint_under_commit_flood():
-    '''Testare amprenta memorie dict sesiuni sub flood de commit-uri in loturi 100/500/1000 (simulare DoS stare)'''
-    """Server receive 100 then 500 then 1000 commits from same user, each new commit evict previous session with 409 or 200, tracemalloc measure memory after each batch, server keep at most 1 active session after flood, final deep memory stay below 20x the 100-commit baseline."""
-    import sys as _sys
-    import tracemalloc
-
-    P, G, Q = server.P, server.G, server.Q
-
-    def _deep_sizeof(obj, seen=None):
-        """Recursively sum sys.getsizeof over obj and all nested objects."""
-        if seen is None:
-            seen = set()
-        oid = id(obj)
-        if oid in seen:
-            return 0
-        seen.add(oid)
-        size = _sys.getsizeof(obj)
-        if isinstance(obj, dict):
-            size += sum(_deep_sizeof(k, seen) + _deep_sizeof(v, seen) for k, v in obj.items())
-        elif isinstance(obj, (list, tuple, set, frozenset)):
-            size += sum(_deep_sizeof(i, seen) for i in obj)
-        return size
-
-    with server.app.test_client() as c:
-        with server.app.app_context():
-            x = derive_password_x("flood-pass")
-            y = pow(G, x, P)
-            server.db.session.add(server.User(client_id="flood_user", secret_y=str(y)))
-            server.db.session.commit()
-
-        sizes = {}
-        for batch in (100, 500, 1000):
-            server.sessions.clear()
-            tracemalloc.start()
-
-            for _ in range(batch):
-                rand_r = secrets_module.randbelow(P - 2) + 1
-                t = pow(G, rand_r, P)
-                resp = c.post("/login/commit", json={"client_id": "flood_user", "commitment_t": t})
-                assert resp.status_code in (200, 409)
-
-            current_mem, peak_mem = tracemalloc.get_traced_memory()
-            tracemalloc.stop()
-
-            deep_size = _deep_sizeof(server.sessions)
-            sizes[batch] = {
-                "shallow_bytes": _sys.getsizeof(server.sessions),
-                "deep_bytes": deep_size,
-                "tracemalloc_current_kb": current_mem // 1024,
-                "tracemalloc_peak_kb": peak_mem // 1024,
-                "active_entries": len(server.sessions),
-            }
+        sep = "|" + "-" * 54 + "|" + ("-" * 12 + "|") * 4
+        print()
+        print("END-TO-END PROTOCOL COMPARISON  (full auth latency: client-side crypto + 2 HTTP calls each)")
+        print(header)
+        print(sep)
+        for op, vals in data.items():
             print(
-                f"After {batch:>5} commits: "
-                f"shallow={sizes[batch]['shallow_bytes']} B, "
-                f"deep={sizes[batch]['deep_bytes']} B, "
-                f"tracemalloc current={sizes[batch]['tracemalloc_current_kb']} KB "
-                f"peak={sizes[batch]['tracemalloc_peak_kb']} KB, "
-                f"active entries={sizes[batch]['active_entries']}"
+                f"| {op:<52} | {vals['mean']:>10.4f} | {vals['min']:>10.4f}"
+                f" | {vals['max']:>10.4f} | {vals['p95']:>10.4f} |"
             )
+        output = capsys.readouterr().out
+        assert "ZKP full flow" in output
+        assert "OAuth2 PKCE full flow" in output
+        assert "Authlib PKCE full flow" in output
+        assert all(v["mean"] >= 0 for v in data.values())
 
-    assert len(server.sessions) <= 1
-    assert sizes[1000]["deep_bytes"] < sizes[100]["deep_bytes"] * 20
+
+    # ---------------------------------------------------------------------------
+    # Prompt 4 – Memory footprint: sessions dict under DoS-style commit flood
+    # ---------------------------------------------------------------------------
+
+    def test_sessions_dict_memory_footprint_under_commit_flood(self):
+        '''Testare amprenta memorie dict sesiuni sub flood de commit-uri in loturi 100/500/1000 (simulare DoS stare)'''
+        """Server receive 100 then 500 then 1000 commits from same user, each new commit evict previous session with 409 or 200, tracemalloc measure memory after each batch, server keep at most 1 active session after flood, final deep memory stay below 20x the 100-commit baseline."""
+        import sys as _sys
+        import tracemalloc
+
+        P, G, Q = server.P, server.G, server.Q
+
+        def _deep_sizeof(obj, seen=None):
+            """Recursively sum sys.getsizeof over obj and all nested objects."""
+            if seen is None:
+                seen = set()
+            oid = id(obj)
+            if oid in seen:
+                return 0
+            seen.add(oid)
+            size = _sys.getsizeof(obj)
+            if isinstance(obj, dict):
+                size += sum(_deep_sizeof(k, seen) + _deep_sizeof(v, seen) for k, v in obj.items())
+            elif isinstance(obj, (list, tuple, set, frozenset)):
+                size += sum(_deep_sizeof(i, seen) for i in obj)
+            return size
+
+        with server.app.test_client() as c:
+            with server.app.app_context():
+                x = derive_password_x("flood-pass")
+                y = pow(G, x, P)
+                server.db.session.add(server.User(client_id="flood_user", secret_y=str(y)))
+                server.db.session.commit()
+
+            sizes = {}
+            for batch in (100, 500, 1000):
+                server.sessions.clear()
+                tracemalloc.start()
+
+                for _ in range(batch):
+                    rand_r = secrets_module.randbelow(P - 2) + 1
+                    t = pow(G, rand_r, P)
+                    resp = c.post("/login/commit", json={"client_id": "flood_user", "commitment_t": t})
+                    assert resp.status_code in (200, 409)
+
+                current_mem, peak_mem = tracemalloc.get_traced_memory()
+                tracemalloc.stop()
+
+                deep_size = _deep_sizeof(server.sessions)
+                sizes[batch] = {
+                    "shallow_bytes": _sys.getsizeof(server.sessions),
+                    "deep_bytes": deep_size,
+                    "tracemalloc_current_kb": current_mem // 1024,
+                    "tracemalloc_peak_kb": peak_mem // 1024,
+                    "active_entries": len(server.sessions),
+                }
+                print(
+                    f"After {batch:>5} commits: "
+                    f"shallow={sizes[batch]['shallow_bytes']} B, "
+                    f"deep={sizes[batch]['deep_bytes']} B, "
+                    f"tracemalloc current={sizes[batch]['tracemalloc_current_kb']} KB "
+                    f"peak={sizes[batch]['tracemalloc_peak_kb']} KB, "
+                    f"active entries={sizes[batch]['active_entries']}"
+                )
+
+        assert len(server.sessions) <= 1
+        assert sizes[1000]["deep_bytes"] < sizes[100]["deep_bytes"] * 20
 
 
-r"""
-Context inițial (de reamintit agentului)
-"Acționează ca un Security QA Automation Engineer. Scrie teste pentru urmatoarele prompturi"
+    r"""
+    Context inițial (de reamintit agentului)
+    "Acționează ca un Security QA Automation Engineer. Scrie teste pentru urmatoarele prompturi"
 
-Prompt 2: Testarea de Latență (Micro-Benchmarking Client și Server)
-"Folosește benchmark-ul din testul test_benchmark_prints_latency_table (bazat pe librăria timeit)
-pentru a măsura latența componentelor individuale ale sistemului nostru ZKP vs. Clasic.
-Măsoară timpul de execuție pentru funcțiile de client: derivarea parolei și generarea angajamentului.
-Măsoară timpul de execuție pentru funcțiile de server ZKP: /login/commit și /login/verify.
-Rulează fiecare măsurătoare de 100 de ori și calculează Media, Minimul, Maximul și P95 în ms."
+    Prompt 2: Testarea de Latență (Micro-Benchmarking Client și Server)
+    "Folosește benchmark-ul din testul test_benchmark_prints_latency_table (bazat pe librăria timeit)
+    pentru a măsura latența componentelor individuale ale sistemului nostru ZKP vs. Clasic.
+    Măsoară timpul de execuție pentru funcțiile de client: derivarea parolei și generarea angajamentului.
+    Măsoară timpul de execuție pentru funcțiile de server ZKP: /login/commit și /login/verify.
+    Rulează fiecare măsurătoare de 100 de ori și calculează Media, Minimul, Maximul și P95 în ms."
 
-Prompt 2b – End-to-end protocol comparison: ZKP vs OAuth2, equal footing
-Both protocols complete exactly 2 HTTP round-trips per authentication.
-Timer covers FULL client-side work: client crypto + 2 HTTP calls.
+    Prompt 2b – End-to-end protocol comparison: ZKP vs OAuth2, equal footing
+    Both protocols complete exactly 2 HTTP round-trips per authentication.
+    Timer covers FULL client-side work: client crypto + 2 HTTP calls.
 
-Prompt 4: Testarea Amprentei de Memorie (Sesiuni Concurente)
-"Testează consumul de memorie al dicționarului sessions din serverul Flask.
-Injectează treptat 100, 500, 1000 cereri de POST /login/commit (fără /login/verify).
-Măsoară dimensiunea în memorie (RAM) a dicționarului sessions la fiecare pas.
-Validează că serverul nu poate fi doborât prin epuizarea memoriei (atac DoS pe resursa de memorie)."
-"""
+    Prompt 4: Testarea Amprentei de Memorie (Sesiuni Concurente)
+    "Testează consumul de memorie al dicționarului sessions din serverul Flask.
+    Injectează treptat 100, 500, 1000 cereri de POST /login/commit (fără /login/verify).
+    Măsoară dimensiunea în memorie (RAM) a dicționarului sessions la fiecare pas.
+    Validează că serverul nu poate fi doborât prin epuizarea memoriei (atac DoS pe resursa de memorie)."
+    """
