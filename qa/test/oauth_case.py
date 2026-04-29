@@ -13,7 +13,7 @@ from qa_utils import (
 def _register_oauth(client, client_id, password):
     """Register user credentials for ZKP, PKCE, Simple and Authlib OAuth."""
     from qa_utils import derive_password_x
-    x = derive_password_x(password)
+    x,_ = derive_password_x(password)
     y = pow(server.G, x, server.P)
     resp = client.post("/register", json={"client_id": client_id, "secret_y": y})
     assert resp.status_code in (200, 201)

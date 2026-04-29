@@ -17,7 +17,7 @@ class TestNegativeCases(BaseTestSuite):
         register_user(client, client_id, correct_password)
         rand_r, challenge_c, session_id = start_commit(client, client_id)
 
-        wrong_x = derive_password_x(wrong_password)
+        wrong_x, _ = derive_password_x(wrong_password)
         wrong_solution_s = (rand_r + challenge_c * wrong_x) % server.Q
 
         verify_response = client.post(

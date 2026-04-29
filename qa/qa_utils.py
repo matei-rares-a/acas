@@ -29,16 +29,15 @@ assert spec and spec.loader
 spec.loader.exec_module(server)
 
 
-def derive_password_x(password_string: str) -> int:
+def derive_password_x(password_string: str, salt: bytes = secrets_module.token_bytes(16)) -> int:
     """Derive private scalar x from a password using scrypt KDF."""
-    salt = secrets_module.token_bytes(16)
     hashed = hashlib.scrypt(password_string.encode(), salt=salt, n=2**11, r=8, p=1)
-    return int.from_bytes(hashed, "big") % server.Q
+    return int.from_bytes(hashed, "big") % server.Q, salt
 
 
 def register_user(client, client_id: str, password: str):
     """Register a new user and return (x, y)."""
-    x = derive_password_x(password)
+    x, _ = derive_password_x(password)
     y = pow(server.G, x, server.P)
     resp = client.post("/register", json={"client_id": client_id, "secret_y": y})
     assert resp.status_code in (200, 201)
@@ -86,12 +85,7 @@ import pytest  # noqa: E402  (import after heavy server load to avoid circular i
 
 
 class BaseTestSuite:
-    """Base class for ZKP test suites.
-
-    Provides autouse ``reset_state`` (wipes DB + sessions before/after every
-    test) and the ``client`` fixture.  Inherit from this class in every test
-    file to avoid repeating the boilerplate.
-    """
+    """Base class for ZKP test suites."""
 
     @pytest.fixture(autouse=True)
     def reset_state(self):
@@ -114,12 +108,7 @@ class BaseTestSuite:
 
 
 class OAuthTestSuite(BaseTestSuite):
-    """Extended base class that also clears OAuth / Authlib state.
-
-    Use this for test files that exercise OAuth2 endpoints (oauth_case,
-    perf_load) where ``clear_oauth_state`` and ``clear_authlib_state`` must
-    run around every test.
-    """
+    """Extended base class that also clears OAuth / Authlib state."""
 
     @pytest.fixture(autouse=True)
     def reset_state(self):

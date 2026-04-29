@@ -2,14 +2,6 @@ from pathlib import Path
 
 
 # TODO (Manual Intervention Required)
-# =============================================================================
-# The following two procedures CANNOT be automated in Python because they
-# require physical network interception tools (Wireshark, tshark, Burp Suite)
-# and human inspection of captured packets.
-#
-# Follow the step-by-step instructions in the docstrings below to execute
-# the manual security audits and document the results for the dissertation.
-# =============================================================================
 
 
 def manual_test_traffic_sniffing():
@@ -27,10 +19,6 @@ def manual_test_traffic_sniffing():
 
       2. Start Wireshark (or tshark) on the loopback interface:
          - Windows: capture on "Loopback Pseudo-Interface 1" or "\\Device\\NPF_Loopback"
-         - Linux/macOS: capture on "lo"
-         - tshark command:
-               tshark -i lo -Y 'http.request.method == "POST"' -T fields \
-                      -e http.request.uri -e text
 
       3. Open a browser, navigate to http://localhost:5000 and perform a
          complete ZKP login:
@@ -39,28 +27,13 @@ def manual_test_traffic_sniffing():
               - POST /login/commit  with {client_id, commitment_t}
               - POST /login/verify  with {solution_s}  (header: X-Auth-Session)
 
-    What to look for in Wireshark/tshark:
-      - Filter:  http.request.method == "POST"
-      - For /login/commit:  payload contains  { client_id, commitment_t }
-      - For /login/verify:  payload contains  { solution_s }
-
-    What MUST NOT appear in any captured packet:
-      - The plaintext password string
-      - The private key x  (the scrypt-derived integer)
-      - Any field named "password", "parola", "x", "private"
-
     Theoretical conclusion:
       Even if an adversary captures the full network exchange {t, c, s} they
       cannot invert the discrete logarithm relationship y = g^x mod p for a
       2048-bit safe prime.  The zero-knowledge property guarantees that the
       proof {t, c, s} reveals no information about x beyond the fact that
       the prover knows it.
-
-    Expected result: PASS if no plaintext password or private key is visible.
-    Document: Screenshot of Wireshark showing captured POST bodies.
-    """
-    # TODO: Execute the steps above and paste Wireshark output / screenshot
-    #       into the dissertation (Chapter 6 - Security Analysis).
+"""
     pass
 
 
@@ -71,6 +44,7 @@ def manual_test_mitm_weak_parameters():
     Test:    Man-in-the-Middle on /get-parameters (Weak Parameter Injection)
     Goal:    Show that substituting a small prime P breaks the DLP hardness
              assumption and allows an attacker to recover x trivially.
+             That means, the protocol would still need to be over https/tls to prevent this attack.
 
     Setup:
       1. Start the Flask server:

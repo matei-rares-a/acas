@@ -211,7 +211,7 @@ class TestSecurityCases(BaseTestSuite):
         '''Testare unicitate challenge_c la fiecare sesiune (calitate RNG)'''
         """Client commit 50 times, server draw fresh c from [1, Q-1] each time, all 50 challenge values are distinct and inside valid range."""
         client_id = "uniq_user"
-        x = derive_password_x("uniq-pass")
+        x,_ = derive_password_x("uniq-pass")
         y = pow(server.G, x, server.P)
         with server.app.app_context():
             server.db.session.add(server.User(client_id=client_id, secret_y=str(y)))

@@ -4,9 +4,8 @@
 # locustfile.py — Locust load-test scenarios for all four auth protocols.
 # Run against a live server:
 #   python server_app/server.py
-#   locust -f qa/measurement/locustfile.py --host=http://localhost:5000 --users 100 --spawn-rate 10 --headless --run-time 60s --html locust_report.html
+#   locust -f qa/measurement/locustfile.py --host=http://localhost:5000 --users 100 --spawn-rate 10 --headless --run-time 60s --html qa/measurement/generated/locust_report.html
 #
-# This file is NOT collected by pytest (no test_ functions, no conftest hooks apply).
 
 from pathlib import Path
 import secrets as secrets_module
@@ -38,7 +37,7 @@ class SchnorrLoadUser(HttpUser):
     def on_start(self):
         client_id = f"locust_{secrets_module.token_hex(8)}"
         password = secrets_module.token_hex(16)
-        self._x = derive_password_x(password)
+        self._x, self._salt = derive_password_x(password)
         self._y = pow(server.G, self._x, server.P)
         self._client_id = client_id
         self._password = password
@@ -82,7 +81,8 @@ class SchnorrLoadUser(HttpUser):
         payload = commit.json()
         challenge_c = int(payload["challenge_c"])
         session_id = payload["session_id"]
-        s = (rand_r + challenge_c * self._x) % server.Q
+        x,_ = derive_password_x(self._password, self._salt)
+        s = (rand_r + challenge_c * x) % server.Q
         verify = self.client.post(
             "/login/verify",
             headers={"X-Auth-Session": session_id},

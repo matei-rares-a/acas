@@ -5,7 +5,7 @@ import pytest
 
 from qa_utils import server, derive_password_x, BaseTestSuite
 def register_and_commit(client, client_id, password):
-    x = derive_password_x(password)
+    x, _ = derive_password_x(password)
     y = pow(server.G, x, server.P)
     resp = client.post("/register", json={"client_id": client_id, "secret_y": y})
     assert resp.status_code in (200, 201)
@@ -54,7 +54,7 @@ class TestCornerCases(BaseTestSuite):
     def test_commit_rejects_trivial_subgroup_values_and_no_orphan_session(self, client, trivial_t):
         '''Testarea atacului trivial zero/one pe commit (commitment_t = 0, 1, -1, P-1)'''
         """Client send trivial commitment, server reject and leave no orphan session."""
-        x = derive_password_x("trivial-pass")
+        x, _ = derive_password_x("trivial-pass")
         y = pow(server.G, x, server.P)
         client.post("/register", json={"client_id": "trivial_commit_user", "secret_y": y})
 
@@ -74,7 +74,7 @@ class TestCornerCases(BaseTestSuite):
         '''Testarea race condition la commit '''
         """Many client commits hit together, server avoid crash by dropping sessions and keep 1 """
         client_id = "race_user"
-        x = derive_password_x("race-pass")
+        x, _ = derive_password_x("race-pass")
         y = pow(server.G, x, server.P)
         with server.app.app_context():
             server.db.session.add(server.User(client_id=client_id, secret_y=str(y)))
@@ -111,7 +111,7 @@ class TestCornerCases(BaseTestSuite):
     def test_commit_handles_malformed_commitment_t_without_crash(self, client, bad_t_value):
         '''Testare tip de data pentru commitment_t'''
         """Client send malformed commitment_t types, server return 400/422 and not crash."""
-        x = derive_password_x("type-commit-pass")
+        x, _ = derive_password_x("type-commit-pass")
         y = pow(server.G, x, server.P)
         client.post("/register", json={"client_id": "type_confusion_commit_user", "secret_y": y})
 
@@ -128,7 +128,7 @@ class TestCornerCases(BaseTestSuite):
         '''Testare tip de data pentru solution_s'''
         """Client send malformed solution types, server return error and not crash."""
         client_id = "type_confusion_user"
-        x = derive_password_x("type-pass")
+        x, _ = derive_password_x("type-pass")
         y = pow(server.G, x, server.P)
         client.post("/register", json={"client_id": client_id, "secret_y": y})
         rand_r = secrets_module.randbelow(server.P - 2) + 1
@@ -152,7 +152,7 @@ class TestCornerCases(BaseTestSuite):
         '''Testare cazuri pt header'''
         """Client send weird session headers, server handle safely and keep stable behavior."""
         client_id = "header_edge_user"
-        x = derive_password_x("header-pass")
+        x, _ = derive_password_x("header-pass")
         y = pow(server.G, x, server.P)
         client.post("/register", json={"client_id": client_id, "secret_y": y})
         rand_r = secrets_module.randbelow(server.P - 2) + 1

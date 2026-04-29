@@ -2,7 +2,7 @@
 Authlib-backed OAuth 2.0 authorization server (RFC 6749 + RFC 7636 PKCE).
 
 This module provides a reference-compliant OAuth2 implementation using the
-Authlib library for comparison in the master's research on ZKP-based auth.
+Authlib library for comparison with ZKP-based auth.
 
 Password verification uses SHA-256 (same as the custom OAuth implementations)
 so that all three OAuth variants share an identical, negligible credential-check

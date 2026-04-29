@@ -13,7 +13,7 @@ class TestPositiveCases(BaseTestSuite):
         """Client send register data, server save public value, server doesn't keep plain password."""
         client_id = "test_user"
         raw_password = "my-secure-password-12345"
-        password_x = derive_password_x(raw_password)
+        password_x,_ = derive_password_x(raw_password)
         secret_y = pow(server.G, password_x, server.P)
 
         response = client.post(
@@ -40,8 +40,8 @@ class TestPositiveCases(BaseTestSuite):
         initial_password = "initial-password-version1"
         updated_password = "updated-password-version2"
 
-        initial_password_x = derive_password_x(initial_password)
-        updated_password_x = derive_password_x(updated_password)
+        initial_password_x,_ = derive_password_x(initial_password)
+        updated_password_x,_ = derive_password_x(updated_password)
 
         initial_secret_y = pow(server.G, initial_password_x, server.P)
         updated_secret_y = pow(server.G, updated_password_x, server.P)
@@ -72,7 +72,7 @@ class TestPositiveCases(BaseTestSuite):
         client_id = "test_login"
         raw_password = "test-password-secure"
 
-        password_x = derive_password_x(raw_password)
+        password_x,_ = derive_password_x(raw_password)
         secret_y = pow(server.G, password_x, server.P)
 
         with server.app.app_context():

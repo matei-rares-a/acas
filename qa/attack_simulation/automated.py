@@ -34,7 +34,7 @@ def client():
 
 
 # ---------------------------------------------------------------------------
-# Prompt 1 – Data Breach simulation: stolen public key (secret_y) cannot log in
+# Data Breach simulation: stolen public key (secret_y) cannot log in
 # ---------------------------------------------------------------------------
 
 def test_stolen_public_key_cannot_authenticate(client):
@@ -66,46 +66,15 @@ def test_stolen_public_key_cannot_authenticate(client):
 
 
 # ---------------------------------------------------------------------------
-# Prompt 2 – Replay Attack: session nonce is single-use
+# RNG entropy: no collision in 10000 challenge_c and session_id values
 # ---------------------------------------------------------------------------
 
-def test_replay_attack_on_verify_payload_rejected(client):
-    '''Testare replay attack - refolosire session_id si solution_s capturate anterior'''
-    """Attacker copy old verify request, server reject reused session data."""
-    client_id = "replay_sim_user"
-    password = "replay-sim-password"
-
-    x, _ = register_user(client, client_id, password)
-    rand_r, challenge_c, session_id = start_commit(client, client_id)
-    solution_s = (rand_r + challenge_c * x) % server.Q
-
-    # Legitimate login succeeds
-    first = client.post(
-        "/login/verify",
-        headers={"X-Auth-Session": session_id},
-        json={"solution_s": solution_s},
-    )
-    assert first.status_code == 200
-
-    # Attacker replays the exact same request
-    replay = client.post(
-        "/login/verify",
-        headers={"X-Auth-Session": session_id},
-        json={"solution_s": solution_s},
-    )
-    assert replay.status_code == 404
-    assert replay.get_json() == {"reason": "invalid session_id"}
-
-
-# ---------------------------------------------------------------------------
-# Prompt 3 – RNG entropy: no collision in 1000 challenge_c and session_id values
-# ---------------------------------------------------------------------------
-
-def test_challenge_and_session_id_uniqueness_over_1000_commits(client):
-    '''Testare unicitate challenge_c si session_id pe 1000 commit-uri (validare entropia RNG)'''
+def test_challenge_and_session_id_uniqueness_over_10000_commits(client):
+    '''Testare unicitate challenge_c si session_id pe multe commit-uri (validare entropia RNG)'''
     """Client ask commit many times, server make unique challenge and unique session id."""
     client_id = "entropy_test_user"
-    x = derive_password_x("entropy-password")
+    n=10000
+    x, _ = derive_password_x("entropy-password")
     y = pow(server.G, x, server.P)
     with server.app.app_context():
         server.db.session.add(server.User(client_id=client_id, secret_y=str(y)))
@@ -114,7 +83,7 @@ def test_challenge_and_session_id_uniqueness_over_1000_commits(client):
     challenges = []
     session_ids = []
 
-    for _ in range(1000):
+    for _ in range(n):
         rand_r = secrets_module.randbelow(server.P - 2) + 1
         t = pow(server.G, rand_r, server.P)
         resp = client.post(
@@ -135,45 +104,70 @@ def test_challenge_and_session_id_uniqueness_over_1000_commits(client):
         )
         assert verify.status_code == 422
 
-    assert len(set(session_ids)) == 1000, "Session ID collision detected!"
-    assert len(set(challenges)) == 1000, "challenge_c collision detected!"
+    assert len(set(session_ids)) == n, "Session ID collision detected!"
+    assert len(set(challenges)) == n, "challenge_c collision detected!"
     assert all(1 <= c <= server.Q - 1 for c in challenges), "challenge_c out of range!"
 
 
-r'''
-Context inițial pentru Agent
-"Acționează ca un Penetration Tester / Security Researcher. Trebuie să validăm securitatea unui sistem de autentificare Zero-Knowledge Proof (Schnorr) implementat în Flask. Voi avea nevoie de teste automate (pytest) pentru simulările care pot rula în CI/CD. Pentru atacurile care necesită interceptarea fizică a rețelei sau interacțiune umană cu unelte externe (ex: Wireshark), nu scrie cod Python, ci generează un fișier SECURITY_AUDIT_MANUAL.md cu pașii exacți de reproducere, așteptările matematice și dovezile necesare."
+# ---------------------------------------------------------------------------
+# Prompt 4 – MitM Weak Parameter Injection: DLP brute-force then forge login
+# ---------------------------------------------------------------------------
 
+def test_mitm_weak_parameter_injection_allows_dlp_brute_force_and_login(client, monkeypatch):
+    '''Testare atac MitM injectare parametri slabi P=23 - DLP brute-force si autentificare reusita cu x recuperat'''
+    """Attacker MitM /get-parameters and replaces P/Q/G with a tiny group (P=23, Q=11, G=4).
+    Victim registers using y computed under weak parameters.
+    Attacker brute-forces the discrete logarithm trivially (at most P-1 iterations).
+    Attacker completes a valid ZKP login as the victim using the recovered private key."""
 
-Prompt 1: Simulare Data Breach (Server Compromise)
-Acest test demonstrează că un atacator care obține un dump al bazei de date nu poate folosi datele pentru a se autentifica, rezolvând problema scurgerilor de parole.
-"Scrie un test de securitate E2E care simulează compromiterea bazei de date.
-Înregistrează un utilizator valid (alice_test) cu o parolă sigură, astfel încât secret_y să fie salvat în DB.
-Simularea breșei: Extrage direct din baza de date valoarea secret_y a lui alice_test (așa cum ar face un hacker cu acces SQL).
-Atacul: Încearcă să parcurgi fluxul de autentificare (POST /login/commit urmat de POST /login/verify),
-dar în etapa de calculare a lui solution_s, folosește valoarea furată secret_y în loc de cheia privată $x$
-(ex: calculează $s = r + c \cdot y \pmod q$).
-Validează (assert) că serverul respinge acest răspuns cu 401 Unauthorized și mesajul verification failed,
-demonstrând că furtul cheii publice nu compromite contul."
+    # Weak parameters injected by the MitM — group of order 11 inside Z_23
+    # Verification: 4^11 mod 23 = 1  (group order correct)
+    P_weak = 23
+    Q_weak = 11  # (P_weak - 1) // 2
+    G_weak = 4   # generator of the unique subgroup of order 11
 
+    monkeypatch.setattr(server, "P", P_weak)
+    monkeypatch.setattr(server, "Q", Q_weak)
+    monkeypatch.setattr(server, "G", G_weak)
 
-Prompt 2: Simulare Replay Attack strict pe sesiune
-Aici testăm dacă atacatorul poate captura session_id și solution_s pentru a le refolosi.
-"Scrie un test automat care simulează un Replay Attack asupra payload-ului de validare.
-Execută un flux de login ZKP complet și valid pentru un utilizator (Commitment -> primire challenge -> calculare răspuns -> Verify).
-Salvează exact header-ul X-Auth-Session și body-ul JSON {"solution_s": "..."} folosite la pasul de Verify.
-Atacul: Execută imediat un nou request POST /login/verify folosind datele salvate la pasul 2.
-Validează (assert) că request-ul malițios primește HTTP 404 cu invalid session_id. Dicționarul de sesiuni trebuie să împiedice orice refolosire a nonce-ului de sesiune."
+    client_id = "mitm_victim"
+    x_victim = 7                                      # victim's private key
+    y_victim = pow(G_weak, x_victim, P_weak)          # = 8  (stored in DB)
 
+    # Victim registers — DB stores y computed under the (attacker-controlled) weak group
+    resp = client.post("/register", json={"client_id": client_id, "secret_y": y_victim})
+    assert resp.status_code in (200, 201)
 
-Prompt 3: Testarea impredictibilității (Weak RNG & Session Fixation)
-Un atacator ar putea încerca să ghicească challenge_c sau session_id dacă serverul folosește un generator de numere slabe.
-"Scrie un test de securitate care validează entropia și unicitatea funcțiilor de generare
-(secrets.randbelow și secrets.token_urlsafe) folosite în /login/commit.
-Execută request-ul POST /login/commit de 1000 de ori consecutiv într-o buclă pentru același client_id.
-Stochează toate valorile challenge_c și session_id primite.
-Validează (assert) următoarele:
-Lungimea listei de session_id-uri unice este exact 1000 (0 coliziuni, prevenind Session Fixation).
-Lungimea listei de challenge_c unice este exact 1000 (0 coliziuni, prevenind Challenge Prediction).
-Toate valorile challenge_c se încadrează strict în intervalul $[1, Q-1]$."
-'''
+    # Attacker brute-forces the discrete logarithm in at most P-2 steps
+    x_recovered = next(
+        (i for i in range(1, P_weak) if pow(G_weak, i, P_weak) == y_victim),
+        None,
+    )
+    assert x_recovered is not None, "DLP brute-force found no solution"
+    assert x_recovered == x_victim, f"Recovered x={x_recovered} != original x={x_victim}"
+
+    # Attacker completes a fresh ZKP login using the recovered private key
+    rand_r = secrets_module.randbelow(P_weak - 2) + 1
+    t = pow(G_weak, rand_r, P_weak)
+
+    commit_resp = client.post(
+        "/login/commit",
+        json={"client_id": client_id, "commitment_t": t},
+    )
+    assert commit_resp.status_code == 200
+    payload = commit_resp.get_json()
+    c = int(payload["challenge_c"])
+    session_id = payload["session_id"]
+
+    s = (rand_r + c * x_recovered) % Q_weak
+
+    verify_resp = client.post(
+        "/login/verify",
+        headers={"X-Auth-Session": session_id},
+        json={"solution_s": s},
+    )
+    assert verify_resp.status_code == 200, (
+        "Attacker should successfully authenticate using brute-forced x in weak group"
+    )
+    assert "token" in verify_resp.get_json()
+

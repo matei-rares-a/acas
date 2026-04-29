@@ -159,6 +159,7 @@ def validate_int_field(data, key):
 
 
 # valid Schnorr group element in subgroup of order Q.
+# Note: prevents Small Subgroup attack — rejects y or t outside the subgroup of order Q with 422.
 def is_subgroup_member(value):
     return 1 < value < P and pow(value, Q, P) == 1
 
@@ -259,12 +260,13 @@ def commitAPI():
             else:
                 # Session is established; new commit looks like a hijacking attempt.
                 # Invalidate the existing session so neither party can use it.
+                # Note: prevents Replay attack — session deleted immediately after use so a captured session_id cannot be reused.
                 del sessions[existing_sid]
                 return jsonify({'reason': 'existing commitment found, start a new session'}), 409
 
         # No conflict – create the session atomically inside the lock.
-        session_id = secrets.token_urlsafe(32)
-        challenge_c = secrets.randbelow(Q - 1) + 1
+        session_id = secrets.token_urlsafe(32)   # Note: prevents Session Fixation — CSPRNG guarantees unpredictable session_id.
+        challenge_c = secrets.randbelow(Q - 1) + 1  # Note: prevents Challenge Prediction attack — CSPRNG ensures challenge_c is unpredictable.
         sessions[session_id] = {
             "client_id": client_id,
             "t": t,
@@ -337,27 +339,6 @@ def verifyAPI():
         return jsonify({'reason': 'verification failed'}), 401
 
 
-# @app.route('/forgetme', methods=['POST'])
-# def forgetmeApi():
-#     data = request.get_json(silent=True) or {}
-#     client_id = data.get('client_id')
-#     token = extract_access_token(data)
-#     if not client_id:
-#         return jsonify({'reason': 'missing client_id'}), 400
-#     user = User.query.filter_by(client_id=client_id).first()
-#     if not user:
-#         return jsonify({'reason': 'user not found'}), 404
-#     if token:
-#         auth = AuthToken.query.filter_by(user_id=user.id, token=token).first()
-#         if not auth:
-#             return jsonify({'reason': 'invalid token'}), 401
-#     # delete user cascades
-#     AuthToken.query.filter_by(user_id=user.id).delete()
-#     db.session.delete(user)
-#     db.session.commit()
-#     return jsonify({'message': 'User data deleted'})
-
-
 @app.route('/data', methods=['GET', 'POST', 'PUT'])
 def dataAcessApi():
     data = request.get_json(silent=True) or {}
@@ -416,12 +397,16 @@ def create_self_signed_cert():
 
 
 if __name__ == '__main__':
+    import warnings
+    warnings.filterwarnings("ignore", message=r".*request\.scope.*is deprecated")
+
     https=False
 
     print('Schnorr Authentication Server')
     print('\n')
     print('=' * 50)
     print(f'Starting Flask server on { 'https://localhost:5000' if https else 'http://localhost:5000'}')
+    print(f'PID: {os.getpid()}')
     print('=' * 50)
     print('\n')
 
