@@ -7,7 +7,15 @@ import pytest
 _QA_PATH = Path(__file__).resolve().parents[1]
 if str(_QA_PATH) not in sys.path:
     sys.path.insert(0, str(_QA_PATH))
+
 from qa_utils import server, derive_password_x, register_user, start_commit
+
+# schnorr_crypto is a separate module — needed for the MitM monkeypatch test
+import importlib
+_server_app_path = Path(__file__).resolve().parents[2] / "server_app"
+if str(_server_app_path) not in sys.path:
+    sys.path.insert(0, str(_server_app_path))
+import schnorr_crypto as _schnorr_crypto
 
 
 @pytest.fixture(autouse=True)
@@ -126,9 +134,14 @@ def test_mitm_weak_parameter_injection_allows_dlp_brute_force_and_login(client, 
     Q_weak = 11  # (P_weak - 1) // 2
     G_weak = 4   # generator of the unique subgroup of order 11
 
+    # Patch both server.py module-level names AND schnorr_crypto module constants
+    # (schnorr_crypto functions use their own module globals for P/Q/G)
     monkeypatch.setattr(server, "P", P_weak)
     monkeypatch.setattr(server, "Q", Q_weak)
     monkeypatch.setattr(server, "G", G_weak)
+    monkeypatch.setattr(_schnorr_crypto, "P", P_weak)
+    monkeypatch.setattr(_schnorr_crypto, "Q", Q_weak)
+    monkeypatch.setattr(_schnorr_crypto, "G", G_weak)
 
     client_id = "mitm_victim"
     x_victim = 7                                      # victim's private key
@@ -146,8 +159,9 @@ def test_mitm_weak_parameter_injection_allows_dlp_brute_force_and_login(client, 
     assert x_recovered is not None, "DLP brute-force found no solution"
     assert x_recovered == x_victim, f"Recovered x={x_recovered} != original x={x_victim}"
 
-    # Attacker completes a fresh ZKP login using the recovered private key
-    rand_r = secrets_module.randbelow(P_weak - 2) + 1
+    # Attacker completes a fresh ZKP login using the recovered private key.
+    # rand_r must be in [1, Q_weak-1] to avoid t = identity element (g^Q = 1).
+    rand_r = (secrets_module.randbelow(Q_weak - 1) + 1)  # 1 .. Q_weak-1 = 1..10
     t = pow(G_weak, rand_r, P_weak)
 
     commit_resp = client.post(

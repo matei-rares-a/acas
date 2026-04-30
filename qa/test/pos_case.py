@@ -35,35 +35,59 @@ class TestPositiveCases(BaseTestSuite):
 
     def test_register_updates_existing_user_without_duplication(self, client):
         '''Testarea idempotenta inregistrare'''
-        """Client send same user again, server update value, server don't duplicate user."""
-        client_id = "test_user"
+        """Re-registering with a valid JWT updates credentials; no duplicate row is created."""
+        client_id = "test_user_update"
         initial_password = "initial-password-version1"
         updated_password = "updated-password-version2"
 
-        initial_password_x,_ = derive_password_x(initial_password)
-        updated_password_x,_ = derive_password_x(updated_password)
+        initial_x, _ = derive_password_x(initial_password)
+        updated_x, _ = derive_password_x(updated_password)
 
-        initial_secret_y = pow(server.G, initial_password_x, server.P)
-        updated_secret_y = pow(server.G, updated_password_x, server.P)
+        initial_y = pow(server.G, initial_x, server.P)
+        updated_y = pow(server.G, updated_x, server.P)
 
-        with server.app.app_context():
-            server.db.session.add(
-                server.User(client_id=client_id, secret_y=str(initial_secret_y))
-            )
-            server.db.session.commit()
+        # 1. Register the user initially (unauthenticated — new user)
+        r1 = client.post("/register", json={"client_id": client_id, "secret_y": initial_y})
+        assert r1.status_code == 201
+        assert r1.get_json() == {"status": "Registered"}
 
-        response = client.post(
-            "/register",
-            json={"client_id": client_id, "secret_y": updated_secret_y},
+        # 2. Authenticate via ZKP to obtain a JWT
+        rand_r = secrets_module.randbelow(server.P - 2) + 1
+        t = pow(server.G, rand_r, server.P)
+
+        commit_resp = client.post(
+            "/login/commit",
+            json={"client_id": client_id, "commitment_t": t},
         )
+        assert commit_resp.status_code == 200
+        commit_data = commit_resp.get_json()
+        c = int(commit_data["challenge_c"])
+        session_id = commit_data["session_id"]
 
-        assert response.status_code == 200
-        assert response.get_json() == {"status": "Updated"}
+        s = (rand_r + c * initial_x) % server.Q
 
+        verify_resp = client.post(
+            "/login/verify",
+            json={"solution_s": s},
+            headers={"X-Auth-Session": session_id},
+        )
+        assert verify_resp.status_code == 200, verify_resp.get_json()
+        token = verify_resp.get_json()["token"]
+
+        # 3. Use the JWT to update credentials (must send as Authorization: Bearer)
+        r2 = client.post(
+            "/register",
+            json={"client_id": client_id, "secret_y": updated_y},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert r2.status_code == 200
+        assert r2.get_json() == {"status": "Updated"}
+
+        # 4. Verify exactly one row, with the new secret_y
         with server.app.app_context():
             users = server.User.query.filter_by(client_id=client_id).all()
             assert len(users) == 1
-            assert users[0].secret_y == str(updated_secret_y)
+            assert users[0].secret_y == str(updated_y)
 
 
     def test_login_commit_then_verify_success_and_session_is_deleted(self, client):
@@ -113,17 +137,11 @@ class TestPositiveCases(BaseTestSuite):
     def test_data_authorization_with_valid_and_invalid_tokens(self, client):
         '''Testarea consumare token'''
         """Client send valid token and get data, client send bad token and server deny."""
+        from qa_utils import register_user, start_commit
         client_id = "test_user"
         raw_password = "data-endpoint-password"
 
-        password_x = derive_password_x(raw_password)
-        secret_y = pow(server.G, password_x, server.P)
-
-        register_response = client.post(
-            "/register",
-            json={"client_id": client_id, "secret_y": secret_y},
-        )
-        assert register_response.status_code in (200, 201)
+        x, _ = register_user(client, client_id, raw_password)
 
         with server.app.app_context():
             user = server.User.query.filter_by(client_id=client_id).first()
@@ -131,7 +149,16 @@ class TestPositiveCases(BaseTestSuite):
             server.db.session.add(server.PersoData(user_id=user.id, message="hello"))
             server.db.session.commit()
 
-        valid_token = jwt.encode({"client_id": client_id}, server.SECRET, algorithm="HS256")
+        # Obtain a real EdDSA token via the ZKP flow
+        rand_r, challenge_c, session_id = start_commit(client, client_id)
+        solution_s = (rand_r + challenge_c * x) % server.Q
+        verify_resp = client.post(
+            "/login/verify",
+            headers={"X-Auth-Session": session_id},
+            json={"solution_s": solution_s},
+        )
+        assert verify_resp.status_code == 200
+        valid_token = verify_resp.get_json()["token"]
 
         ok_response = client.get(
             "/data",
@@ -143,28 +170,22 @@ class TestPositiveCases(BaseTestSuite):
         missing_header_response = client.get("/data")
         assert missing_header_response.status_code == 401
 
-        expired_token = jwt.encode(
-            {
-                "client_id": client_id,
-                "exp": datetime.now(timezone.utc) - timedelta(minutes=1),
-            },
-            server.SECRET,
-            algorithm="HS256",
-        )
-        expired_response = client.get(
+        # Tampered / garbage token must be rejected
+        tampered_token = valid_token[:-4] + "XXXX"
+        tampered_response = client.get(
             "/data",
-            headers={"Authorization": f"Bearer {expired_token}"},
+            headers={"Authorization": f"Bearer {tampered_token}"},
         )
-        assert expired_response.status_code == 401
+        assert tampered_response.status_code == 401
 
 
     def test_two_users_authenticate_in_parallel_both_succeed(self, client):
         '''Testare autentificare paralela - doi utilizatori diferiti se autentifica simultan cu succes'''
         """Alice and Bob both commit so their sessions coexist, Alice verify with her correct s and get token, Bob verify with his correct s and get token, both receive 200."""
         # Register both users
-        x_alice = derive_password_x("alice-parallel-pass")
+        x_alice, _ = derive_password_x("alice-parallel-pass")
         y_alice = pow(server.G, x_alice, server.P)
-        x_bob = derive_password_x("bob-parallel-pass")
+        x_bob, _ = derive_password_x("bob-parallel-pass")
         y_bob = pow(server.G, x_bob, server.P)
 
         with server.app.app_context():

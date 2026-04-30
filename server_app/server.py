@@ -4,25 +4,60 @@ from extensions import db
 from models import User, AuthToken, PersoData
 from server_oauth import init_oauth, clear_oauth_state
 from server_authlib import init_authlib, clear_authlib_state
-import secrets
+
+# ── crypto / session / auth / rate modules ──────────────────────────────────────
+from schnorr_crypto import (
+    P, Q, G,
+    is_subgroup_member,
+    compute_challenge,
+    verify_proof,
+    ips_match,
+)
+from session_store import (
+    make_session_store,
+    SESSION_TTL,
+    COMMIT_RACE_WINDOW,
+    SESSION_STATE_CHALLENGE_ISSUED,
+    SESSION_STATE_CONSUMED,
+)
+from jwt_utils import jwt_encode, jwt_decode, jwks_payload
+from rate_limiter import rate_check, is_over_fail_limit, record_fail
+
+import hashlib
 import os
 import jwt
-import uuid
+import secrets
 import time
-import threading
-from datetime import datetime, timedelta, timezone
-from cryptography.hazmat.primitives.asymmetric import dh
+import uuid
+from datetime import datetime, timezone
 
-'''
-Note: constants and settings should be in env files
-Simplicity: hardcoded constants and settings
-'''
-P = 11731722534755988379582498904317031585514431212880510373180315650809605302410493595610739947214327053090791642864835392206070266585210162380812213540641579
-Q = (P - 1) // 2
-G = 4
+# Legacy HS256 secret retained only for any OAuth sub-modules that still use it.
+SECRET = 'dev-only-server-secret-at-least-32-bytes-long'
 
-# Python's jwt gives warning if secret is shorter than 32
-SECRET = 'dev-only-server-secret-at-least-32-bytes-long' 
+# Convenience aliases kept for backward compatibility with test code that
+# accesses server.P / server.Q / server.G directly.
+# (Already re-exported via the schnorr_crypto import above.)
+
+# ---------------------------------------------------------------------------
+# Request context helpers
+# ---------------------------------------------------------------------------
+def _get_request_context() -> tuple[str, str]:
+    """Return (client_ip, user_agent) normalised to lowercase, stripped.  §6"""
+    ip = (
+        request.headers.get("X-Forwarded-For", request.remote_addr or "127.0.0.1")
+        .split(",")[0]
+        .strip()
+    )
+    ua = request.headers.get("User-Agent", "").strip().lower()
+    return ip, ua
+
+
+def _rl(key: str, endpoint: str) -> bool:
+    """Rate-limit gate — bypassed in TESTING mode."""
+    if app.config.get("TESTING"):
+        return True
+    return rate_check(key, endpoint)
+
 
 app = Flask(__name__)
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -96,51 +131,13 @@ def add_rest_headers(response):
     return response
 
 
-'''
-note: should be in database
-simplicity: in memory commitments and challenges
-'''
-class _SessionStore(dict):
-    """dict with a built-in reverse index: client_id -> session_id."""
-    '''{
-        'session_id': {
-            "client_id": '',
-            "t": t,
-            "c": challenge_c,
-            "created_at": time.time()
-        }
-    }'''
-    def __init__(self):
-        super().__init__()
-        self._client_sessions: dict[str, str] = {}
-        self._lock = threading.Lock()
+# ---------------------------------------------------------------------------
+# Session store instance  (Redis if available, in-memory LRU otherwise)
+# ---------------------------------------------------------------------------
+sessions = make_session_store()
 
-    def __setitem__(self, session_id, value):
-        super().__setitem__(session_id, value)
-        self._client_sessions[value["client_id"]] = session_id
-
-    def __delitem__(self, session_id):
-        session = self.get(session_id)
-        if session:
-            self._client_sessions.pop(session["client_id"], None)
-        super().__delitem__(session_id)
-
-    def pop(self, session_id, *args):
-        session = self.get(session_id)
-        if session:
-            self._client_sessions.pop(session["client_id"], None)
-        return super().pop(session_id, *args)
-
-    def clear(self):
-        super().clear()
-        self._client_sessions.clear()
-
-
-sessions = _SessionStore()
-SESSION_TTL = 5  # seconds; window between /login/commit and /login/verify
-# Second commit within 50 ms = race, first writer wins.
-# Second commit after 50 ms = hijack attempt, both sessions invalidated.
-COMMIT_RACE_WINDOW_S = 0.050  # 50 ms
+# Backward-compatible aliases for constants still referenced in route handlers
+COMMIT_RACE_WINDOW_S = COMMIT_RACE_WINDOW
 
 '''
 Note: the servers choses the auth scheme
@@ -156,12 +153,6 @@ def validate_int_field(data, key):
         return int(value)
     except (TypeError, ValueError):
         return None
-
-
-# valid Schnorr group element in subgroup of order Q.
-# Note: prevents Small Subgroup attack — rejects y or t outside the subgroup of order Q with 422.
-def is_subgroup_member(value):
-    return 1 < value < P and pow(value, Q, P) == 1
 
 
 # Extract token from Authorization header, with optional body fallback
@@ -192,31 +183,57 @@ def getParametersAPI():
     response.headers['ETag'] = 'W/"v1.0-schnorr"'
     return response
 
+
+@app.route('/jwks.json', methods=['GET'])
+def jwksAPI():
+    """RFC 7517 JWKS endpoint — public keys for JWT verification.  §4.5"""
+    return jsonify(jwks_payload())
+
 '''
-Note: the server should have the relation of client_id - secret_y,
-     this endpoint can be secured with a shared secret or other methods
-Simplicity: no authentication for this endpoint, in a real implementation it should be protected
+Note: new users: unauthenticated.  Updates require a valid JWT (proof of ownership).  §3
 '''
 @app.route('/register', methods=['POST'])
 def registerAPI():
     '''
-    User registration, client sends client_id and secret_y (y = g^x mod p) computed from password,
-    server saves it for later verification at login
+    User registration.  New users: open.  Updates: require a valid JWT.
     '''
+    client_ip, _ = _get_request_context()
+    if not _rl(f"{client_ip}:register", "register"):   # §5 rate-limit
+        return jsonify({'reason': 'too many requests'}), 429
+
     data = request.get_json() or {}
     client_id = data.get('client_id')
     secret = validate_int_field(data, 'secret_y')
-    print(client_id, secret)
+    print(f"[register] client_id={client_id!r} ip={client_ip!r}")
     if not client_id or secret is None:
         return jsonify({'reason': 'missing parameters'}), 400
     if not is_subgroup_member(secret):
         return jsonify({'reason': 'invalid public value'}), 422
 
-    is_new = register_user_in_db(client_id, secret)
-    status = 'Registered' if is_new else 'Updated'
-    return jsonify({'status': status}), 201 if is_new else 200
+    existing = User.query.filter_by(client_id=client_id).first()
+    if existing:
+        # §3 update requires proof of ownership — verify current JWT
+        token = extract_access_token(data)
+        if not token:
+            return jsonify({'reason': 'authentication required to update credentials'}), 403
+        try:
+            payload = jwt_decode(token)
+        except jwt.InvalidTokenError:
+            return jsonify({'reason': 'invalid or expired token'}), 403
+        if payload.get('client_id') != client_id:
+            return jsonify({'reason': 'token does not match client_id'}), 403
+        existing.secret_y = str(secret)
+        db.session.commit()
+        return jsonify({'status': 'Updated'}), 200
+
+    # New user
+    user = User(client_id=client_id, secret_y=str(secret))
+    db.session.add(user)
+    db.session.commit()
+    return jsonify({'status': 'Registered'}), 201
 
 def register_user_in_db(client_id, secret_y):
+    """Internal helper used by OAuth sub-modules."""
     user = User.query.filter_by(client_id=client_id).first()
     if user:
         user.secret_y = str(secret_y)
@@ -235,44 +252,41 @@ init_authlib(app, SECRET)
 @app.route('/login/commit', methods=['POST'])
 def commitAPI():
     '''
-    Login commitment, client sends client_id and commitment t, server saves it and returns challenge c
+    Fiat–Shamir commit: client sends client_id + commitment t.
+    Server generates a hash-bound challenge c and returns it.
+    §1 §2 §3 §5 §9
     '''
+    client_ip, user_agent = _get_request_context()
+
+    if not _rl(f"{client_ip}:commit", "commit"):   # §5
+        return jsonify({'reason': 'too many requests'}), 429
+
     data = request.get_json() or {}
     client_id = data.get('client_id')
     t = validate_int_field(data, 'commitment_t')
     if not client_id or t is None:
         return jsonify({'reason': 'missing parameters'}), 400
+
+    # §9 subgroup check (1 < t < P, t^Q ≡ 1 mod P)
     if not is_subgroup_member(t):
         return jsonify({'reason': 'invalid commitment'}), 422
+
+    # §9 commitment reuse guard
+    if not sessions.check_and_record_t(client_id, t):
+        print(f"[commit] suspicious: t reuse client_id={client_id!r} ip={client_ip!r}")
+        return jsonify({'reason': 'commitment already used'}), 422
 
     user = User.query.filter_by(client_id=client_id).first()
     if not user:
         return jsonify({'reason': 'user not registered'}), 404
-    
-    with sessions._lock:
-        existing_sid = sessions._client_sessions.get(client_id)
-        if existing_sid:
-            age = time.time() - sessions[existing_sid]["created_at"]
-            if age <= COMMIT_RACE_WINDOW_S:
-                # Concurrent race: first writer already owns this session.
-                # Reject newcomer but leave the session intact.
-                return jsonify({'reason': 'existing commitment found, start a new session'}), 409
-            else:
-                # Session is established; new commit looks like a hijacking attempt.
-                # Invalidate the existing session so neither party can use it.
-                # Note: prevents Replay attack — session deleted immediately after use so a captured session_id cannot be reused.
-                del sessions[existing_sid]
-                return jsonify({'reason': 'existing commitment found, start a new session'}), 409
 
-        # No conflict – create the session atomically inside the lock.
-        session_id = secrets.token_urlsafe(32)   # Note: prevents Session Fixation — CSPRNG guarantees unpredictable session_id.
-        challenge_c = secrets.randbelow(Q - 1) + 1  # Note: prevents Challenge Prediction attack — CSPRNG ensures challenge_c is unpredictable.
-        sessions[session_id] = {
-            "client_id": client_id,
-            "t": t,
-            "c": challenge_c,
-            "created_at": time.time(),
-        }
+    # §2 atomic session creation (raises ValueError on race/hijack)
+    try:
+        session_id, challenge_c = sessions.create_session(
+            client_id, t, client_ip, user_agent
+        )
+    except ValueError:
+        return jsonify({'reason': 'existing commitment found, start a new session'}), 409
 
     return jsonify({'challenge_c': str(challenge_c), 'session_id': session_id}), 200
 
@@ -280,21 +294,38 @@ def commitAPI():
 @app.route('/login/verify', methods=['POST'])
 def verifyAPI():
     '''
-    Login verification, client sends client_id and solution s,
-    server verifies the proof using the saved commitment t and challenge c, if valid returns JWT token
+    Verify ZKP proof.  Server recomputes c from stored context, checks proof,
+    issues EdDSA JWT on success.  §1 §2 §3 §4 §5 §11
     '''
-    data = request.get_json() or {}
-    #session_id will be in X-Auth-Session: header
-    session_id = request.headers.get('X-Auth-Session')
-    s = validate_int_field(data, 'solution_s')
+    client_ip, user_agent = _get_request_context()
 
-    if not session_id:
+    if not _rl(f"{client_ip}:verify", "verify"):   # §5
+        return jsonify({'reason': 'too many requests'}), 429
+
+    data = request.get_json() or {}
+    session_id = request.headers.get('X-Auth-Session', '').strip()
+    if not session_id or len(session_id) > 256:
         return jsonify({'reason': 'missing session_id in X-Auth-Session header'}), 400
-    if session_id not in sessions:
+
+    sess = sessions.get(session_id)
+    if sess is None:
         return jsonify({'reason': 'invalid session_id'}), 404
-    if sessions[session_id]['created_at'] < time.time() - SESSION_TTL:
+
+    # §2.4 lifecycle: only challenge_issued sessions may verify
+    if sess.get('state') != SESSION_STATE_CHALLENGE_ISSUED:
+        del sessions[session_id]
+        return jsonify({'reason': 'invalid session state'}), 400
+
+    if sess['created_at'] < time.time() - SESSION_TTL:
         del sessions[session_id]
         return jsonify({'reason': 'session expired'}), 300
+
+    # §3 context binding (IP tolerance via ips_match allows /24 subnet)
+    if not ips_match(sess['ctx_ip'], client_ip) or sess['ctx_ua'] != user_agent:
+        del sessions[session_id]
+        return jsonify({'reason': 'request context mismatch'}), 401
+
+    s = validate_int_field(data, 'solution_s')
     if s is None:
         del sessions[session_id]
         return jsonify({'reason': 'invalid solution'}), 422
@@ -302,39 +333,53 @@ def verifyAPI():
         del sessions[session_id]
         return jsonify({'reason': 'invalid solution'}), 422
 
-    session = sessions[session_id]
-    client_id = session['client_id']
+    client_id = sess['client_id']
+
+    # §5 early-exit if client already exceeded failure quota (read-only check)
+    if is_over_fail_limit(client_id):
+        del sessions[session_id]
+        return jsonify({'reason': 'too many failed attempts'}), 429
+
+    # §1 recompute Fiat–Shamir challenge; reject if session tampered
+    c_expected = compute_challenge(
+        session_id, client_id,
+        sess['t'], sess['nonce'],
+        sess['ctx_ip'], sess['ctx_ua'],
+    )
+    if c_expected != sess['c']:
+        del sessions[session_id]
+        return jsonify({'reason': 'challenge integrity check failed'}), 400
+
+    # §10 proof replay protection
+    if not sessions.check_and_record_proof(session_id, s):
+        del sessions[session_id]
+        return jsonify({'reason': 'proof already used'}), 400
+
     user = User.query.filter_by(client_id=client_id).first()
     if not user:
+        del sessions[session_id]
         return jsonify({'reason': 'user not found'}), 404
-        
+
     y = int(user.secret_y)
-    t = session['t']
-    c = session['c']
-    left = pow(G, s, P)
-    right = (t * pow(y, c, P)) % P
-    if left == right:
-        # Issue JWT with expiry consistent with OAuth2 access token TTL (1 hour).
-        now = datetime.now(timezone.utc)
-        token_str = jwt.encode(
-            {
-                'client_id': client_id,
-                'iat': now,
-                'exp': now + timedelta(seconds=3600),
-            },
-            SECRET,
-            algorithm='HS256',
-        )
+    t = sess['t']
+    c = sess['c']
+
+    # §11 constant-time ZKP verification
+    if verify_proof(s, t, y, c):
+        sess['state'] = SESSION_STATE_CONSUMED
+        # §4 EdDSA JWT with full claims + session binding
+        sid_hash = hashlib.sha256(session_id.encode()).hexdigest()[:16]
+        token_str = jwt_encode({'client_id': client_id, 'sid': sid_hash})
         auth = AuthToken.query.filter_by(user_id=user.id).first()
         if auth:
             auth.token = token_str
         else:
-            auth = AuthToken(user_id=user.id, token=token_str)
-            db.session.add(auth)
+            db.session.add(AuthToken(user_id=user.id, token=token_str))
         del sessions[session_id]
         db.session.commit()
         return jsonify({'token': token_str}), 200
     else:
+        record_fail(client_id)   # §5 record failure ONLY on actual bad proof
         del sessions[session_id]
         return jsonify({'reason': 'verification failed'}), 401
 
@@ -346,7 +391,7 @@ def dataAcessApi():
     if not token:
         return jsonify({'reason': 'missing token'}), 401
     try:
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        payload = jwt_decode(token)   # §4 full EdDSA + claim validation
         client_id = payload.get('client_id')
         user = User.query.filter_by(client_id=client_id).first()
         if not user:
