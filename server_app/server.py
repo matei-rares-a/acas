@@ -4,6 +4,7 @@ from extensions import db
 from models import User, AuthToken, PersoData
 from server_oauth import init_oauth, clear_oauth_state
 from server_authlib import init_authlib, clear_authlib_state
+import hashlib
 import secrets
 import os
 import jwt
@@ -142,6 +143,40 @@ SESSION_TTL = 5  # seconds; window between /login/commit and /login/verify
 # Second commit after 50 ms = hijack attempt, both sessions invalidated.
 COMMIT_RACE_WINDOW_S = 0.050  # 50 ms
 
+
+# ---------------------------------------------------------------------------
+# Session Binding — simplified channel-binding concept (demo)
+# ---------------------------------------------------------------------------
+
+def _compute_session_binding(raw_addr: str, user_agent: str, session_id: str) -> bytes:
+    """Derive a 32-byte binding token from the direct TCP peer address,
+    the User-Agent, and the session ID.
+
+    Using request.remote_addr (not X-Forwarded-For) ensures the binding
+    reflects the actual network connection endpoint — a relayed request
+    arrives from a different IP and will not match.
+    """
+    data = f"{raw_addr}|{user_agent}|{session_id}".encode("utf-8")
+    return hashlib.sha256(data).digest()
+
+
+def _compute_challenge(session_id: str, client_id: str, t: int,
+                       session_binding: bytes) -> int:
+    """Hash-based Fiat\u2013Shamir challenge that commits to the session binding.
+
+    c = SHA256( session_id || client_id || str(t) || session_binding ) mod (Q-1) + 1
+
+    Including session_binding means the challenge value changes when the
+    binding changes, so a proof computed on one connection is invalid on
+    another — demonstrating the binding principle.
+    """
+    h = hashlib.sha256()
+    h.update(session_id.encode("utf-8"))
+    h.update(client_id.encode("utf-8"))
+    h.update(str(t).encode("utf-8"))
+    h.update(session_binding)
+    return (int.from_bytes(h.digest(), "big") % (Q - 1)) + 1
+
 '''
 Note: the servers choses the auth scheme
 Simplicity: support similar schemes Bearer (RFC 6750).
@@ -266,11 +301,24 @@ def commitAPI():
 
         # No conflict – create the session atomically inside the lock.
         session_id = secrets.token_urlsafe(32)   # Note: prevents Session Fixation — CSPRNG guarantees unpredictable session_id.
-        challenge_c = secrets.randbelow(Q - 1) + 1  # Note: prevents Challenge Prediction attack — CSPRNG ensures challenge_c is unpredictable.
+
+        # Session binding: tie this authentication attempt to the exact
+        # network connection (TCP peer address + User-Agent + session ID).
+        # request.remote_addr is the direct peer — not spoofable via headers.
+        raw_addr = request.remote_addr or "127.0.0.1"
+        user_agent = request.headers.get("User-Agent", "").strip().lower()
+        session_binding = _compute_session_binding(raw_addr, user_agent, session_id)
+
+        # Challenge incorporates the binding, so it is only valid for this
+        # exact connection context — relay to a different peer changes c.
+        challenge_c = _compute_challenge(session_id, client_id, t, session_binding)
+
         sessions[session_id] = {
-            "client_id": client_id,
-            "t": t,
-            "c": challenge_c,
+            "client_id":  client_id,
+            "t":          t,
+            "c":          challenge_c,
+            "binding":    session_binding,   # stored; NOT sent to client
+            "raw_addr":   raw_addr,          # original peer IP (for logging)
             "created_at": time.time(),
         }
 
@@ -304,13 +352,41 @@ def verifyAPI():
 
     session = sessions[session_id]
     client_id = session['client_id']
+
+    # ── Session binding check ──────────────────────────────────────────────
+    # Recompute the binding from the *current* request's direct peer address.
+    # If the request is relayed from a different IP or uses a different UA,
+    # the binding will not match and authentication is rejected.
+    raw_addr_now = request.remote_addr or "127.0.0.1"
+    user_agent_now = request.headers.get("User-Agent", "").strip().lower()
+    current_binding = _compute_session_binding(raw_addr_now, user_agent_now, session_id)
+
+    stored_binding = session.get("binding")
+    if stored_binding and current_binding != stored_binding:
+        original_ip = session.get("raw_addr", "unknown")
+        print(
+            f"[verify] Binding mismatch: possible relay attack | "
+            f"original_ip={original_ip!r} current_ip={raw_addr_now!r}"
+        )
+        del sessions[session_id]
+        return jsonify({'reason': 'session binding mismatch'}), 401
+
+    # ── Recompute expected challenge using the stored binding ──────────────
+    # DO NOT trust the stored c directly — derive it fresh from stored inputs
+    # so tampering with any session field is detected.
+    t_stored = session['t']
+    c_expected = _compute_challenge(session_id, client_id, t_stored, stored_binding or b"")
+    if c_expected != session['c']:
+        del sessions[session_id]
+        return jsonify({'reason': 'challenge integrity check failed'}), 400
+
     user = User.query.filter_by(client_id=client_id).first()
     if not user:
         return jsonify({'reason': 'user not found'}), 404
         
     y = int(user.secret_y)
     t = session['t']
-    c = session['c']
+    c = session['c']  # verified above
     left = pow(G, s, P)
     right = (t * pow(y, c, P)) % P
     if left == right:
