@@ -1,6 +1,3 @@
-from pathlib import Path
-
-
 # TODO (Manual Intervention Required)
 
 
@@ -41,7 +38,7 @@ def manual_test_mitm_weak_parameters():
     """
     TODO: Manual Intervention Required
 
-    Test:    Man-in-the-Middle on /get-parameters (Weak Parameter Injection)
+    Test:    Man-in-the-Middle on /parameters (Weak Parameter Injection)
     Goal:    Show that substituting a small prime P breaks the DLP hardness
              assumption and allows an attacker to recover x trivially.
              That means, the protocol would still need to be over https/tls to prevent this attack.
@@ -56,9 +53,9 @@ def manual_test_mitm_weak_parameters():
 
     Attack steps:
       3. Open the browser and navigate to the login page.
-         auth.js will call:  GET /get-parameters
+         auth.js will call:  GET /parameters
 
-      4. In Burp Suite, intercept the RESPONSE to GET /get-parameters.
+      4. In Burp Suite, intercept the RESPONSE to GET /parameters.
          Modify the JSON body, replacing the safe prime with a small prime:
            Original:  { "P": "<2048-bit number>", "G": "4" }
            Modified:  { "P": "23",                "G": "4" }
@@ -74,7 +71,7 @@ def manual_test_mitm_weak_parameters():
       - This completely breaks authentication.
 
     Mitigation:
-      - /get-parameters MUST be served over HTTPS with a valid TLS certificate.
+      - /parameters MUST be served over HTTPS with a valid TLS certificate.
       - Consider Certificate Pinning in auth.js to prevent proxy interception.
       - Alternatively, hard-code the known-safe parameters in the client JS
         and never fetch them from the network.
@@ -85,99 +82,3 @@ def manual_test_mitm_weak_parameters():
     """
     # TODO: Execute the steps above and document findings for Chapter 6.
     pass
-
-
-def generate_security_audit_manual(output_path: str = "qa/attack_simulation/SECURITY_AUDIT_MANUAL.md"):
-    """Generate the requested manual-audit markdown artifact."""
-    content = """# SECURITY_AUDIT_MANUAL
-
-  ## Prompt 1: Traffic Sniffing (Store-Now Decrypt-Later)
-
-  ### Obiectiv
-  Demonstram ca parola in clar si cheia privata `x` nu tranziteaza reteaua in fluxul Schnorr ZKP.
-
-  ### Setup
-  1. Ruleaza serverul Flask pe HTTP (fara TLS): `python server_app/server.py`
-  2. Porneste Wireshark/tshark pe loopback.
-  3. Filtru recomandat: `http.request.method == \"POST\"`
-
-  ### Pasii de reproducere
-  1. Deschide `http://localhost:5000`.
-  2. Ruleaza un login valid in UI.
-  3. Captureaza payload-urile pentru:
-     - `POST /login/commit`
-     - `POST /login/verify`
-
-  ### Ce trebuie sa gasesti
-  - In commit: `client_id`, `commitment_t`
-  - In verify: `solution_s`
-
-  ### Ce NU trebuie sa gasesti
-  - `password` in clar
-  - cheia privata `x`
-
-  ### Concluzie asteptata
-  Valorile capturate `{t, c, s}` nu dezvaluie `x`; proprietatea zero-knowledge se mentine.
-
-  ## Prompt 2: MitM pe /get-parameters
-
-  ### Obiectiv
-  Simulam injectarea unor parametri slabi (`P=23`, `G=4`) si documentam impactul.
-
-  ### Setup
-  1. Ruleaza serverul Flask.
-  2. Configureaza browserul prin Burp Suite / OWASP ZAP.
-  3. Intercepteaza `GET /get-parameters`.
-
-  ### Pasii de reproducere
-  1. Intercepteaza raspunsul cu parametri globali.
-  2. Inlocuieste valorile cu `P=23`, `G=4`.
-  3. Forward raspunsul modificat catre client.
-  4. Continua loginul si observa ca DLP devine trivial pe grup mic.
-
-  ### Consecinte
-  Atacatorul poate recupera `x` in grup slab si poate forja `s` valid.
-
-  ### Mitigare
-  1. HTTPS/TLS obligatoriu pentru `/get-parameters` in productie.
-  2. Optional certificate pinning in client.
-  3. Optional hardcodare parametri siguri in frontend.
-
-  ## Dovezi de atasat in disertatie
-  1. Captura Wireshark/tshark cu payload-urile `commit/verify`.
-  2. Captura Burp/ZAP cu raspunsul modificat pe `/get-parameters`.
-  3. Observatii privind imposibilitatea extragerii parolei in fluxul normal.
-  """
-    out = Path(output_path)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(content, encoding="utf-8")
-    print(f"Generated: {out.resolve()}")
-
-
-if __name__ == "__main__":
-    generate_security_audit_manual()
-
-
-'''
-Prompt 1: Traffic Sniffing (Store Now, Decrypt Later)
-Acesta este testul suprem pentru proprietatea de "Zero-Knowledge" (Parola nu călătorește pe rețea).
-"Generează o secțiune în fișierul SECURITY_AUDIT_MANUAL.md care descrie procedura de testare a atacului de tip Traffic Sniffing.
-Descrie setup-ul necesar: Serverul Flask rulând intenționat pe HTTP simplu (fără TLS) și pornirea unui interceptor
-de pachete (Wireshark sau tshark) pe interfața de loopback (localhost).
-Oferă pașii exacți prin care testerul efectuează un login valid din browser.
-Descrie cum să filtrezi pachetele în Wireshark (ex: http.request.method == "POST").
-Specifică exact ce trebuie să caute testerul în payload-urile interceptate (t, c, s) și ce NU trebuie să găsească
-niciodată (parola în clar sau cheia privată $x$).
-Adaugă o concluzie teoretică care explică de ce, deși atacatorul are interceptat traficul,
-nu poate extrage parola din valorile tranzitorii capturate."
-
-Prompt 2: Atacul de tip Man-in-the-Middle (MitM) pe obținerea parametrilor
-Ce se întâmplă dacă un atacator interceptează cererea /get-parameters și îi dă clientului un $P$ și un $G$ slab?
-"Adaugă o secțiune în SECURITY_AUDIT_MANUAL.md pentru a simula și documenta un atac MitM asupra parametrilor globali.
-Descrie utilizarea unui proxy de interceptare (precum Burp Suite sau OWASP ZAP).
-Oferă pașii prin care testerul interceptează request-ul GET /get-parameters realizat de frontend (auth.js)
-și modifică răspunsul serverului, înlocuind numărul Safe Prime uriaș cu un număr prim mic (ex: $P=23, G=4$).
-Documentează consecințele acestui atac (atacul logaritmului discret devine trivial de rezolvat pentru atacator pe acești parametri slabi).
-Redactează o concluzie și o propunere de mitigare arhitecturală (ex: de ce endpoint-ul /get-parameters
-trebuie obligatoriu protejat cu HTTPS/TLS în producție sau folosirea de Certificate Pinning pe client)."
-'''

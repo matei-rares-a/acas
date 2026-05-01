@@ -113,15 +113,20 @@ note: should be in database
 simplicity: in memory commitments and challenges
 '''
 class _SessionStore(dict):
-    """dict with a built-in reverse index: client_id -> session_id."""
-    '''{
-        'session_id': {
-            "client_id": '',
-            "t": t,
-            "c": challenge_c,
-            "created_at": time.time()
+    """dict with a built-in reverse index: client_id -> session_id.
+
+    Each entry has the shape:
+    {
+        "<session_id>": {
+            "client_id":  str,    # owner of the session
+            "t":          int,    # commitment G^r mod P sent by the prover
+            "c":          int,    # challenge derived from (session_id, client_id, t, binding)
+            "binding":    bytes,  # channel-binding digest — stored, never sent to client
+            "raw_addr":   str,    # direct TCP peer address at commit time (for logging)
+            "created_at": float,  # time.time() at commit — used for SESSION_TTL expiry
         }
-    }'''
+    }
+    """
     def __init__(self):
         super().__init__()
         self._client_sessions: dict[str, str] = {}
@@ -149,42 +154,35 @@ class _SessionStore(dict):
 
 
 sessions = _SessionStore()
-# Second commit within 50 ms = race, first writer wins.
-# Second commit after 50 ms = hijack attempt, both sessions invalidated.
-
 
 # ---------------------------------------------------------------------------
 # Session Binding — simplified channel-binding concept (demo)
 # ---------------------------------------------------------------------------
 
-def _compute_session_binding(raw_addr: str, user_agent: str, session_id: str) -> bytes:
-    """Derive a 32-byte binding token from the direct TCP peer address,
-    the User-Agent, and the session ID.
+def _compute_session_binding(raw_addr: str, user_agent: str, session_id: str,
+                             client_id: str, t: int) -> bytes:
+    """Derive a 32-byte binding token from all authentication context:
+    the direct TCP peer address, the User-Agent, the session ID, the
+    client identity, and the commitment t.
 
     Using request.remote_addr (not X-Forwarded-For) ensures the binding
     reflects the actual network connection endpoint — a relayed request
     arrives from a different IP and will not match.
     """
-    data = f"{raw_addr}|{user_agent}|{session_id}".encode("utf-8")
+    data = f"{raw_addr}|{user_agent}|{session_id}|{client_id}|{t}".encode("utf-8")
     return hashlib.sha256(data).digest()
 
 
-def _compute_challenge(session_id: str, client_id: str, t: int,
-                       binding: bytes) -> int:
-    """Hash-based Fiat\u2013Shamir challenge that commits to the session binding.
+def _compute_challenge(binding: bytes) -> int:
+    """Derive the Fiat\u2013Shamir challenge integer from the session binding.
 
-    c = SHA256( session_id || client_id || str(t) || session_binding ) mod (Q-1) + 1
+    c = int(binding) mod (P-2) + 1
 
-    Including session_binding means the challenge value changes when the
-    binding changes, so a proof computed on one connection is invalid on
-    another — demonstrating the binding principle.
+    The binding already commits to the peer address, User-Agent,
+    session ID, client ID, and commitment t, so the challenge is
+    fully determined by — and bound to — all of those inputs.
     """
-    h = hashlib.sha256()
-    h.update(session_id.encode("utf-8"))
-    h.update(client_id.encode("utf-8"))
-    h.update(str(t).encode("utf-8"))
-    h.update(binding)
-    return (int.from_bytes(h.digest(), "big") % (Q - 1)) + 1
+    return (int.from_bytes(binding, "big") % (P - 2)) + 1
 
 
 
@@ -264,7 +262,7 @@ def healthAPI():
     return jsonify({"health": "running"})
 
 
-@app.route('/get-parameters')
+@app.route('/parameters')
 def getParametersAPI():
     resp = jsonify({'P': str(P), 'G': str(G)})
     resp.headers['Cache-Control'] = 'public, max-age=3600'
@@ -291,15 +289,15 @@ def registerAPI():
     if not is_subgroup_member(secret):
         return jsonify({'reason': 'invalid public value'}), 422
     is_new = register_user_in_db(client_id, secret)
-    return jsonify({'status': 'Registered' if is_new else 'Updated'}), 201 if is_new else 200
+    if not is_new:
+        return jsonify({'reason': 'already registered'}), 409
+    return jsonify({'status': 'Registered'}), 201
 
 
 def register_user_in_db(client_id: str, secret_y: int) -> bool:
-    """Upsert user credentials. Returns True if newly created."""
+    """Insert user credentials. Returns True if newly created, False if already exists."""
     user = User.query.filter_by(client_id=client_id).first()
     if user:
-        user.secret_y = str(secret_y)
-        db.session.commit()
         return False
     db.session.add(User(client_id=client_id, secret_y=str(secret_y)))
     db.session.commit()
@@ -340,10 +338,8 @@ def commitAPI():
         # network connection (TCP peer address + User-Agent + session ID).
         # request.remote_addr is the direct peer — not spoofable via headers.
         raw_addr, user_agent = _get_peer()
-        binding = _compute_session_binding(raw_addr, user_agent, session_id)
-        # Challenge incorporates the binding, so it is only valid for this
-        # exact connection context — relay to a different peer changes c.
-        challenge_c = _compute_challenge(session_id, client_id, t, binding)
+        binding = _compute_session_binding(raw_addr, user_agent, session_id, client_id, t)
+        challenge_c = _compute_challenge(binding)
 
         sessions[session_id] = {
             "client_id":  client_id,
@@ -378,7 +374,7 @@ def verifyAPI():
 
     if sess['created_at'] < time.time() - SESSION_TTL:
         del sessions[session_id]
-        return jsonify({'reason': 'session expired'}), 300
+        return jsonify({'reason': 'session expired'}), 401
     if s is None or s < 0 or s >= Q:
         del sessions[session_id]
         return jsonify({'reason': 'invalid solution'}), 422
@@ -391,7 +387,7 @@ def verifyAPI():
     # Recompute the binding from the *current* request's direct peer address.
     # If the request is relayed from a different IP or uses a different UA,
     # the binding will not match and authentication is rejected.
-    current_binding = _compute_session_binding(raw_addr_now, ua_now, session_id)
+    current_binding = _compute_session_binding(raw_addr_now, ua_now, session_id, client_id, sess['t'])
     if stored_binding and current_binding != stored_binding:
         original_ip = sess.get("raw_addr", "unknown")
         print(
@@ -404,7 +400,7 @@ def verifyAPI():
     # ── Recompute expected challenge using the stored binding ──────────────
     # DO NOT trust the stored c directly — derive it fresh from stored inputs
     # so tampering with any session field is detected.
-    if _compute_challenge(session_id, client_id, sess['t'], stored_binding or b'') != sess['c']:
+    if _compute_challenge(stored_binding or b'') != sess['c']:
         del sessions[session_id]
         return jsonify({'reason': 'challenge integrity check failed'}), 400
 

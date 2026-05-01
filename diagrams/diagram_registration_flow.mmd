@@ -1,16 +1,16 @@
 flowchart TD
     A([Start]) --> B["User enters\nusername · password · server URL"]
-    B --> C["GET /get-parameters"]
+    B --> C["GET /parameters"]
     C --> D{Response OK?}
     D -- Yes --> E["Update P, G, Q from server"]
     D -- "No / network error" --> F["Use hardcoded default\nP, G, Q values"]
-    E & F --> G["Derive private key\nx = SHA-256(username:password) mod Q"]
+    E & F --> G["Derive private key\nx = scrypt(password, salt) mod Q"]
     G --> H["Compute Schnorr public key\ny = G^x mod P"]
     H --> I["POST /register\n{ client_id, secret_y = y }"]
     I --> J["Server validates:\ny^Q ≡ 1 (mod P)?"]
     J --> K{HTTP status}
     K -- "201 Created" --> L["✅ User registered successfully"]
-    K -- "200 OK" --> M["✅ Public key updated\n(re-registration / password change)"]
+    K -- "409 Conflict" --> M["❌ client_id already registered"]
     K -- "400 Bad Request" --> N["❌ Missing client_id or secret_y"]
     K -- "422 Unprocessable" --> O["❌ y is not a valid\nSchnorr subgroup member"]
     K -- "Network error" --> P["❌ Could not reach server"]

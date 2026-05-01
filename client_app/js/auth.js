@@ -13,7 +13,7 @@ let G = 4n;
  */
 async function fetchParameters(serverUrl) {
     try {
-        const response = await fetch(`${serverUrl}/get-parameters`, {
+        const response = await fetch(`${serverUrl}/parameters`, {
             method: 'GET',
             headers: {
                 'Accept': 'application/json',
@@ -57,7 +57,7 @@ async function derivePasswordX(password, client_id = '') {
         for (const b of digestBytes) {
             value = (value << 8n) + BigInt(b);
         }
-        return (value % (Q - 1n)) + 1n;
+        return (value % (P - 1n)) + 1n;
     }
 
     // Fallback if subtle crypto is unavailable.
@@ -65,7 +65,7 @@ async function derivePasswordX(password, client_id = '') {
     for (let i = 0; i < normalized.length; i++) {
         fallback = (fallback * 257n + BigInt(normalized.charCodeAt(i))) % Q;
     }
-    return (fallback % (Q - 1n)) + 1n;
+    return (fallback % (P - 1n)) + 1n;
 }
 
 function modPow(base, exp, mod) {

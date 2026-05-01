@@ -7,19 +7,20 @@ stateDiagram-v2
     FetchingParams --> KeyDerivation : Network error — fall back to hardcoded defaults
 
     state Registration {
-        KeyDerivation --> ComputingPublicKey : x = SHA-256(username:password) mod Q
+        KeyDerivation --> ComputingPublicKey : x = scrypt(password, salt) mod Q
         ComputingPublicKey --> Registering   : y = G^x mod P → POST /register
-        Registering --> RegistrationOK       : 201 New user  /  200 Key updated
-        Registering --> RegistrationFailed   : 400 Missing params  /  422 Invalid subgroup value
+        Registering --> RegistrationOK       : 201 Registered
+        Registering --> RegistrationFailed   : 409 Already registered  /  400 Missing params  /  422 Invalid subgroup value
     }
 
     state Login {
         KeyDerivation --> Committing : x derived,  t = G^r mod P → POST /login/commit
         Committing --> Challenged    : 200 — challenge_c = c (hash-bound to session + binding), session_id received
         Committing --> LoginFailed   : 404 User not found  /  409 Duplicate commitment  /  422 Invalid t
-        Challenged --> Verifying     : s = (r + c·x) mod Q → POST /login/verify  (X-Auth-Session: session_id)
+        Challenged --> Verifying     : s = r + c·x mod Q → POST /login/verify with session_id header
         Verifying --> Authenticated  : 200 — JWT token received
-        Verifying --> LoginFailed    : 300 Session expired
+        Verifying --> LoginFailed    : 401 Session expired
+        Verifying --> LoginFailed    : 422 solution_s out of range
         Verifying --> LoginFailed    : 401 Binding mismatch (relay detected)
         Verifying --> LoginFailed    : 400 Challenge integrity check failed
         Verifying --> LoginFailed    : 401 Verification failed (wrong password / tampered proof)

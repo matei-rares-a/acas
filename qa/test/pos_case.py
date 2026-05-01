@@ -33,18 +33,18 @@ class TestPositiveCases(BaseTestSuite):
             assert raw_password not in serialized
 
 
-    def test_register_updates_existing_user_without_duplication(self, client):
-        '''Testarea idempotenta inregistrare'''
-        """Client send same user again, server update value, server don't duplicate user."""
+    def test_register_rejects_duplicate_client_id_with_conflict(self, client):
+        '''Testarea conflict la inregistrare duplicat'''
+        """Client register once, server return 201, client register same client_id again, server return 409 and not duplicate user."""
         client_id = "test_user"
         initial_password = "initial-password-version1"
-        updated_password = "updated-password-version2"
+        second_password = "second-password-version2"
 
         initial_password_x,_ = derive_password_x(initial_password)
-        updated_password_x,_ = derive_password_x(updated_password)
+        second_password_x,_ = derive_password_x(second_password)
 
         initial_secret_y = pow(server.G, initial_password_x, server.P)
-        updated_secret_y = pow(server.G, updated_password_x, server.P)
+        second_secret_y = pow(server.G, second_password_x, server.P)
 
         with server.app.app_context():
             server.db.session.add(
@@ -54,16 +54,16 @@ class TestPositiveCases(BaseTestSuite):
 
         response = client.post(
             "/register",
-            json={"client_id": client_id, "secret_y": updated_secret_y},
+            json={"client_id": client_id, "secret_y": second_secret_y},
         )
 
-        assert response.status_code == 200
-        assert response.get_json() == {"status": "Updated"}
+        assert response.status_code == 409
+        assert response.get_json() == {"reason": "already registered"}
 
         with server.app.app_context():
             users = server.User.query.filter_by(client_id=client_id).all()
             assert len(users) == 1
-            assert users[0].secret_y == str(updated_secret_y)
+            assert users[0].secret_y == str(initial_secret_y)
 
 
     def test_login_commit_then_verify_success_and_session_is_deleted(self, client):
@@ -123,7 +123,7 @@ class TestPositiveCases(BaseTestSuite):
             "/register",
             json={"client_id": client_id, "secret_y": secret_y},
         )
-        assert register_response.status_code in (200, 201)
+        assert register_response.status_code == 201
 
         with server.app.app_context():
             user = server.User.query.filter_by(client_id=client_id).first()

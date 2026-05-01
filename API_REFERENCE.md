@@ -59,7 +59,7 @@ Covers all endpoints, headers, status codes, and OAuth2 flows for this server.
 ### 5.1 `GET /health`
 - `200 OK` – service reachable
 
-### 5.2 `GET /get-parameters`
+### 5.2 `GET /parameters`
 Returns the public Schnorr group parameters `P` and `G`.
 - `200 OK`
 - Override headers: `Cache-Control: public, max-age=3600` · `ETag: W/"v1.0-schnorr"`
@@ -67,7 +67,7 @@ Returns the public Schnorr group parameters `P` and `G`.
 ### 5.3 `POST /register`
 Register a ZKP user. Client sends `client_id` and `secret_y = G^x mod P`.
 - `201 Created` – new user registered
-- `200 OK` – existing user's public key updated
+- `409 Conflict` – `client_id` already registered
 - `400 Bad Request` – missing `client_id` or `secret_y`
 - `422 Unprocessable Entity` – `secret_y` is not a valid subgroup member
 
@@ -82,7 +82,7 @@ Step 1 of the ZKP login. Client sends commitment `t = G^r mod P`.
 ### 5.5 `POST /login/verify`
 Step 2 of the ZKP login. Requires `X-Auth-Session: <session_id>` header.
 - `200 OK` – proof valid → `{ "token": "<JWT>" }`
-- `300` – session expired (TTL exceeded between commit and verify)
+- `401` – session expired (TTL exceeded between commit and verify)
 - `400 Bad Request` – missing `X-Auth-Session` header or invalid/missing `solution_s`
 - `401 Unauthorized` – proof verification failed
 - `404 Not Found` – session or user not found

@@ -76,7 +76,7 @@ class TestNegativeCases(BaseTestSuite):
             json={"solution_s": solution_s},
         )
 
-        assert verify_response.status_code == 300
+        assert verify_response.status_code == 401
         assert verify_response.get_json() == {"reason": "session expired"}
         assert session_id not in server.sessions
 

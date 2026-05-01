@@ -35,7 +35,7 @@ print("Password x:", password_x)
 #NOTE: good thing, if salt is used, if the password_x is compromised, then a new generation of salt will prevent the user from changing the password
 
 #0.create secret_y and register
-secret_y = pow(global_g, password_x, global_p) #y = g^x mod p
+secret_y = pow(global_g, password_x, global_p) #y = g^x mod p, x in [0, q-1], y in subgroup of order q
 #1.create commitment and send to server
 rand_r = secrets.randbelow(global_p-2) + 1 # r = random in [1, p-2]
 commitment_t = pow(global_g, rand_r, global_p)  # t = g^r mod p

@@ -230,14 +230,14 @@ in the ZKP flow.
 
 ---
 
-### Prompt 2: MitM on /get-parameters
+### Prompt 2: MitM on /parameters
 
 **Objective**: Simulate injection of weak parameters (`P=23`, `G=4`) and document the impact.
 
 **Setup**
 1. Start the Flask server.
 2. Configure the browser through Burp Suite / OWASP ZAP.
-3. Intercept `GET /get-parameters`.
+3. Intercept `GET /parameters`.
 
 **Steps**
 1. Intercept the response carrying the global group parameters.
@@ -248,11 +248,11 @@ in the ZKP flow.
 **Consequences**: The attacker can recover `x` in the weak group and forge a valid `s`.
 
 **Mitigations**
-1. HTTPS/TLS mandatory for `/get-parameters` in production.
+1. HTTPS/TLS mandatory for `/parameters` in production.
 2. Optional: certificate pinning in the client.
 3. Optional: hardcode trusted parameters in the frontend.
 
 **Evidence to attach in dissertation**
 1. Wireshark/tshark capture with commit/verify payloads.
-2. Burp/ZAP capture showing the modified `/get-parameters` response.
+2. Burp/ZAP capture showing the modified `/parameters` response.
 3. Notes on why password extraction is impossible in the normal flow.

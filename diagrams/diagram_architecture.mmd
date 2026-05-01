@@ -16,7 +16,7 @@ graph TB
     subgraph FlaskServer["Flask Server — Python"]
         subgraph ZKPRoutes["ZKP Auth Routes  (server.py)"]
             R1["GET  /health"]
-            R2["GET  /get-parameters"]
+            R2["GET  /parameters"]
             R3["POST /register"]
             R4["POST /login/commit"]
             R5["POST /login/verify"]
@@ -36,7 +36,7 @@ graph TB
         end
 
         VERIFIER["Schnorr Verifier\ng^s ≡ t · y^c (mod P)\n+ session binding check"]
-        BINDING["Session Binding\nSHA-256(remote_addr|user_agent|session_id)"]
+        BINDING["Session Binding\nSHA-256(addr|UA|session_id|client_id|t)\nc = int(binding) mod (P-2) + 1"]
         MODELS["models.py\nUser · AuthToken · PersoData"]
         EXT["extensions.py\nSQLAlchemy db"]
         HEADERS["after_request hook\nREST & Security headers"]

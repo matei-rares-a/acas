@@ -1,0 +1,117 @@
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant UI as Client App
+    participant API as Server
+    participant DB as Database
+
+    U->>UI: Enter URL, client_id, password
+
+    rect rgb(255, 240, 220)
+    Note over UI,API: REGISTRATION (one-time)
+    UI->>API: GET /parameters
+    API-->>UI: 200 { P, G }
+    Note over UI,API: P is a 2048-bit safe prime, Q = (P-1)/2, G = 4
+    Note over UI: x = derive(password, salt) mod Q <br/><br/> y = G^x mod P  (x is never transmitted or stored) <br/><br/> Persist salt in secure local storage, discard x from memory
+    UI->>API: POST /register  { client_id, y }
+    break missing client_id or secret_y field
+        API-->>UI: 400 { reason: missing parameters }
+        UI-->>U: Error - missing parameters
+    end
+    break y not in Schnorr subgroup  (1 < y < P  AND  y^Q == 1 mod P)
+        API-->>UI: 422 { reason: invalid public value }
+        UI-->>U: Error - invalid public value <br/>(blocks small-subgroup attacks)
+    end
+    alt New client_id
+        API->>DB: INSERT user(client_id, secret_y=y)
+        DB-->>API: OK
+        API-->>UI: 201 { status: Registered }
+        UI-->>U: Registered successfully
+    else client_id already exists
+        API-->>UI: 409 { reason: already registered }
+        UI-->>U: Error - already registered
+    end
+    end
+
+    rect rgb(230, 245, 255)
+    Note over UI,API: COMMIT PHASE
+    UI->>API: GET /parameters
+    API-->>UI: 200 { P, G }
+    Note over UI:  x = derive(password, stored_salt) mod Q <br/><br/> r = random in [1, Q-1] <br/><br/> Commitment T = G^r mod P <br/><br/> Verify T is a valid subgroup element before sending 
+    UI->>API: POST /login/commit  { client_id, T }
+    break missing client_id or commitment_t field
+        API-->>UI: 400 { reason: missing parameters }
+    end
+    break T not in subgroup
+        Note over API: Small-subgroup / invalid-curve attack prevention
+        API-->>UI: 422 { reason: invalid commitment }
+    end
+    break user not found
+        API-->>UI: 404 { reason: user not registered }
+    end
+   
+    Note over API: Generate random session_id <br/><br/> binding = H( TCP_peer_addr || User-Agent || session_id || client_id || T )<br/><br/> Generate challenge c = int(binding) mod (P-2) + 1  <br/><br/> Store { T, c, binding, peer_addr, timestamp } 
+    API-->>UI: 200 { session_id, challenge_c }
+    end
+
+    Note over UI: s = (r + c * x) mod Q<br/><br/>Wipe r and x from memory after computing s
+
+    rect rgb(220, 255, 220)
+    Note over UI,API: VERIFY PHASE
+    UI->>API: POST /login/verify  { solution_s }<br/><br/> X-Auth-Session: session_id 
+    break session_id not found
+        API-->>UI: 404 { reason: invalid session_id }
+    end
+    break session expired  (TTL = 5 s from commit)
+        API->>API: DELETE sessions[session_id]
+        API-->>UI: 401 { reason: session expired }
+    end
+    break s out of range [0, Q)
+        API->>API: DELETE sessions[session_id]
+        API-->>UI: 422 { reason: invalid solution }
+        Note  over API: Range check - rejects trivially invalid proofs
+    end
+    Note over API: Compute binding (peer_addr, UA, session_id, client_id, T)
+    break binding mismatch
+        API->>API: DELETE sessions[session_id]
+        API-->>UI: 401 { reason: session binding mismatch }
+        Note over API: Relay / MITM detected <br/>IP or UA changed between commit and verify
+    end
+    break challenge integrity check failed
+        API->>API: DELETE sessions[session_id]
+        API-->>UI: 400 { reason: challenge integrity check failed }
+        Note over API: Session field tampered
+    end
+    API->>DB: SELECT secret_y WHERE client_id=?
+    DB-->>API: { secret_y=y }
+    Note over API: Check  G^s == T * y^c  (mod P)
+    alt proof valid
+        API->>DB: INSERT AuthToken(JWT, client_id, issued_at)
+        DB-->>API: OK
+        API->>API: DELETE sessions[session_id]
+        API-->>UI: 200 { JWT } 
+        Note over UI: Store JWT in HttpOnly cookie or platform secure storage
+        UI-->>U: Authenticated - JWT stored
+    else proof invalid
+        API->>API: DELETE sessions[session_id]
+        API-->>UI: 401 { reason: verification failed }
+        UI-->>U: Error - unauthorized
+    end
+    end
+
+    rect rgb(240, 255, 240)
+    Note over UI,API: AUTHENTICATED ACCESS
+    UI->>API: GET /data  Authorization: Bearer { JWT }
+    API->>API: Decode and validate JWT signature (HS256) and expiry
+    alt valid token
+        API->>DB: SELECT personal_data WHERE client_id=?
+        DB-->>API: { data }
+        API-->>UI: 200 { data }
+        UI-->>U: Display result
+    else invalid or expired token
+        API-->>UI: 401 Unauthorized
+        UI-->>U: Error - unauthorized
+    end
+    end
+
+    Note over API: Every response carries security and tracing headers

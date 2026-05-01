@@ -4,20 +4,20 @@ sequenceDiagram
     participant S as Server
 
     Note over C,S: ── Public Parameters Setup ──
-    C->>S: GET /get-parameters
+    C->>S: GET /parameters
     S-->>C: P (2048-bit safe prime), G (generator of subgroup of order Q)
     Note over C,S: Q = (P - 1) / 2
 
     Note over C,S: ── Key Derivation (client-side only, never transmitted) ──
-    Note over C: x = SHA-256(username ‖ ":" ‖ password) mod Q
+    Note over C: x = scrypt(password, salt) mod Q  ← memory-hard KDF
     Note over C: y = G^x mod P     ← public key (Schnorr public key)
 
     rect rgb(245, 245, 245)
     Note over C,S: REGISTRATION
     C->>S: POST /register  { client_id, secret_y = y }
-    Note over S: Validate y is a subgroup member: y^Q ≡ 1 (mod P)
+    Note over S: Validate y is a subgroup member — y^Q mod P must equal 1
     Note over S: Store (client_id, y) in database
-    S-->>C: 201 Created  { status: "Registered" }  — or 200 OK  { status: "Updated" } on re-registration
+    S-->>C: 201 Created  { status: "Registered" }  — or 409 Conflict  { reason: "already registered" } if client_id exists
     end
 
     rect rgb(235, 245, 255)
@@ -28,13 +28,13 @@ sequenceDiagram
     C->>S: POST /login/commit  { client_id, commitment_t = t }
     Note over S: Look up user, validate t is subgroup member
     Note over S: Generate session_id (CSPRNG)
-    Note over S: binding = SHA-256(remote_addr ‖ user_agent ‖ session_id)
-    Note over S: c = SHA-256(session_id ‖ client_id ‖ t ‖ binding) mod (Q-1) + 1
+    Note over S: binding = SHA-256(addr ‖ UA ‖ session_id ‖ client_id ‖ t)
+    Note over S: c = int(binding) mod P-2, plus 1  — range 1 to P-2
     Note over S: Store (client_id, t, c, binding) in session — binding NOT sent to client
     S-->>C: 200 OK  { challenge_c = c, session_id }
 
     Note over C: Step 2 — Response
-    Note over C: s = (r + c · x) mod Q
+    Note over C: s = r + c·x mod Q
     C->>S: POST /login/verify  X-Auth-Session: session_id  { solution_s = s }
 
     Note over S: Step 3 — Verification
@@ -48,8 +48,10 @@ sequenceDiagram
     alt Proof valid  (Zero-Knowledge: server learns nothing about x)
         Note over S: Issue JWT token signed with server secret
         S-->>C: 200 OK  { token (JWT) }
+    else solution_s out of range — s must be in 0 to Q
+        S-->>C: 422  { reason: invalid solution }
     else Session expired (> SESSION_TTL seconds since commit)
-        S-->>C: 300  { reason: session expired }
+        S-->>C: 401  { reason: session expired }
     else Binding mismatch (relay or changed network path)
         S-->>C: 401  { reason: session binding mismatch }
     else Challenge integrity check failed
@@ -61,11 +63,10 @@ sequenceDiagram
 
     rect rgb(245, 255, 245)
     Note over C,S: AUTHENTICATED DATA ACCESS
-    C->>S: GET /data   Authorization: Bearer <token>
+    C->>S: GET /data   Authorization: Bearer {token}
     Note over S: Decode JWT → extract client_id → query PersoData
     S-->>C: 200 OK  { data: message }
 
-    C->>S: POST /data  Authorization: Bearer <token>  { data: "..." }
+    C->>S: POST /data  Authorization: Bearer {token}  { data: ... }
     S-->>C: 201 Created  { message: personal data updated }
     end
-

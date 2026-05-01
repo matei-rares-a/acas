@@ -106,7 +106,7 @@ def test_challenge_and_session_id_uniqueness_over_10000_commits(client):
 
     assert len(set(session_ids)) == n, "Session ID collision detected!"
     assert len(set(challenges)) == n, "challenge_c collision detected!"
-    assert all(1 <= c <= server.Q - 1 for c in challenges), "challenge_c out of range!"
+    assert all(1 <= c <= server.P - 2 for c in challenges), "challenge_c out of range!"
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +115,7 @@ def test_challenge_and_session_id_uniqueness_over_10000_commits(client):
 
 def test_mitm_weak_parameter_injection_allows_dlp_brute_force_and_login(client, monkeypatch):
     '''Testare atac MitM injectare parametri slabi P=23 - DLP brute-force si autentificare reusita cu x recuperat'''
-    """Attacker MitM /get-parameters and replaces P/Q/G with a tiny group (P=23, Q=11, G=4).
+    """Attacker MitM /parameters and replaces P/Q/G with a tiny group (P=23, Q=11, G=4).
     Victim registers using y computed under weak parameters.
     Attacker brute-forces the discrete logarithm trivially (at most P-1 iterations).
     Attacker completes a valid ZKP login as the victim using the recovered private key."""
@@ -136,7 +136,7 @@ def test_mitm_weak_parameter_injection_allows_dlp_brute_force_and_login(client, 
 
     # Victim registers — DB stores y computed under the (attacker-controlled) weak group
     resp = client.post("/register", json={"client_id": client_id, "secret_y": y_victim})
-    assert resp.status_code in (200, 201)
+    assert resp.status_code == 201
 
     # Attacker brute-forces the discrete logarithm in at most P-2 steps
     x_recovered = next(
