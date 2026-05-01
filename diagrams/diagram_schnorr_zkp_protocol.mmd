@@ -27,8 +27,10 @@ sequenceDiagram
     Note over C: t = G^r mod P
     C->>S: POST /login/commit  { client_id, commitment_t = t }
     Note over S: Look up user, validate t is subgroup member
-    Note over S: Pick c ←$ [1, Q-1]   (random challenge)
-    Note over S: Create session_id, store (client_id, t, c) in memory
+    Note over S: Generate session_id (CSPRNG)
+    Note over S: binding = SHA-256(remote_addr ‖ user_agent ‖ session_id)
+    Note over S: c = SHA-256(session_id ‖ client_id ‖ t ‖ binding) mod (Q-1) + 1
+    Note over S: Store (client_id, t, c, binding) in session — binding NOT sent to client
     S-->>C: 200 OK  { challenge_c = c, session_id }
 
     Note over C: Step 2 — Response
@@ -36,6 +38,9 @@ sequenceDiagram
     C->>S: POST /login/verify  X-Auth-Session: session_id  { solution_s = s }
 
     Note over S: Step 3 — Verification
+    Note over S: Recompute binding from current remote_addr, user_agent, session_id
+    Note over S: Reject with 401 if binding does not match (relay / MitM detected)
+    Note over S: Recompute c from stored inputs — reject with 400 if mismatch (tamper detected)
     Note over S: left  = G^s mod P
     Note over S: right = t · y^c mod P
     Note over S: Accept iff left == right
@@ -43,8 +48,14 @@ sequenceDiagram
     alt Proof valid  (Zero-Knowledge: server learns nothing about x)
         Note over S: Issue JWT token signed with server secret
         S-->>C: 200 OK  { token (JWT) }
+    else Session expired (> SESSION_TTL seconds since commit)
+        S-->>C: 300  { reason: session expired }
+    else Binding mismatch (relay or changed network path)
+        S-->>C: 401  { reason: session binding mismatch }
+    else Challenge integrity check failed
+        S-->>C: 400  { reason: challenge integrity check failed }
     else Proof invalid
-        S-->>C: 401 Unauthorized  { reason: verification failed }
+        S-->>C: 401  { reason: verification failed }
     end
     end
 
@@ -57,5 +68,4 @@ sequenceDiagram
     C->>S: POST /data  Authorization: Bearer <token>  { data: "..." }
     S-->>C: 201 Created  { message: personal data updated }
     end
-
 

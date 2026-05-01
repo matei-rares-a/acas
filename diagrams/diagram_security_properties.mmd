@@ -9,7 +9,7 @@ mindmap
       Cannot forge a valid proof without knowing the private key x
       Security reduces to the Discrete Logarithm Problem
       Safe prime P is 2048-bit — computationally infeasible to factor
-      Session challenge c is fresh and unpredictable
+      Session challenge c is deterministic from session inputs and binding
     Completeness
       An honest prover with correct x always produces an accepted proof
       Verification identity: G^s = G^(r+cx) = G^r · (G^x)^c = t · y^c (mod P)
@@ -18,9 +18,15 @@ mindmap
       Compromise of a JWT token does not reveal the password
       Historical sessions cannot be decrypted from a leaked token
     Replay Attack Prevention
-      Server challenge c is random and single-use
+      Server challenge c is single-use and session-bound
       Duplicate commitment for same client_id is rejected with 409
       In-memory session state is cleared after verify
+    Session Binding
+      binding = SHA-256(remote_addr | user_agent | session_id)
+      Binding is included in the Fiat-Shamir challenge derivation
+      Stored server-side only — never sent to the client
+      On verify, binding is recomputed from the live request
+      Mismatch indicates relay or MitM — rejected with 401
     Credential Security
       KDF: SHA-256 applied to username:password before mod Q
       Server stores only the public key y, never the password

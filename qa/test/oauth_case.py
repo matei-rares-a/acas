@@ -182,3 +182,60 @@ class TestOAuthCases(OAuthTestSuite):
         )
         assert refresh_resp.status_code == 200
         assert refresh_resp.get_json().get("refresh_token") != refresh_token
+
+
+    # ── Backward-compat aliases  (/oauth/... → pkce) ─────────────────────────
+
+    def test_oauth_compat_routes_behave_identically_to_pkce(self, client):
+        '''Testare rute backward-compat /oauth/register|authorize|token - se comporta ca pkce'''
+        """Compat aliases /oauth/register, /oauth/authorize, /oauth/token must behave
+        identically to the explicit /oauth/pkce/... endpoints (they map to pkce internally)."""
+        import secrets as _s
+        code_verifier = _s.token_urlsafe(48)
+
+        # ZKP registration must come first (OAuth register validates user exists)
+        from qa_utils import derive_password_x
+        x, _ = derive_password_x("compat-pass")
+        y = pow(server.G, x, server.P)
+        assert client.post("/register", json={"client_id": "compat_user", "secret_y": y}).status_code in (200, 201)
+
+        # Register via compat alias
+        assert client.post(
+            "/oauth/register",
+            json={"client_id": "compat_user", "password": "compat-pass"},
+        ).status_code == 201
+
+        # Authorize via compat alias — PKCE S256 required because compat → pkce
+        auth_resp = client.post(
+            "/oauth/authorize",
+            json={
+                "response_type":         "code",
+                "client_id":             OAUTH_PKCE_CLIENT_ID,
+                "redirect_uri":          OAUTH_REDIRECT_URI,
+                "username":              "compat_user",
+                "password":              "compat-pass",
+                "scope":                 "openid profile",
+                "code_challenge":        pkce_challenge(code_verifier),
+                "code_challenge_method": "S256",
+                "response_mode":         "json",
+            },
+        )
+        assert auth_resp.status_code == 200
+        code = auth_resp.get_json()["code"]
+
+        # Exchange code via compat alias
+        token_resp = client.post(
+            "/oauth/token",
+            json={
+                "grant_type":   "authorization_code",
+                "client_id":    OAUTH_PKCE_CLIENT_ID,
+                "redirect_uri": OAUTH_REDIRECT_URI,
+                "code":         code,
+                "code_verifier": code_verifier,
+            },
+        )
+        assert token_resp.status_code == 200
+        payload = token_resp.get_json()
+        assert payload.get("token_type") == "Bearer"
+        assert "access_token"  in payload
+        assert "refresh_token" in payload

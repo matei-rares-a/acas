@@ -4,16 +4,20 @@ from extensions import db
 from models import User, AuthToken, PersoData
 from server_oauth import init_oauth, clear_oauth_state
 from server_authlib import init_authlib, clear_authlib_state
-import hashlib
-import secrets
-import os
-import jwt
-import uuid
-import time
-import threading
-from datetime import datetime, timedelta, timezone
-from cryptography.hazmat.primitives.asymmetric import dh
 
+import hashlib
+import os
+import secrets
+import threading
+import time
+import uuid
+from datetime import datetime, timedelta, timezone
+
+import jwt
+
+# ---------------------------------------------------------------------------
+# Schnorr group parameters  (P = 2Q + 1 safe prime, G = 4)
+# ---------------------------------------------------------------------------
 '''
 Note: constants and settings should be in env files
 Simplicity: hardcoded constants and settings
@@ -23,77 +27,84 @@ Q = (P - 1) // 2
 G = 4
 
 # Python's jwt gives warning if secret is shorter than 32
-SECRET = 'dev-only-server-secret-at-least-32-bytes-long' 
+SECRET      = 'dev-only-server-secret-at-least-32-bytes-long'
+SESSION_TTL = 5        # seconds — commit → verify window
+# Second commit within 50 ms = race, first writer wins.
+# Second commit after 50 ms = hijack attempt, both sessions invalidated.
+COMMIT_RACE_WINDOW_S = 0.050   # 50 ms: two commits within this window = race
+'''
+Note: the server choses the auth scheme
+Simplicity: support similar schemes Bearer (RFC 6750).
+'''
+SUPPORTED_AUTH_SCHEMES = {"bearer", "token", "jwt", "dpop"}
 
+# ---------------------------------------------------------------------------
+# App setup
+# ---------------------------------------------------------------------------
 app = Flask(__name__)
-basedir = os.path.abspath(os.path.dirname(__file__))
-db_path = os.path.join(basedir, 'db')
-if not os.path.exists(db_path):
-    os.makedirs(db_path)
-app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(db_path, 'auth.db')}"
+_db_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'db')
+os.makedirs(_db_path, exist_ok=True)
+app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(_db_path, 'auth.db')}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-CORS(app,resources={r"/*": {"origins": "*"}},)
+CORS(app, resources={r"/*": {"origins": "*"}})
 db.init_app(app)
 with app.app_context():
     db.create_all()
-    print("Tabelele au fost create cu succes în:", app.config['SQLALCHEMY_DATABASE_URI'])
+    print("DB ready:", app.config['SQLALCHEMY_DATABASE_URI'])
 
+# ---------------------------------------------------------------------------
+# Request / response hooks
+# ---------------------------------------------------------------------------
 @app.before_request
-def before_request():
+def _before_request():
     request.start_time = time.time_ns()
 
-# Security headers
+
+_SECURITY_HEADERS = {
+    # Prevents browsers from guessing the response type. For an auth API returning JSON, that matters
+    # because you do not want a browser treating a JSON response like script or HTML under odd conditions.
+    # It reduces client-side misinterpretation and some XSS-style abuse paths.
+    'X-Content-Type-Options': 'nosniff',
+    # Stops your pages or responses from being embedded in an iframe.
+    # In a browser-based login flow, that helps defend against clickjacking.
+    'X-Frame-Options': 'DENY',
+    # Limits where scripts and other resources can load from, prevents base URL manipulation,
+    # and forbids framing. That matters because if malicious JavaScript runs in the client,
+    # it can steal the JWT returned after successful Schnorr verification or tamper with
+    # the proof flow before it reaches the server.
+    'Content-Security-Policy': "default-src 'self'; base-uri 'self'; frame-ancestors 'none'",
+    # Not needed for Schnorr correctness, but it is reasonable least-privilege hardening for a browser client.
+    'Permissions-Policy': 'geolocation=(), camera=(), microphone=()',
+    # Limits what the browser leaks in the Referer header when navigating away or making cross-origin
+    # requests. That helps avoid exposing sensitive URL structure or workflow details.
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+}
+
 @app.after_request
-def add_rest_headers(response):
-    # Request tracing
-    request_id = request.headers.get('Request-ID', str(uuid.uuid4()))
-    response.headers['Request-ID'] = request_id
-    
-    # Security headers
-    #Prevents browsers from guessing the response type. For an auth API returning JSON, that matters because you do not want a browser treating a JSON response like script or HTML under odd conditions. It reduces client-side misinterpretation and some XSS-style abuse paths.
-    response.headers['X-Content-Type-Options'] = 'nosniff'
-    #Stops your pages or responses from being embedded in an iframe. In a browser-based login flow, that helps defend against clickjacking.
-    response.headers['X-Frame-Options'] = 'DENY'
-    #it limits where scripts and other resources can load from, prevents base URL manipulation, and forbids framing. That matters because if malicious JavaScript runs in the client, it can steal the JWT returned after successful Schnorr verification or tamper with the proof flow before it reaches the server.
-    response.headers['Content-Security-Policy'] = "default-src 'self'; base-uri 'self'; frame-ancestors 'none'"
-    #not needed for Schnorr correctness, but it is reasonable least-privilege hardening for a browser client.
-    response.headers['Permissions-Policy'] = 'geolocation=(), camera=(), microphone=()'
-    #Limits what the browser leaks in the Referer header when navigating away or making cross-origin requests. That helps avoid exposing sensitive URL structure or workflow details
-    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-    if request.is_secure or request.headers.get('X-Forwarded-Proto', 'http') == 'https':
-        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-    
-    # API versioning
+def _after_request(response):
+    response.headers['Request-ID'] = request.headers.get('Request-ID', str(uuid.uuid4()))
     response.headers['API-Version'] = 'S1.0'
-    
-    # Cache control (overridable per route)
+
+    for header, value in _SECURITY_HEADERS.items():
+        response.headers[header] = value
+
+    if request.is_secure or request.headers.get('X-Forwarded-Proto') == 'https':
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+
     # No JWTs, challenge values, or personal data cached by browsers or proxies.
-    if 'Cache-Control' not in response.headers:
-        response.headers['Cache-Control'] = 'private, no-store, no-cache, must-revalidate'
-    
-    # Performance metrics
-    #It helps you measure slow endpoints
-    response.headers['X-Response-Time'] = f"{(time.time_ns() - request.start_time) / 1000000:.6f} ms"
-    #Similar to X-Response-Time, but standardized for browser tooling. Good for performance debugging in the frontend
-    response.headers['Server-Timing'] = f"app;dur={(time.time_ns() - request.start_time) / 1000000:.6f} ms"
-    
-    # Content type
-    #Consistent type
-    if response.headers.get('Content-Type') is None:
-        response.headers['Content-Type'] = 'application/json; charset=utf-8'
-    
-    # Add WWW-Authenticate for 401 responses
+    response.headers.setdefault('Cache-Control', 'private, no-store, no-cache, must-revalidate')
+    # Consistent type
+    response.headers.setdefault('Content-Type', 'application/json; charset=utf-8')
+
+    elapsed_ms = (time.time_ns() - request.start_time) / 1_000_000
+    # Helps you measure slow endpoints
+    response.headers['X-Response-Time'] = f"{elapsed_ms:.3f} ms"
+    # Similar to X-Response-Time, but standardized for browser tooling. Good for performance debugging in the frontend.
+    response.headers['Server-Timing']   = f"app;dur={elapsed_ms:.3f}"
+
     if response.status_code == 401:
         response.headers['WWW-Authenticate'] = 'Bearer realm="Schnorr Authentication", charset="UTF-8"'
 
-    # Emit a Werkzeug-like access log line for in-process test_client requests.
-    # if not app.config.get("TESTING"):
-    #     remote_addr = request.headers.get('X-Forwarded-For', request.remote_addr or '127.0.0.1')
-    #     timestamp = datetime.now().strftime('%d/%b/%Y %H:%M:%S')
-    #     print(
-    #         f'{remote_addr} - - [{timestamp}] "{request.method} {request.full_path.rstrip("?")} HTTP/1.1" {response.status_code} -'
-    #     )
-    
     return response
 
 
@@ -138,10 +149,8 @@ class _SessionStore(dict):
 
 
 sessions = _SessionStore()
-SESSION_TTL = 5  # seconds; window between /login/commit and /login/verify
 # Second commit within 50 ms = race, first writer wins.
 # Second commit after 50 ms = hijack attempt, both sessions invalidated.
-COMMIT_RACE_WINDOW_S = 0.050  # 50 ms
 
 
 # ---------------------------------------------------------------------------
@@ -161,7 +170,7 @@ def _compute_session_binding(raw_addr: str, user_agent: str, session_id: str) ->
 
 
 def _compute_challenge(session_id: str, client_id: str, t: int,
-                       session_binding: bytes) -> int:
+                       binding: bytes) -> int:
     """Hash-based Fiat\u2013Shamir challenge that commits to the session binding.
 
     c = SHA256( session_id || client_id || str(t) || session_binding ) mod (Q-1) + 1
@@ -174,94 +183,127 @@ def _compute_challenge(session_id: str, client_id: str, t: int,
     h.update(session_id.encode("utf-8"))
     h.update(client_id.encode("utf-8"))
     h.update(str(t).encode("utf-8"))
-    h.update(session_binding)
+    h.update(binding)
     return (int.from_bytes(h.digest(), "big") % (Q - 1)) + 1
 
-'''
-Note: the servers choses the auth scheme
-Simplicity: support similar schemes Bearer (RFC 6750).
-'''
-SUPPORTED_AUTH_SCHEMES = {"bearer", "token", "jwt", "dpop"}
 
-def validate_int_field(data, key):
-    value = data.get(key)
-    if value is None:
-        return None
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
+
+def validate_int_field(data: dict, key: str):
+    """Return int(data[key]) or None if missing / not convertible."""
     try:
-        return int(value)
-    except (TypeError, ValueError):
+        return int(data[key])
+    except (KeyError, TypeError, ValueError):
         return None
 
 
-# valid Schnorr group element in subgroup of order Q.
-# Note: prevents Small Subgroup attack — rejects y or t outside the subgroup of order Q with 422.
-def is_subgroup_member(value):
+def is_subgroup_member(value: int) -> bool:
+    """True iff value is a non-trivial element of the Schnorr subgroup of order Q."""
+    '''# Note: prevents Small Subgroup attack — rejects y or t outside the subgroup of order Q with 422.'''
     return 1 < value < P and pow(value, Q, P) == 1
 
 
-# Extract token from Authorization header, with optional body fallback
-def extract_access_token(data=None):
-    auth_header = request.headers.get('Authorization', '').strip()
-    if auth_header:
-        parts = auth_header.split(None, 1)
-        if len(parts) == 2:
-            scheme, token = parts[0].lower(), parts[1].strip()
-            if scheme in SUPPORTED_AUTH_SCHEMES and token:
-                return token
-        elif len(parts) == 1 and parts[0]:
-            # maybe raw token without scheme
-            return parts[0]
-
+def extract_access_token() -> str | None:
+    """Return Bearer token from Authorization header, or None."""
+    header = request.headers.get('Authorization', '').strip()
+    if not header:
+        return None
+    parts = header.split(None, 1)
+    if len(parts) == 2 and parts[0].lower() in SUPPORTED_AUTH_SCHEMES:
+        return parts[1].strip() or None
+    if len(parts) == 1:
+        return parts[0] or None
     return None
 
-@app.route('/health', methods=['GET'])
+
+def _get_peer() -> tuple[str, str]:
+    """Return (remote_addr, user_agent) for the current request."""
+    return (
+        request.remote_addr or "127.0.0.1",
+        request.headers.get("User-Agent", "").strip().lower(),
+    )
+
+
+def _issue_jwt(client_id: str) -> str:
+    """Encode a signed HS256 JWT valid for 1 hour."""
+    now = datetime.now(timezone.utc)
+    return jwt.encode(
+        {'client_id': client_id, 'iat': now, 'exp': now + timedelta(seconds=3600)},
+        SECRET, algorithm='HS256',
+    )
+
+
+def _save_token(user_id: int, token: str) -> None:
+    """Persist JWT in AuthToken table (upsert)."""
+    auth = AuthToken.query.filter_by(user_id=user_id).first()
+    if auth:
+        auth.token = token
+    else:
+        db.session.add(AuthToken(user_id=user_id, token=token))
+
+
+def _upsert_perso(user_id: int, message: str) -> bool:
+    """Update or create PersoData. Returns True if created."""
+    perso = PersoData.query.filter_by(user_id=user_id).first()
+    if perso:
+        perso.message = message
+        return False
+    db.session.add(PersoData(user_id=user_id, message=message))
+    return True
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
+@app.route('/health')
 def healthAPI():
-    return jsonify({"health":"running"})
+    return jsonify({"health": "running"})
 
 
-@app.route('/get-parameters', methods=['GET'])
+@app.route('/get-parameters')
 def getParametersAPI():
-    """Endpoint to exchange global parameters P and G with the client"""
-    response = jsonify({'P': str(P), 'G': str(G)})
-    response.headers['Cache-Control'] = 'public, max-age=3600'
-    response.headers['ETag'] = 'W/"v1.0-schnorr"'
-    return response
+    resp = jsonify({'P': str(P), 'G': str(G)})
+    resp.headers['Cache-Control'] = 'public, max-age=3600'
+    resp.headers['ETag'] = 'W/"v1.0-schnorr"'
+    return resp
 
-'''
-Note: the server should have the relation of client_id - secret_y,
-     this endpoint can be secured with a shared secret or other methods
-Simplicity: no authentication for this endpoint, in a real implementation it should be protected
-'''
+
 @app.route('/register', methods=['POST'])
 def registerAPI():
     '''
     User registration, client sends client_id and secret_y (y = g^x mod p) computed from password,
     server saves it for later verification at login
     '''
+    '''
+    Note: the server should have the relation of client_id - secret_y,
+         this endpoint can be secured with a shared secret or other methods
+    Simplicity: no authentication for this endpoint, in a real implementation it should be protected
+    '''
     data = request.get_json() or {}
     client_id = data.get('client_id')
     secret = validate_int_field(data, 'secret_y')
-    print(client_id, secret)
     if not client_id or secret is None:
         return jsonify({'reason': 'missing parameters'}), 400
     if not is_subgroup_member(secret):
         return jsonify({'reason': 'invalid public value'}), 422
-
     is_new = register_user_in_db(client_id, secret)
-    status = 'Registered' if is_new else 'Updated'
-    return jsonify({'status': status}), 201 if is_new else 200
+    return jsonify({'status': 'Registered' if is_new else 'Updated'}), 201 if is_new else 200
 
-def register_user_in_db(client_id, secret_y):
+
+def register_user_in_db(client_id: str, secret_y: int) -> bool:
+    """Upsert user credentials. Returns True if newly created."""
     user = User.query.filter_by(client_id=client_id).first()
     if user:
         user.secret_y = str(secret_y)
-        is_new = False
-    else:
-        user = User(client_id=client_id, secret_y=str(secret_y))
-        db.session.add(user)
-        is_new = True
+        db.session.commit()
+        return False
+    db.session.add(User(client_id=client_id, secret_y=str(secret_y)))
     db.session.commit()
-    return is_new
+    return True
 
 
 init_oauth(app, db, User, AuthToken, SECRET)
@@ -270,55 +312,45 @@ init_authlib(app, SECRET)
 @app.route('/login/commit', methods=['POST'])
 def commitAPI():
     '''
-    Login commitment, client sends client_id and commitment t, server saves it and returns challenge c
+    Login commitment, client sends client_id and commitment t,
+    server saves it and returns challenge c
     '''
     data = request.get_json() or {}
     client_id = data.get('client_id')
     t = validate_int_field(data, 'commitment_t')
+
     if not client_id or t is None:
         return jsonify({'reason': 'missing parameters'}), 400
     if not is_subgroup_member(t):
         return jsonify({'reason': 'invalid commitment'}), 422
-
-    user = User.query.filter_by(client_id=client_id).first()
-    if not user:
+    if not User.query.filter_by(client_id=client_id).first():
         return jsonify({'reason': 'user not registered'}), 404
-    
+
     with sessions._lock:
         existing_sid = sessions._client_sessions.get(client_id)
         if existing_sid:
             age = time.time() - sessions[existing_sid]["created_at"]
-            if age <= COMMIT_RACE_WINDOW_S:
-                # Concurrent race: first writer already owns this session.
-                # Reject newcomer but leave the session intact.
-                return jsonify({'reason': 'existing commitment found, start a new session'}), 409
-            else:
-                # Session is established; new commit looks like a hijacking attempt.
-                # Invalidate the existing session so neither party can use it.
-                # Note: prevents Replay attack — session deleted immediately after use so a captured session_id cannot be reused.
+            if age > COMMIT_RACE_WINDOW_S:   # hijack attempt — drop old session
                 del sessions[existing_sid]
-                return jsonify({'reason': 'existing commitment found, start a new session'}), 409
+            return jsonify({'reason': 'existing commitment found, start a new session'}), 409
 
-        # No conflict – create the session atomically inside the lock.
-        session_id = secrets.token_urlsafe(32)   # Note: prevents Session Fixation — CSPRNG guarantees unpredictable session_id.
-
+        # Note: prevents Session Fixation — CSPRNG guarantees unpredictable session_id.
+        session_id = secrets.token_urlsafe(32)
         # Session binding: tie this authentication attempt to the exact
         # network connection (TCP peer address + User-Agent + session ID).
         # request.remote_addr is the direct peer — not spoofable via headers.
-        raw_addr = request.remote_addr or "127.0.0.1"
-        user_agent = request.headers.get("User-Agent", "").strip().lower()
-        session_binding = _compute_session_binding(raw_addr, user_agent, session_id)
-
+        raw_addr, user_agent = _get_peer()
+        binding = _compute_session_binding(raw_addr, user_agent, session_id)
         # Challenge incorporates the binding, so it is only valid for this
         # exact connection context — relay to a different peer changes c.
-        challenge_c = _compute_challenge(session_id, client_id, t, session_binding)
+        challenge_c = _compute_challenge(session_id, client_id, t, binding)
 
         sessions[session_id] = {
             "client_id":  client_id,
             "t":          t,
             "c":          challenge_c,
-            "binding":    session_binding,   # stored; NOT sent to client
-            "raw_addr":   raw_addr,          # original peer IP (for logging)
+            "binding":    binding,       # stored; NOT sent to client
+            "raw_addr":   raw_addr,      # original peer IP (for logging)
             "created_at": time.time(),
         }
 
@@ -329,41 +361,39 @@ def commitAPI():
 def verifyAPI():
     '''
     Login verification, client sends client_id and solution s,
-    server verifies the proof using the saved commitment t and challenge c, if valid returns JWT token
+    server verifies the proof using the saved commitment t and challenge c,
+    if valid returns JWT token
     '''
     data = request.get_json() or {}
     #session_id will be in X-Auth-Session: header
-    session_id = request.headers.get('X-Auth-Session')
+    session_id = (request.headers.get('X-Auth-Session') or '').strip()
     s = validate_int_field(data, 'solution_s')
 
     if not session_id:
         return jsonify({'reason': 'missing session_id in X-Auth-Session header'}), 400
     if session_id not in sessions:
         return jsonify({'reason': 'invalid session_id'}), 404
-    if sessions[session_id]['created_at'] < time.time() - SESSION_TTL:
+
+    sess = sessions[session_id]
+
+    if sess['created_at'] < time.time() - SESSION_TTL:
         del sessions[session_id]
         return jsonify({'reason': 'session expired'}), 300
-    if s is None:
-        del sessions[session_id]
-        return jsonify({'reason': 'invalid solution'}), 422
-    if s < 0 or s >= Q:
+    if s is None or s < 0 or s >= Q:
         del sessions[session_id]
         return jsonify({'reason': 'invalid solution'}), 422
 
-    session = sessions[session_id]
-    client_id = session['client_id']
+    client_id = sess['client_id']
+    raw_addr_now, ua_now = _get_peer()
+    stored_binding = sess.get('binding')
 
     # ── Session binding check ──────────────────────────────────────────────
     # Recompute the binding from the *current* request's direct peer address.
     # If the request is relayed from a different IP or uses a different UA,
     # the binding will not match and authentication is rejected.
-    raw_addr_now = request.remote_addr or "127.0.0.1"
-    user_agent_now = request.headers.get("User-Agent", "").strip().lower()
-    current_binding = _compute_session_binding(raw_addr_now, user_agent_now, session_id)
-
-    stored_binding = session.get("binding")
+    current_binding = _compute_session_binding(raw_addr_now, ua_now, session_id)
     if stored_binding and current_binding != stored_binding:
-        original_ip = session.get("raw_addr", "unknown")
+        original_ip = sess.get("raw_addr", "unknown")
         print(
             f"[verify] Binding mismatch: possible relay attack | "
             f"original_ip={original_ip!r} current_ip={raw_addr_now!r}"
@@ -374,131 +404,68 @@ def verifyAPI():
     # ── Recompute expected challenge using the stored binding ──────────────
     # DO NOT trust the stored c directly — derive it fresh from stored inputs
     # so tampering with any session field is detected.
-    t_stored = session['t']
-    c_expected = _compute_challenge(session_id, client_id, t_stored, stored_binding or b"")
-    if c_expected != session['c']:
+    if _compute_challenge(session_id, client_id, sess['t'], stored_binding or b'') != sess['c']:
         del sessions[session_id]
         return jsonify({'reason': 'challenge integrity check failed'}), 400
 
     user = User.query.filter_by(client_id=client_id).first()
     if not user:
+        del sessions[session_id]
         return jsonify({'reason': 'user not found'}), 404
-        
-    y = int(user.secret_y)
-    t = session['t']
-    c = session['c']  # verified above
-    left = pow(G, s, P)
-    right = (t * pow(y, c, P)) % P
-    if left == right:
-        # Issue JWT with expiry consistent with OAuth2 access token TTL (1 hour).
-        now = datetime.now(timezone.utc)
-        token_str = jwt.encode(
-            {
-                'client_id': client_id,
-                'iat': now,
-                'exp': now + timedelta(seconds=3600),
-            },
-            SECRET,
-            algorithm='HS256',
-        )
-        auth = AuthToken.query.filter_by(user_id=user.id).first()
-        if auth:
-            auth.token = token_str
-        else:
-            auth = AuthToken(user_id=user.id, token=token_str)
-            db.session.add(auth)
+
+    y, t, c = int(user.secret_y), sess['t'], sess['c']
+    if pow(G, s, P) == (t * pow(y, c, P)) % P:
+        token_str = _issue_jwt(client_id)
+        _save_token(user.id, token_str)
+        # Note: prevents Replay attack — session deleted immediately after use
+        # so a captured session_id cannot be reused.
         del sessions[session_id]
         db.session.commit()
         return jsonify({'token': token_str}), 200
-    else:
-        del sessions[session_id]
-        return jsonify({'reason': 'verification failed'}), 401
+
+    del sessions[session_id]
+    return jsonify({'reason': 'verification failed'}), 401
 
 
 @app.route('/data', methods=['GET', 'POST', 'PUT'])
 def dataAcessApi():
-    data = request.get_json(silent=True) or {}
-    token = extract_access_token(data)
+    token = extract_access_token()
     if not token:
         return jsonify({'reason': 'missing token'}), 401
     try:
         payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        client_id = payload.get('client_id')
-        user = User.query.filter_by(client_id=client_id).first()
-        if not user:
-            return jsonify({'reason': 'user not found'}), 404
-        if request.method == 'GET':
-            perso = PersoData.query.filter_by(user_id=user.id).first()
-            if not perso:
-                return jsonify({'reason': 'no personal data found'}), 404
-            return jsonify({'data': perso.message})
-        else:
-            new_data = data.get('data')
-            if new_data is None:
-                return jsonify({'reason': 'missing data'}), 400
-            if not isinstance(new_data, str):
-                new_data = str(new_data)
-            perso = PersoData.query.filter_by(user_id=user.id).first()
-            was_created = False
-            if perso:
-                perso.message = new_data
-            else:
-                perso = PersoData(user_id=user.id, message=new_data)
-                db.session.add(perso)
-                was_created = True
-            db.session.commit()
-            return jsonify({'message': 'personal data updated'}), 201 if was_created else 200
     except jwt.ExpiredSignatureError:
         return jsonify({'reason': 'token expired'}), 401
     except jwt.InvalidTokenError:
         return jsonify({'reason': 'invalid token'}), 401
-    
 
-def create_self_signed_cert():
-    """Create a self-signed certificate for HTTPS"""
-    try:
-        if not os.path.exists('cert.pem') or not os.path.exists('key.pem'):
-            import subprocess
-            subprocess.run([
-                'openssl', 'req', '-x509', '-newkey', 'rsa:4096',
-                '-keyout', 'key.pem', '-out', 'cert.pem',
-                '-days', '365', '-nodes',
-                '-subj', '/CN=localhost'
-            ], check=True)
-            print('Created self-signed certificate')
-    except Exception as e:
-        print(f'Warning: Could not create certificate: {e}')
-        print('Run without HTTPS or generate certificates manually:')
-        print('openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=localhost"')
+    user = User.query.filter_by(client_id=payload.get('client_id')).first()
+    if not user:
+        return jsonify({'reason': 'user not found'}), 404
 
+    if request.method == 'GET':
+        perso = PersoData.query.filter_by(user_id=user.id).first()
+        if not perso:
+            return jsonify({'reason': 'no personal data found'}), 404
+        return jsonify({'data': perso.message})
 
+    data = request.get_json(silent=True) or {}
+    message = data.get('data')
+    if message is None:
+        return jsonify({'reason': 'missing data'}), 400
+    created = _upsert_perso(user.id, str(message) if not isinstance(message, str) else message)
+    db.session.commit()
+    return jsonify({'message': 'personal data updated'}), 201 if created else 200
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 if __name__ == '__main__':
     import warnings
-    warnings.filterwarnings("ignore", message=r".*request\.scope.*is deprecated")
-
-    https=False
-
-    print('Schnorr Authentication Server')
-    print('\n')
-    print('=' * 50)
-    print(f'Starting Flask server on { 'https://localhost:5000' if https else 'http://localhost:5000'}')
-    print(f'PID: {os.getpid()}')
-    print('=' * 50)
-    print('\n')
-
-    #create_self_signed_cert()
-
-    if https and os.path.exists('cert.pem') and os.path.exists('key.pem'):
-        app.run(
-            host='0.0.0.0',
-            port=5000,
-            ssl_context=('cert.pem', 'key.pem'),
-            debug=True
-        )
-    else:
-        # Fall back to HTTP
-        app.run(
-            host='0.0.0.0',
-            port=5000,
-            debug=True
-        )
+    warnings.filterwarnings('ignore', message=r'.*request\.scope.*is deprecated')
+    https = False
+    host, port = '0.0.0.0', 5000
+    scheme = 'https' if https else 'http'
+    print(f'Schnorr Authentication Server — {scheme}://localhost:{port}  PID={os.getpid()}')
+    ssl_ctx = ('cert.pem', 'key.pem') if https and os.path.exists('cert.pem') else None
+    app.run(host=host, port=port, ssl_context=ssl_ctx, debug=True)
