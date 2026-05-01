@@ -1,4 +1,4 @@
-# API Reference – Schnorr ZKP Authentication Server
+# API Reference – ZKP Authentication Server
 
 Covers all endpoints, headers, status codes, and OAuth2 flows for this server.
 
@@ -72,7 +72,7 @@ Register a ZKP user. Client sends `client_id` and `secret_y = G^x mod P`.
 - `422 Unprocessable Entity` – `secret_y` is not a valid subgroup member
 
 ### 5.4 `POST /login/commit`
-Step 1 of the Schnorr ZKP login. Client sends commitment `t = G^r mod P`.
+Step 1 of the ZKP login. Client sends commitment `t = G^r mod P`.
 - `200 OK` – `{ "challenge_c": "<int>", "session_id": "<token>" }`
 - `400 Bad Request` – missing `client_id` or `commitment_t`
 - `404 Not Found` – user not registered
@@ -80,7 +80,7 @@ Step 1 of the Schnorr ZKP login. Client sends commitment `t = G^r mod P`.
 - `422 Unprocessable Entity` – `commitment_t` is not a valid subgroup member
 
 ### 5.5 `POST /login/verify`
-Step 2 of the Schnorr ZKP login. Requires `X-Auth-Session: <session_id>` header.
+Step 2 of the ZKP login. Requires `X-Auth-Session: <session_id>` header.
 - `200 OK` – proof valid → `{ "token": "<JWT>" }`
 - `300` – session expired (TTL exceeded between commit and verify)
 - `400 Bad Request` – missing `X-Auth-Session` header or invalid/missing `solution_s`
