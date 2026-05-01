@@ -206,33 +206,8 @@ class TestSecurityCases(BaseTestSuite):
     # ═════════════════════════════════════════════════════════════════════════════
     # D. Protocol properties
     # ═════════════════════════════════════════════════════════════════════════════
-
-    def test_challenge_c_is_fresh_and_unique_per_session(self, client):
-        '''Testare unicitate challenge_c la fiecare sesiune (calitate RNG)'''
-        """Client commit 50 times, server draw fresh c from [1, Q-1] each time, all 50 challenge values are distinct and inside valid range."""
-        client_id = "uniq_user"
-        x,_ = derive_password_x("uniq-pass")
-        y = pow(server.G, x, server.P)
-        with server.app.app_context():
-            server.db.session.add(server.User(client_id=client_id, secret_y=str(y)))
-            server.db.session.commit()
-
-        challenges = []
-        for _ in range(50):
-            rand_r = secrets_module.randbelow(server.P - 2) + 1
-            t = pow(server.G, rand_r, server.P)
-            resp = client.post(
-                "/login/commit",
-                json={"client_id": client_id, "commitment_t": t},
-            )
-            assert resp.status_code == 200
-            payload = resp.get_json()
-            challenges.append(int(payload["challenge_c"]))
-            _burn_session(client, payload["session_id"])  # free slot for next commit
-
-        assert len(set(challenges)) == 50, "Duplicate challenge_c detected - RNG may be broken"
-        assert all(1 <= c <= server.Q - 1 for c in challenges), "challenge_c outside [1, Q-1]"
-
+    # Note: challenge_c and session_id uniqueness are covered at larger scale
+    # (10 000 samples) by automated.py::test_challenge_and_session_id_uniqueness_over_10000_commits.
 
     def test_concurrent_users_sessions_are_isolated(self, client):
         '''Testare izolare sesiuni intre utilizatori concurenti (Alice si Bob sesiuni simultane)'''

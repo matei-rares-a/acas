@@ -1,0 +1,68 @@
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant UI as Client App
+    participant API as  Server
+    participant DB as  DB
+
+    U->>UI: Enter server URL, username, password
+
+    rect rgb(245,245,245)
+    Note over UI,API: Registration Flow
+    UI->>API: GET /get-parameters
+    API-->>UI: 200 {P,G}
+    UI->>UI: pass_x = derive(password)
+    UI->>UI: secret_y = g^pass_x mod p
+    UI->>API: POST /register {client_id, secret_y}
+    API->>DB: Insert/update user(client_id, secret_y)
+    DB-->>API: OK
+    API-->>UI: 201 Created/200 Updated
+    UI-->>U: Registration success/error
+    end
+
+    rect rgb(235,245,255)
+    Note over UI,API: Login Flow
+    UI->>API: GET /get-parameters
+    API-->>UI: 200 {P,G}
+
+    UI->>UI: password_x = derive(password)
+    UI->>UI: Generate random r <br/> t = g^r mod p
+
+    UI->>API: POST /login/commit {client_id, commitment_t=t}
+    API->>DB: Validate user exists
+    DB-->>API: User record
+    API->>API: Compute binding = SHA-256(remote_addr|user_agent|session_id)
+    API->>API: c = SHA-256(session_id|client_id|t|binding) mod (Q-1) + 1
+    API->>API: Store commitment, challenge, binding in memory
+    API-->>UI: 200 {challenge_c}
+
+    UI->>UI: Compute s = (r + c*x) mod q
+    UI->>API: POST /login/verify { solution_s=s } + X-Auth-Session header
+    API->>API: Recompute binding from remote_addr, user_agent, session_id
+    API->>API: Reject with 401 if binding mismatch (relay detected)
+    API->>API: Recompute c from stored inputs — reject with 400 if mismatch
+    API->>DB: Read user secret_y
+    DB-->>API: secret_y
+    API->>API: Verify g^s == t * y^c (mod p)
+    alt Verification success
+        API->>DB: Create/update AuthToken (JWT)
+        DB-->>API: Token stored
+        API-->>UI: 200 {token, client_id}
+        UI-->>U: Show auth success + token
+    else Verification failure
+        API-->>UI: 401 {reason}
+        UI-->>U: Show error
+    end
+    end
+
+    rect rgb(245,255,245)
+    Note over UI,API: Authenticated Data Flow
+    UI->>API: GET/POST/PUT /data with Authorization token
+    API->>API: Decode and validate JWT
+    API->>DB: Read/write personal data
+    DB-->>API: Data result
+    API-->>UI: 200/201/error
+    UI-->>U: Display result
+    end
+
+    Note over API: adds headers to every response

@@ -1,5 +1,3 @@
-
-%% High-level register phase (Client_App/Extension <-> Server)
 sequenceDiagram
     autonumber
     participant C as Client_App/Extension
@@ -8,7 +6,7 @@ sequenceDiagram
     C->>S: GET /get-parameters
     S-->>C: 200 {P, G}
 
-    Note over C: Compute secret_y locally from client_id + password
+    Note over C: Compute  secret_y locally from client_id + password
     C->>S: POST /register {client_id, secret_y}
 
     alt New client_id
@@ -19,4 +17,4 @@ sequenceDiagram
         S-->>C: 400/422 {reason}
     end
 
-    Note over S: Each response includes tracing and security headers
+    Note over S: Each  response includes tracing and security headers
