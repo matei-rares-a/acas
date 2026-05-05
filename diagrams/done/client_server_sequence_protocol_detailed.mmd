@@ -47,7 +47,6 @@ sequenceDiagram
     DB-->>API: {secret_y}
     break missing client_id or commitment_t field
         API-->>UI: 400 { reason: missing parameters }
-        UI-->>U: Error - missing parameters
     end
     break T not in subgroup
         API-->>UI: 422 { reason: invalid commitment }

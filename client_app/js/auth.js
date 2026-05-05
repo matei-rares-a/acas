@@ -1,9 +1,8 @@
 // shared utilities for Schnorr authentication client
 
-// Secure default parameters aligned with calculations.py
 let P = 2089n;
 let Q = (P - 1n) / 2n;
-// Use a subgroup generator of order Q (g = h^2 mod p with h = 2)
+//subgroup generator of order Q (g = h^2 mod p with h = 2)
 let G = 4n;
 
 /**
@@ -44,7 +43,7 @@ async function fetchParameters(serverUrl) {
     }
 }
 
-//Note: the client app should compute the secret_y using the password and the salt at registration and save the secret_y locally (in an encrypted manner) in order to be used at login
+//NOTE: the client app should compute the secret_y using the password and the salt at registration and save the secret_y locally (in an encrypted manner) in order to be used at login
 //Simplicity: the secret_y is computed everytime using password and client_id as salt
 async function derivePasswordX(password, client_id = '') {
     const normalized = `${client_id}:${password}`; 
