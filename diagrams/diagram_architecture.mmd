@@ -36,7 +36,7 @@ graph TB
         end
 
         VERIFIER["Schnorr Verifier\ng^s ≡ t · y^c (mod P)\n+ session binding check"]
-        BINDING["Session Binding\nSHA-256(addr|UA|session_id|client_id|t)\nc = int(binding) mod (P-2) + 1"]
+        BINDING["Session Binding\nSHA-256(addr|UA|session_id|client_id|t)\nc = int(binding) mod Q"]
         MODELS["models.py\nUser · AuthToken · PersoData"]
         EXT["extensions.py\nSQLAlchemy db"]
         HEADERS["after_request hook\nREST & Security headers"]

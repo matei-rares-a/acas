@@ -1,0 +1,24 @@
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant UI as Client App
+    participant API as Server
+    participant DB as Database
+
+    U->>UI: Request access to protected resource
+
+
+    rect rgb(240, 255, 240)
+    Note over UI,API: Authenticated Access
+    UI->>API: GET /data  Authorization: Bearer { JWT }
+    API->>API: Decode and validate JWT signature (HS256) and expiry
+    alt valid token
+        API->>DB: SELECT personal_data WHERE client_id=?
+        DB-->>API: { data }
+        API-->>UI: 200 { data }
+        UI-->>U: Display result
+    else invalid or expired token
+        API-->>UI: 401 Unauthorized
+        UI-->>U: Error - unauthorized
+    end
+    end

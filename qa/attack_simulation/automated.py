@@ -131,7 +131,7 @@ def test_mitm_weak_parameter_injection_allows_dlp_brute_force_and_login(client, 
     monkeypatch.setattr(server, "G", G_weak)
 
     client_id = "mitm_victim"
-    x_victim = 7                                      # victim's private key
+    x_victim = 50                                      # victim's private key
     y_victim = pow(G_weak, x_victim, P_weak)          # = 8  (stored in DB)
 
     # Victim registers — DB stores y computed under the (attacker-controlled) weak group
@@ -144,7 +144,7 @@ def test_mitm_weak_parameter_injection_allows_dlp_brute_force_and_login(client, 
         None,
     )
     assert x_recovered is not None, "DLP brute-force found no solution"
-    assert x_recovered == x_victim, f"Recovered x={x_recovered} != original x={x_victim}"
+    assert x_recovered == x_victim % Q_weak, f"Recovered x={x_recovered} != x_victim mod Q={x_victim % Q_weak}"
 
     # Attacker completes a fresh ZKP login using the recovered private key
     rand_r = secrets_module.randbelow(P_weak - 2) + 1

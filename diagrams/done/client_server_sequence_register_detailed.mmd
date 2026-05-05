@@ -1,0 +1,36 @@
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant UI as Client App
+    participant API as Server
+    participant DB as Database
+
+    U->>UI: Enter client_id, password
+
+    rect rgb(255, 240, 220)
+    Note over UI,API: Registration
+    UI->>API: GET /parameters
+    API-->>UI: 200 { P, G }
+    Note over UI,API: P is a 2048-bit safe prime, Q = (P-1)/2, G = 4
+    UI->>UI: x = derive(password, client_id) mod Q
+    UI->>UI:  y = G^x mod P, discard x 
+    Note over UI: Instead of client_id, a salt in secure local storage should be used
+    UI->>API: POST /register  { client_id, y }
+    break missing client_id or secret_y field
+        API-->>UI: 400 { reason: missing parameters }
+        UI-->>U: Error - missing parameters
+    end
+    break y not in Schnorr subgroup  (1 < y < P  AND  y^Q == 1 mod P)
+        API-->>UI: 422 { reason: invalid public value }
+        UI-->>U: Error - invalid public value <br/>(blocks small-subgroup attacks)
+    end
+    alt New client_id
+        API->>DB: INSERT user(client_id, secret_y=y)
+        DB-->>API: OK
+        API-->>UI: 201 { status: Registered }
+        UI-->>U: Registered successfully
+    else client_id already exists
+        API-->>UI: 409 { reason: already registered }
+        UI-->>U: Error - already registered
+    end
+    end

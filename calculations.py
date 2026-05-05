@@ -37,16 +37,16 @@ print("Password x:", password_x)
 #0.create secret_y and register
 secret_y = pow(global_g, password_x, global_p) #y = g^x mod p, x in [0, q-1], y in subgroup of order q
 #1.create commitment and send to server
-rand_r = secrets.randbelow(global_p-2) + 1 # r = random in [1, p-2]
+rand_r = secrets.randbelow(q - 1) + 1 # r = random in Zq* = [1, 2, ..., q-1]
 commitment_t = pow(global_g, rand_r, global_p)  # t = g^r mod p
 #2.receive challenge c from server, compute solution s and send to server
-challenge_c = secrets.randbelow(global_p-2) + 1 # c = random in [1, p-2]
-solution_s = (rand_r + challenge_c * password_x) % (global_p-1) # s = r + c*x mod p
+challenge_c = secrets.randbelow(q - 1) + 1 # c = random in Zq* = [1, 2, ..., q-1]
+solution_s = (rand_r + challenge_c * password_x) % q # s = r + c*x mod q, s in Zq* = [1, 2, ..., q-1]
 #3.server final verifies, returns true
 left = pow(global_g, solution_s, global_p) # left = g^s mod p
 right = (commitment_t * pow(secret_y, challenge_c, global_p)) % global_p # right = t * y^c mod p
 proof = left == right
 print("Proof valid?", proof)
 
-
+#y,t,left,right sunt in Zp* = {1, 2, ..., p-1}, iar x,r,c,s sunt in Zq* = {1, 2, ..., q-1}  
 

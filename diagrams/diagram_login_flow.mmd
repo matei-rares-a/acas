@@ -1,11 +1,12 @@
 flowchart TD
     A([Start]) --> B["User enters\nusername · password · server URL"]
-    B --> C["GET /parameters\nReceive P, G, Q"]
+    C --> D["GET /parameters\nReceive P, G  (Q = (P-1)/2 computed client-side)"]
     C --> D["Derive private key\nx = scrypt(password, salt) mod Q"]
     D --> E["Generate random r ←$ [1, Q-1]\nusing CSPRNG"]
     E --> F["Compute commitment\nt = G^r mod P"]
     F --> G["POST /login/commit\n{ client_id, commitment_t = t }"]
     G --> H{Response?}
+    H -- "400 Bad Request" --> H400["❌ Missing client_id or commitment_t"]
     H -- "404 Not Found" --> I["❌ User not registered"]
     H -- "409 Conflict" --> J["❌ Existing commitment found\nStart a new session"]
     H -- "422 Unprocessable" --> K["❌ t is not a valid\nsubgroup member"]
@@ -21,5 +22,5 @@ flowchart TD
     P -- "✓ Proof valid" --> Q["Receive JWT token\n{ token }"]
     P -- "✗ Proof invalid — 401" --> R["❌ Verification failed\n(wrong password or tampered proof)"]
     Q --> S["✅ Authenticated\nStore token, display success"]
-    I & J & K & R300 & R422 & R401b & R400 & R --> T["Show error message\nReturn to login form"]
+    I & J & K & H400 & R300 & R422 & R401b & R400 & R --> T["Show error message\nReturn to login form"]
     S & T --> Z([End])

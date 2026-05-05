@@ -6,7 +6,7 @@
     C->>S: GET /parameters
     S-->>C: 200 {P, G}
 
-    Note over C: Compute secret_y locally from client_id + password
+    Note over C: Compute secret_y from client_id + password
     C->>S: POST /register {client_id, secret_y}
 
     alt New client_id
