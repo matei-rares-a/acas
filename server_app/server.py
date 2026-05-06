@@ -1,3 +1,5 @@
+from urllib import response
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from extensions import db
@@ -57,6 +59,8 @@ with app.app_context():
 # ---------------------------------------------------------------------------
 @app.before_request
 def _before_request():
+    if not request.path.startswith('/login') and not request.path.startswith('/register') and not request.path.startswith('/parameters') and not request.path.startswith('/health') and not request.path.startswith('/data'):
+        pass
     request.start_time = time.time_ns()
 
 
@@ -82,6 +86,8 @@ _SECURITY_HEADERS = {
 
 @app.after_request
 def _after_request(response):
+    if not request.path.startswith('/login') and not request.path.startswith('/register') and not request.path.startswith('/parameters') and not request.path.startswith('/health') and not request.path.startswith('/data'):
+        return response
     response.headers['Request-ID'] = request.headers.get('Request-ID', str(uuid.uuid4()))
     response.headers['API-Version'] = 'S1.0'
 

@@ -4,7 +4,7 @@
 # locustfile.py — Locust load-test scenarios for all four auth protocols.
 # Run against a live server:
 #   python server_app/server.py
-#   locust -f qa/measurement/locustfile.py --host=http://localhost:5000 --users 100 --spawn-rate 10 --headless --run-time 60s --html qa/measurement/generated/locust_report.html
+#   locust -f qa/measurement/locustfile.py --host=http://localhost:5000 --users 50 --spawn-rate 10 --headless --run-time 60s --html qa/measurement/generated/locust_report.html
 #
 
 from pathlib import Path

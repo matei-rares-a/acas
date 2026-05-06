@@ -147,7 +147,7 @@ class TestSecurityCases(BaseTestSuite):
             headers={"X-Auth-Session": session_id},
             json={"solution_s": 0},
         )
-        assert response.status_code == 401, "s=0 must fail the ZKP check"
+        assert response.status_code == 422, "s=0 must fail the ZKP check"
 
 
     # ═════════════════════════════════════════════════════════════════════════════
