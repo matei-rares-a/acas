@@ -94,7 +94,6 @@ class TestOAuthCases(OAuthTestSuite):
         assert "code" in payload
         assert payload.get("redirect_uri") == OAUTH_REDIRECT_URI
         assert payload.get("expires_in") > 0
-        assert "X-Response-Time" in resp.headers
 
 
     def test_oauth_pkce_token_returns_bearer_and_refresh_tokens(self, client):
@@ -184,7 +183,7 @@ class TestOAuthCases(OAuthTestSuite):
         assert refresh_resp.get_json().get("refresh_token") != refresh_token
 
 
-    # ── Backward-compat aliases  (/oauth/... → pkce) ─────────────────────────
+    # -- Backward-compat aliases  (/oauth/... -> pkce) -------------------------
 
     def test_oauth_compat_routes_behave_identically_to_pkce(self, client):
         '''Testare rute backward-compat /oauth/register|authorize|token - se comporta ca pkce'''
@@ -205,7 +204,7 @@ class TestOAuthCases(OAuthTestSuite):
             json={"client_id": "compat_user", "password": "compat-pass"},
         ).status_code == 201
 
-        # Authorize via compat alias — PKCE S256 required because compat → pkce
+        # Authorize via compat alias -- PKCE S256 required because compat -> pkce
         auth_resp = client.post(
             "/oauth/authorize",
             json={

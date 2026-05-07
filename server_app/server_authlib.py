@@ -80,10 +80,10 @@ def clear_authlib_state() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Module context — set once by init_authlib()
+# Module context -- set once by init_authlib()
 # ---------------------------------------------------------------------------
 _AUTHLIB_SECRET: str = ""
-# AuthorizationServer instance — created in init_authlib(), used by route handlers.
+# AuthorizationServer instance -- created in init_authlib(), used by route handlers.
 _authorization: AuthorizationServer | None = None
 
 
@@ -286,7 +286,7 @@ def init_authlib(app, secret: str) -> None:
 def authlib_register():
     '''POST /authlib/register
 
-    Register an Authlib OAuth user — stores a hashed password for the given
+    Register an Authlib OAuth user -- stores a hashed password for the given
     Schnorr client_id. The user must already exist in the ZKP User table.
     '''
     from models import User as _User
@@ -326,7 +326,7 @@ def authlib_authorize():
             "error_description": "invalid credentials",
         }), 401
 
-    # Hand control to Authlib — grant_user is the authenticated subject.
+    # Hand control to Authlib -- grant_user is the authenticated subject.
     # Resolve the grant explicitly to avoid the DeprecationWarning that fires
     # when grant= is omitted (will become mandatory in Authlib v1.8).
     oauth2_req = _authorization.create_oauth2_request(None)
@@ -355,7 +355,7 @@ def authlib_authorize():
 def authlib_token():
     '''POST /authlib/oauth/token
 
-    Standard token endpoint — Authlib reads form fields directly.
+    Standard token endpoint -- Authlib reads form fields directly.
     Exchanges an authorization code or refresh token for an access token.
     '''
     return _authorization.create_token_response()

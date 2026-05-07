@@ -1,7 +1,7 @@
-# conftest.py — pytest find this file by name, load before all tests, no import needed.
+# conftest.py -- pytest find this file by name, load before all tests, no import needed.
 # Two jobs:
-#   1. gevent patch — must run before ssl imported (jwt pulls ssl in). patch here = first.
-#   2. hooks — collect results, print summary after each run. reset between runs (main_test calls pytest many times).
+#   1. gevent patch -- must run before ssl imported (jwt pulls ssl in). patch here = first.
+#   2. hooks -- collect results, print summary after each run. reset between runs (main_test calls pytest many times).
 try:
     from gevent import monkey as _monkey
     _monkey.patch_all()
@@ -12,7 +12,7 @@ except ImportError:
 # do `from qa_utils import ...` without carrying its own path-setup block.
 import sys as _sys
 from pathlib import Path as _Path
-_QA_ROOT = _Path(__file__).resolve().parent.parent  # qa/test/ → qa/
+_QA_ROOT = _Path(__file__).resolve().parent.parent  # qa/test/ -> qa/
 if str(_QA_ROOT) not in _sys.path:
     _sys.path.insert(0, str(_QA_ROOT))
 

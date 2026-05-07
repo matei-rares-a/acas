@@ -103,7 +103,7 @@ def run_throughput_sweep(
         for burst in burst_sizes:
             print(f"  burst={burst}")
 
-            # ── ZKP: commit + verify ─────────────────────────────────────────
+            # -- ZKP: commit + verify -----------------------------------------
             t0 = time.perf_counter()
             zkp_ok = 0
             for _ in range(burst):
@@ -124,7 +124,7 @@ def run_throughput_sweep(
             rows.append({"users": burst, "method": "ZKP", "rps": rps})
             print(f"    ZKP          : {zkp_ok}/{burst} OK  {rps:.2f} RPS")
 
-            # ── OAuth2 PKCE: authorize + token ───────────────────────────────
+            # -- OAuth2 PKCE: authorize + token -------------------------------
             t0 = time.perf_counter()
             pkce_ok = 0
             for _ in range(burst):
@@ -159,7 +159,7 @@ def run_throughput_sweep(
             rows.append({"users": burst, "method": "OAuth2 PKCE", "rps": rps})
             print(f"    OAuth2 PKCE  : {pkce_ok}/{burst} OK  {rps:.2f} RPS")
 
-            # ── OAuth2 Simple: authorize + token ─────────────────────────────
+            # -- OAuth2 Simple: authorize + token -----------------------------
             t0 = time.perf_counter()
             simple_ok = 0
             for _ in range(burst):
@@ -189,7 +189,7 @@ def run_throughput_sweep(
             rows.append({"users": burst, "method": "OAuth2 Simple", "rps": rps})
             print(f"    OAuth2 Simple: {simple_ok}/{burst} OK  {rps:.2f} RPS")
 
-            # ── Authlib PKCE: authorize (form) + token (form) ─────────────────────
+            # -- Authlib PKCE: authorize (form) + token (form) ---------------------
             t0 = time.perf_counter()
             authlib_ok = 0
             for _ in range(burst):
@@ -232,7 +232,7 @@ def run_throughput_sweep(
     print(f"Saved: {out} ({len(rows)} rows)")
 
 # ---------------------------------------------------------------------------
-# Latency table: ZKP step-by-step (commit / verify / RTT) — perf_counter_ns
+# Latency table: ZKP step-by-step (commit / verify / RTT) -- perf_counter_ns
 # ---------------------------------------------------------------------------
 
 def gen_latency_table_zkp_fun_only(iterations: int = 100) -> str:
@@ -293,7 +293,7 @@ def gen_latency_table_zkp_fun_only(iterations: int = 100) -> str:
     sep = "|" + "-" * 34 + "|" + ("-" * 11 + "|") * 4
 
     lines = [
-        "## Tabel de Latenta – Flux ZKP Schnorr",
+        "## Tabel de Latenta - Flux ZKP Schnorr",
         f"Iteratii: {iterations}",
         "",
         header,
@@ -393,7 +393,7 @@ def _benchmark_latency(iterations=100):
 # ---------------------------------------------------------------------------
 # Both protocols complete exactly 2 HTTP round-trips per authentication.
 # The timer covers the per-authentication client-side work only (derivation excluded):
-#   ZKP   : rand_r + g^r mod P + 2 HTTP calls + s = (r + c·x) mod Q
+#   ZKP   : rand_r + g^r mod P + 2 HTTP calls + s = (r + c*x) mod Q
 #   OAuth2: code_verifier + SHA-256 PKCE challenge + 2 HTTP calls
 
 def _benchmark_e2e_flows(iterations=100):
@@ -415,7 +415,7 @@ def _benchmark_e2e_flows(iterations=100):
         c.post("/oauth/simple/register", json={"client_id": client_id, "password": password})
         c.post("/authlib/register",      json={"client_id": client_id, "password": password})
 
-        # ── ZKP: commit + verify ─────────────────────────────────────────────
+        # -- ZKP: commit + verify ---------------------------------------------
         zkp_times = []
         x, _ = derive_password_x(password)
         for _ in range(iterations):
@@ -435,7 +435,7 @@ def _benchmark_e2e_flows(iterations=100):
             "max": max(zkp_times), "p95": sorted(zkp_times)[int(len(zkp_times) * 0.95)],
         }
 
-        # ── OAuth2 PKCE: authorize + token ────────────────────────────────────
+        # -- OAuth2 PKCE: authorize + token ------------------------------------
         pkce_times = []
         for _ in range(iterations):
             t0 = _time.perf_counter()
@@ -465,7 +465,7 @@ def _benchmark_e2e_flows(iterations=100):
             "max": max(pkce_times), "p95": sorted(pkce_times)[int(len(pkce_times) * 0.95)],
         }
 
-        # ── OAuth2 Simple: authorize + token ──────────────────────────────────
+        # -- OAuth2 Simple: authorize + token ----------------------------------
         simple_times = []
         for _ in range(iterations):
             t0 = _time.perf_counter()
@@ -490,7 +490,7 @@ def _benchmark_e2e_flows(iterations=100):
             "max": max(simple_times), "p95": sorted(simple_times)[int(len(simple_times) * 0.95)],
         }
 
-        # ── Authlib PKCE: authorize (form) + token (form) ─────────────────────
+        # -- Authlib PKCE: authorize (form) + token (form) ---------------------
         # Authlib reads OAuth2 params from request.values (form-encoded), not JSON.
         authlib_times = []
         for _ in range(iterations):
@@ -642,15 +642,15 @@ class TestBenchmark(OAuthTestSuite):
 
 
     r"""
-    Context inițial (de reamintit agentului)
-    "Acționează ca un Security QA Automation Engineer. Scrie teste pentru urmatoarele prompturi"
+    Context initial (de reamintit agentului)
+    "Actioneaza ca un Security QA Automation Engineer. Scrie teste pentru urmatoarele prompturi"
 
-    Prompt 2: Testarea de Latență (Micro-Benchmarking Client și Server)
-    "Folosește benchmark-ul din testul test_benchmark_prints_latency_table (bazat pe librăria timeit)
-    pentru a măsura latența componentelor individuale ale sistemului nostru ZKP vs. Clasic.
-    Măsoară timpul de execuție pentru funcțiile de client: derivarea parolei și generarea angajamentului.
-    Măsoară timpul de execuție pentru funcțiile de server ZKP: /login/commit și /login/verify.
-    Rulează fiecare măsurătoare de 100 de ori și calculează Media, Minimul, Maximul și P95 în ms."
+    Prompt 2: Testarea de Latenta (Micro-Benchmarking Client si Server)
+    "Foloseste benchmark-ul din testul test_benchmark_prints_latency_table (bazat pe libraria timeit)
+    pentru a masura latenta componentelor individuale ale sistemului nostru ZKP vs. Clasic.
+    Masoara timpul de executie pentru functiile de client: derivarea parolei si generarea angajamentului.
+    Masoara timpul de executie pentru functiile de server ZKP: /login/commit si /login/verify.
+    Ruleaza fiecare masuratoare de 100 de ori si calculeaza Media, Minimul, Maximul si P95 in ms."
 
  
     """
@@ -664,14 +664,14 @@ if __name__ == "__main__":
 
     # if len(sys.argv) > 1 and sys.argv[1] == "--latency":
     print()
-    print("STEP 1 — latency table for zkp steps")
+    print("STEP 1 -- latency table for zkp steps")
     print("=" * 70)
     print(gen_latency_table_zkp_fun_only(iterations=100))
     print("=" * 70)
     print()
 
     print("=" * 70)
-    print("STEP 2 — pytest tests")
+    print("STEP 2 -- pytest tests")
     print("=" * 70)
     exit_code = pytest.main([
         __file__,
@@ -683,7 +683,7 @@ if __name__ == "__main__":
 
     print()
     print("=" * 70)
-    print("STEP 3 — throughput sweep (burst sizes: 10, 25, 50, 100)")
+    print("STEP 3 -- throughput sweep (burst sizes: 10, 25, 50, 100)")
     print("=" * 70)
     run_throughput_sweep()
 

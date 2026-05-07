@@ -30,7 +30,7 @@ G = 4
 
 # Python's jwt gives warning if secret is shorter than 32
 SECRET      = 'dev-only-server-secret-at-least-32-bytes-long'
-SESSION_TTL = 5        # seconds — commit → verify window
+SESSION_TTL = 5        # seconds -- commit -> verify window
 # Second commit within 50 ms = race, first writer wins.
 # Second commit after 50 ms = hijack attempt, both sessions invalidated.
 COMMIT_RACE_WINDOW_S = 0.050   # 50 ms: two commits within this window = race
@@ -127,9 +127,9 @@ class _SessionStore(dict):
             "client_id":  str,    # owner of the session
             "t":          int,    # commitment G^r mod P sent by the prover
             "c":          int,    # challenge derived from (session_id, client_id, t, binding)
-            "binding":    bytes,  # channel-binding digest — stored, never sent to client
+            "binding":    bytes,  # channel-binding digest -- stored, never sent to client
             "raw_addr":   str,    # direct TCP peer address at commit time (for logging)
-            "created_at": float,  # time.time() at commit — used for SESSION_TTL expiry
+            "created_at": float,  # time.time() at commit -- used for SESSION_TTL expiry
         }
     }
     """
@@ -162,7 +162,7 @@ class _SessionStore(dict):
 sessions = _SessionStore()
 
 # ---------------------------------------------------------------------------
-# Session Binding — simplified channel-binding concept (demo)
+# Session Binding -- simplified channel-binding concept (demo)
 # ---------------------------------------------------------------------------
 
 def _compute_session_binding(raw_addr: str, user_agent: str, session_id: str,
@@ -172,7 +172,7 @@ def _compute_session_binding(raw_addr: str, user_agent: str, session_id: str,
     client identity, and the commitment t.
 
     Using request.remote_addr (not X-Forwarded-For) ensures the binding
-    reflects the actual network connection endpoint — a relayed request
+    reflects the actual network connection endpoint -- a relayed request
     arrives from a different IP and will not match.
     """
     data = f"{raw_addr}|{user_agent}|{session_id}|{client_id}|{t}".encode("utf-8")
@@ -182,13 +182,13 @@ def _compute_session_binding(raw_addr: str, user_agent: str, session_id: str,
 def _compute_challenge(binding: bytes) -> int:
     """Derive the Fiat-Shamir challenge integer from the session binding.
 
-    c = int(binding) mod Q  — challenge in Zq = [1, Q-1]
+    c = int(binding) mod Q  -- challenge in Zq = [1, Q-1]
 
     The binding already commits to the peer address, User-Agent,
     session ID, client ID, and commitment t, so the challenge is
-    fully determined by — and bound to — all of those inputs.
+    fully determined by -- and bound to -- all of those inputs.
     """
-    # binding is 32 bytes (256-bit SHA-256), Q is ~1023-bit — reduction is a no-op in practice
+    # binding is 32 bytes (256-bit SHA-256), Q is ~1023-bit -- reduction is a no-op in practice
     # but % Q documents intent (c lives in Zq) and is correct if the hash size ever grows.
     # `or 1` guards the negligible probability of a zero hash.
     return (int.from_bytes(binding, "big") % Q) or 1
@@ -210,7 +210,7 @@ def validate_int_field(data: dict, key: str):
 
 def is_subgroup_member(value: int) -> bool:
     """True iff value is a non-trivial element of the Schnorr subgroup of order Q."""
-    '''# Note: prevents Small Subgroup attack — rejects y or t outside the subgroup of order Q with 422.'''
+    '''# Note: prevents Small Subgroup attack -- rejects y or t outside the subgroup of order Q with 422.'''
     return 1 < value < P and pow(value, Q, P) == 1
 
 
@@ -337,15 +337,15 @@ def commitAPI():
         existing_sid = sessions._client_sessions.get(client_id)
         if existing_sid:
             age = time.time() - sessions[existing_sid]["created_at"]
-            if age > COMMIT_RACE_WINDOW_S:   # hijack attempt — drop old session
+            if age > COMMIT_RACE_WINDOW_S:   # hijack attempt -- drop old session
                 del sessions[existing_sid]
             return jsonify({'reason': 'existing commitment found, start a new session'}), 409
 
-        # Note: prevents Session Fixation — CSPRNG guarantees unpredictable session_id.
+        # Note: prevents Session Fixation -- CSPRNG guarantees unpredictable session_id.
         session_id = secrets.token_urlsafe(32)
         # Session binding: tie this authentication attempt to the exact
         # network connection (TCP peer address + User-Agent + session ID).
-        # request.remote_addr is the direct peer — not spoofable via headers.
+        # request.remote_addr is the direct peer -- not spoofable via headers.
         raw_addr, user_agent = _get_peer()
         binding = _compute_session_binding(raw_addr, user_agent, session_id, client_id, t)
         challenge_c = _compute_challenge(binding)
@@ -418,7 +418,7 @@ def verifyAPI():
     if pow(G, s, P) == (t * pow(y, c, P)) % P:
         token_str = _issue_jwt(client_id)
         _save_token(user.id, token_str)
-        # Note: prevents Replay attack — session deleted immediately after use
+        # Note: prevents Replay attack -- session deleted immediately after use
         # so a captured session_id cannot be reused.
         del sessions[session_id]
         db.session.commit()
@@ -467,6 +467,6 @@ if __name__ == '__main__':
     https = False
     host, port = '0.0.0.0', 5000
     scheme = 'https' if https else 'http'
-    print(f'Schnorr Authentication Server — {scheme}://localhost:{port}  PID={os.getpid()}')
+    print(f'Schnorr Authentication Server -- {scheme}://localhost:{port}  PID={os.getpid()}')
     ssl_ctx = ('cert.pem', 'key.pem') if https and os.path.exists('cert.pem') else None
     app.run(host=host, port=port, ssl_context=ssl_ctx, debug=True)

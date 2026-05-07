@@ -33,7 +33,7 @@ _GENERATED.mkdir(exist_ok=True)
 
 
 # ---------------------------------------------------------------------------
-# Probe 2 – Traffic content auditor
+# Probe 2 - Traffic content auditor
 # ---------------------------------------------------------------------------
 
 def audit_traffic_content(output_md: str = str(_GENERATED / "audit_traffic_content.md")):
@@ -135,7 +135,7 @@ def audit_traffic_content(output_md: str = str(_GENERATED / "audit_traffic_conte
         "```",
         "Nota: parola este trimisa catre authorization server (acelasi domeniu), nu catre client.",
         "",
-        "## POST /oauth/pkce/token (OAuth2 PKCE Step 2 – code exchange)",
+        "## POST /oauth/pkce/token (OAuth2 PKCE Step 2 - code exchange)",
         "```json",
         _truncate(pkce_token_body),
         "```",
@@ -152,13 +152,13 @@ def audit_traffic_content(output_md: str = str(_GENERATED / "audit_traffic_conte
         _truncate(simple_token_body),
         "```",
         "",
-        "## POST /authlib/oauth/authorize (Authlib PKCE Step 1 – form-encoded)",
+        "## POST /authlib/oauth/authorize (Authlib PKCE Step 1 - form-encoded)",
         "```",
         _truncate(authlib_authorize_body),
         "```",
         "Nota: echivalent cu OAuth2 PKCE dar folosind biblioteca Authlib, parametri form-encoded.",
         "",
-        "## POST /authlib/oauth/token (Authlib PKCE Step 2 – form-encoded)",
+        "## POST /authlib/oauth/token (Authlib PKCE Step 2 - form-encoded)",
         "```",
         _truncate(authlib_token_body),
         "```",
@@ -172,7 +172,7 @@ def audit_traffic_content(output_md: str = str(_GENERATED / "audit_traffic_conte
 
 
 # ---------------------------------------------------------------------------
-# Probe 3 –  Extract parts of server.py that ensure a protection for some attacks
+# Probe 3 -  Extract parts of server.py that ensure a protection for some attacks
 # # Ex: is_subgroup_member / del sessions[...] (Replay) / secrets.randbelow (entropy)
 # TODO: Manual
 # ---------------------------------------------------------------------------
@@ -189,7 +189,7 @@ def _save_fig(fig, path):
 
 
 # ---------------------------------------------------------------------------
-# Probe 4 – Chart generator
+# Probe 4 - Chart generator
 # ---------------------------------------------------------------------------
 
 def generate_charts(latency_data: dict | None = None, output_dir: str = str(_GENERATED / "charts")):
@@ -347,7 +347,7 @@ def generate_charts(latency_data: dict | None = None, output_dir: str = str(_GEN
             patch.set_facecolor(color)
             patch.set_alpha(0.55)
 
-        # Jitter strip — individual measurements
+        # Jitter strip -- individual measurements
         for i, (data, color) in enumerate(zip(data_for_box, colors_for_box), start=1):
             jitter = [i + _rng.uniform(-0.18, 0.18) for _ in data]
             ax.scatter(jitter, data, color=color, alpha=0.25, s=10, zorder=3)
@@ -363,7 +363,7 @@ def generate_charts(latency_data: dict | None = None, output_dir: str = str(_GEN
         ax.set_ylabel("Latenta (ms)", fontsize=11)
         ax.set_title(
             "Distributia latentei per protocol de autentificare\n"
-            "(100 masuratori · ◆ = medie · linie rosie = mediana · puncte = valori individuale)",
+            "(100 masuratori * * = medie * linie rosie = mediana * puncte = valori individuale)",
             fontsize=11,
         )
         ax.grid(axis="y", linestyle="--", alpha=0.5, color="#CCCCCC")
@@ -371,7 +371,7 @@ def generate_charts(latency_data: dict | None = None, output_dir: str = str(_GEN
         ax.spines["right"].set_visible(False)
         _save_fig(fig, out / "boxplot_verify_latency.png")
 
-    # Histogram: ZKP verify vs SHA-256 baseline only — shows zero-knowledge overhead
+    # Histogram: ZKP verify vs SHA-256 baseline only -- shows zero-knowledge overhead
     # (all-protocol distribution is already covered by the box plot above)
     if verify_ms and classic_ms:
         fig, ax = plt.subplots(figsize=(10, 5))
@@ -397,7 +397,7 @@ def generate_charts(latency_data: dict | None = None, output_dir: str = str(_GEN
 
 
 # ---------------------------------------------------------------------------
-# Probe 5 – Resource monitor (psutil, runs alongside a live server process)
+# Probe 5 - Resource monitor (psutil, runs alongside a live server process)
 # ---------------------------------------------------------------------------
 # TODO: This monitor requires a live Flask server process.
 #       Run it as: python qa/measurement/main_probes.py --monitor <flask-pid>
@@ -437,7 +437,7 @@ def run_resource_monitor(flask_pid: int, duration_seconds: int = 30,
 
 
 # ---------------------------------------------------------------------------
-# Probe 6 – Comparison charts (requires matplotlib + pandas + CSV data)
+# Probe 6 - Comparison charts (requires matplotlib + pandas + CSV data)
 # ---------------------------------------------------------------------------
 
 def generate_comparison_charts(
@@ -473,9 +473,9 @@ def generate_comparison_charts(
                   color=colors[:len(labels)], edgecolor="white", linewidth=0.6)
     ax.set_xticks(range(len(labels)))
     ax.set_xticklabels(labels, rotation=15, ha="right", fontsize=9)
-    ax.set_ylabel("Latenta medie (ms) — scala logaritmica", fontsize=10)
+    ax.set_ylabel("Latenta medie (ms) -- scala logaritmica", fontsize=10)
     ax.set_title("Comparatie latenta componente: ZKP Schnorr vs OAuth2\n"
-                 "(scala log — evidentiaza diferentele de ordine de marime)", fontsize=11)
+                 "(scala log -- evidentiaza diferentele de ordine de marime)", fontsize=11)
     ax.set_yscale("log")
     ax.grid(axis="y", linestyle="--", alpha=0.5, color="#CCCCCC", which="both")
     ax.spines["top"].set_visible(False)
@@ -526,7 +526,7 @@ def generate_comparison_charts(
 
 
 # ---------------------------------------------------------------------------
-# Pipeline helpers – server lifecycle
+# Pipeline helpers - server lifecycle
 # ---------------------------------------------------------------------------
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -609,17 +609,17 @@ if __name__ == "__main__":
         locust_runtime = sys.argv[3]      if len(sys.argv) > 3 else "60s"
         monitor_secs   = int(locust_runtime.rstrip("s")) if locust_runtime.endswith("s") else int(locust_runtime)
 
-        # ── Phase 1: no live server required ────────────────────────────────
+        # -- Phase 1: no live server required --------------------------------
         print("\n=== Phase 1: offline measurements ===")
         _run("benchmark.py (latency + throughput CSVs)",[_PYTHON, "qa/measurement/benchmark.py"])
         audit_traffic_content()
         generate_charts()
 
-        # ── Phase 2: live server required ───────────────────────────────────
+        # -- Phase 2: live server required -----------------------------------
         print("\n=== Phase 2: live-server measurements ===")
         server_proc = _start_server()
         try:
-            print("[*] Waiting 5 s for server to start …")
+            print("[*] Waiting 5 s for server to start ...")
             time.sleep(5)
             if not _wait_for_health(timeout=20):
                 raise RuntimeError("Server did not respond on http://127.0.0.1:5000/health")
@@ -651,7 +651,7 @@ if __name__ == "__main__":
         finally:
             _stop_server(server_proc)
 
-        # ── Phase 3: post-processing (CSVs now available) ────────────────────
+        # -- Phase 3: post-processing (CSVs now available) --------------------
         print("\n=== Phase 3: comparison charts ===")
         generate_comparison_charts()
         print("\nDone. All measurements complete.")

@@ -17,20 +17,10 @@ import secrets as secrets_module
 import pytest
 
 from qa_utils import server, derive_password_x, register_user, start_commit, BaseTestSuite
-# ── helpers ──────────────────────────────────────────────────────────────────
 
-def _burn_session(client, session_id: str):
-    """Consume a session with an out-of-range s (422) so the next commit is clean."""
-    client.post(
-        "/login/verify",
-        headers={"X-Auth-Session": session_id},
-        json={"solution_s": server.Q},  # server.Q >= Q → 422, session deleted
-    )
-
-
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 # A. Commitment binding
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 
 class TestSecurityCases(BaseTestSuite):
 
@@ -40,7 +30,7 @@ class TestSecurityCases(BaseTestSuite):
         client_id = "binding_user"
         x, y = register_user(client, client_id, "binding-pass")
 
-        # Legitimate commit  →  session is now bound to t_real
+        # Legitimate commit  ->  session is now bound to t_real
         _, challenge_c, session_id = start_commit(client, client_id)
         t_real = server.sessions[session_id]["t"]  # server-side binding
 
@@ -51,7 +41,7 @@ class TestSecurityCases(BaseTestSuite):
 
         # t_sim is a valid subgroup member - the transcript (t_sim, c, s_forged) verifies
         assert server.is_subgroup_member(t_sim), "t_sim must be a valid subgroup element"
-        # …but it differs from the committed t_real
+        # ...but it differs from the committed t_real
         assert t_sim != t_real, "t_sim must differ from t_real (binding broken otherwise)"
 
         # Submitting s_forged to the session that holds t_real must fail
@@ -82,9 +72,9 @@ class TestSecurityCases(BaseTestSuite):
         assert response.status_code == 200
 
 
-    # ═════════════════════════════════════════════════════════════════════════════
+    # =============================================================================
     # B. Solution forgery without the private key
-    # ═════════════════════════════════════════════════════════════════════════════
+    # =============================================================================
 
     def test_bare_nonce_as_solution_fails(self, client):
         '''Testare atac cu s egal r (nonce gol, fara contributia cheii private c*x)'''
@@ -99,7 +89,7 @@ class TestSecurityCases(BaseTestSuite):
         response = client.post(
             "/login/verify",
             headers={"X-Auth-Session": session_id},
-            json={"solution_s": rand_r},  # s = r, no c·x contribution
+            json={"solution_s": rand_r},  # s = r, no c*x contribution
         )
         assert response.status_code == 401
         assert response.get_json() == {"reason": "verification failed"}
@@ -150,9 +140,9 @@ class TestSecurityCases(BaseTestSuite):
         assert response.status_code == 422, "s=0 must fail the ZKP check"
 
 
-    # ═════════════════════════════════════════════════════════════════════════════
+    # =============================================================================
     # C. Session security
-    # ═════════════════════════════════════════════════════════════════════════════
+    # =============================================================================
 
     def test_solution_from_consumed_session_fails_on_new_session(self, client):
         '''Testare replay s valid din sesiunea anterioara in sesiune noua (cross-session replay)'''
@@ -203,9 +193,9 @@ class TestSecurityCases(BaseTestSuite):
         assert hits == 0, f"{hits} random session IDs were incorrectly matched"
 
 
-    # ═════════════════════════════════════════════════════════════════════════════
+    # =============================================================================
     # D. Protocol properties
-    # ═════════════════════════════════════════════════════════════════════════════
+    # =============================================================================
     # Note: challenge_c and session_id uniqueness are covered at larger scale
     # (10 000 samples) by automated.py::test_challenge_and_session_id_uniqueness_over_10000_commits.
 

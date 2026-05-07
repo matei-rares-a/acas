@@ -9,29 +9,29 @@ benchmarks, load tests, measurement probes, and manual security audits.
 
 ```
 qa/
-├── qa_utils.py               # shared helpers: derive_password_x, register_user, start_commit, pkce_challenge
-│                             # also: BaseTestSuite, OAuthTestSuite base classes
-├── measurement_utils.py      # shared utilities for measurement scripts
-├── attack_simulation/
-│   ├── automated.py          # automated attack scenarios
-│   └── manual.py             # manual attack scripts
-├── measurement/
-│   ├── benchmark.py          # pytest-based latency & memory benchmarks
-│   ├── brute_force_dlp.py    # DLP brute-force demo (standalone)
-│   ├── locustfile.py         # Locust load-test scenarios (ZKP + OAuth2)
-│   ├── main_probes.py        # dissertation data-collection probes
-│   ├── comparision.py        # protocol comparison measurements
-│   ├── generates.py          # data generators for measurements
-│   ├── run_all_measurements.py
-│   └── run_bench.py
-└── test/
-    ├── main_test.py          # suite runner with statistics
-    ├── pos_case.py           # positive (happy-path) tests
-    ├── neg_case.py           # negative / attack tests
-    ├── corner_case.py        # boundary & edge cases
-    ├── security_case.py      # cryptographic attack vectors & protocol security
-    ├── oauth_case.py         # OAuth2 PKCE & Simple authorization code flow
-    └── conftest.py
++-- qa_utils.py               # shared helpers: derive_password_x, register_user, start_commit, pkce_challenge
+|                             # also: BaseTestSuite, OAuthTestSuite base classes
++-- measurement_utils.py      # shared utilities for measurement scripts
++-- attack_simulation/
+|   +-- automated.py          # automated attack scenarios
+|   \\-- manual.py             # manual attack scripts
++-- measurement/
+|   +-- benchmark.py          # pytest-based latency & memory benchmarks
+|   +-- brute_force_dlp.py    # DLP brute-force demo (standalone)
+|   +-- locustfile.py         # Locust load-test scenarios (ZKP + OAuth2)
+|   +-- main_probes.py        # dissertation data-collection probes
+|   +-- comparision.py        # protocol comparison measurements
+|   +-- generates.py          # data generators for measurements
+|   +-- run_all_measurements.py
+|   \\-- run_bench.py
+\\-- test/
+    +-- main_test.py          # suite runner with statistics
+    +-- pos_case.py           # positive (happy-path) tests
+    +-- neg_case.py           # negative / attack tests
+    +-- corner_case.py        # boundary & edge cases
+    +-- security_case.py      # cryptographic attack vectors & protocol security
+    +-- oauth_case.py         # OAuth2 PKCE & Simple authorization code flow
+    \\-- conftest.py
 ```
 
 ---
@@ -126,7 +126,7 @@ These scripts are run **manually** (not via `main_test.py`).
 
 ### Benchmarks (`benchmark.py`)
 
-Run all three benchmark tests (requires no live server — uses Flask test client):
+Run all three benchmark tests (requires no live server -- uses Flask test client):
 
 ```bash
 C:/LegacyApp/Python/Python312/python.exe -m pytest qa/measurement/benchmark.py -v -s
@@ -163,10 +163,10 @@ C:/LegacyApp/Python/Python312/python.exe qa/measurement/brute_force_dlp.py
 Requires a **live server** running on port 5000:
 
 ```bash
-# Terminal 1 – start the server
+# Terminal 1 - start the server
 python server_app/server.py
 
-# Terminal 2 – run Locust
+# Terminal 2 - run Locust
 locust -f qa/measurement/locustfile.py --host=http://localhost:5000 --users 100 --spawn-rate 10 --headless --run-time 60s --html locust_report.html
 ```
 
@@ -186,7 +186,7 @@ C:/LegacyApp/Python/Python312/python.exe qa/measurement/main_probes.py --audit
 # Security snippet extractor (writes security_snippets.md)
 C:/LegacyApp/Python/Python312/python.exe qa/measurement/main_probes.py --snippets
 
-# Chart generator — box plot + histogram (writes charts/)
+# Chart generator -- box plot + histogram (writes charts/)
 C:/LegacyApp/Python/Python312/python.exe qa/measurement/main_probes.py --charts
 
 # Run all probes

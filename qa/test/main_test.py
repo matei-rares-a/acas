@@ -140,7 +140,7 @@ class SuiteExecutor:
                 result = self.run_suite(suite)
                 results.append(result)
             except Exception as e:
-                print(f"\n\t\t✗ Error running {suite['name']}: {str(e)}")
+                print(f"\n\t\tx Error running {suite['name']}: {str(e)}")
                 results.append({
                     'suite_passed': False,
                     'tests_passed': 0,

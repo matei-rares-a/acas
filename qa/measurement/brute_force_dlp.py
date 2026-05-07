@@ -1,10 +1,10 @@
 """
-brute_force_dlp.py — Discrete Logarithm Brute-Force
+brute_force_dlp.py -- Discrete Logarithm Brute-Force
 =========================================================
     Given (g, p, y = g^x mod p), recover x.
 
 Strategy:
-  Iterate x_try = 1, 2, 3, … computing g^x_try mod p incrementally
+  Iterate x_try = 1, 2, 3, ... computing g^x_try mod p incrementally
   Total tries are reported when each stage ends.
 
 Escalation:

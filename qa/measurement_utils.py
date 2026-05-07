@@ -9,7 +9,7 @@ if str(_QA_PATH) not in sys.path:
 
 from qa_utils import server, derive_password_x
 
-# Shared output directory — all measurement scripts write here.
+# Shared output directory -- all measurement scripts write here.
 GENERATED = Path(__file__).resolve().parent / "generated"
 GENERATED.mkdir(exist_ok=True)
 

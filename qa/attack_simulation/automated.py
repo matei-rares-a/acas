@@ -110,7 +110,7 @@ def test_challenge_and_session_id_uniqueness_over_10000_commits(client):
 
 
 # ---------------------------------------------------------------------------
-# Prompt 4 – MitM Weak Parameter Injection: DLP brute-force then forge login
+# Prompt 4 - MitM Weak Parameter Injection: DLP brute-force then forge login
 # ---------------------------------------------------------------------------
 
 def test_mitm_weak_parameter_injection_allows_dlp_brute_force_and_login(client, monkeypatch):
@@ -120,7 +120,7 @@ def test_mitm_weak_parameter_injection_allows_dlp_brute_force_and_login(client, 
     Attacker brute-forces the discrete logarithm trivially (at most P-1 iterations).
     Attacker completes a valid ZKP login as the victim using the recovered private key."""
 
-    # Weak parameters injected by the MitM — group of order 11 inside Z_23
+    # Weak parameters injected by the MitM -- group of order 11 inside Z_23
     # Verification: 4^11 mod 23 = 1  (group order correct)
     P_weak = 23
     Q_weak = 11  # (P_weak - 1) // 2
@@ -134,7 +134,7 @@ def test_mitm_weak_parameter_injection_allows_dlp_brute_force_and_login(client, 
     x_victim = 50                                      # victim's private key
     y_victim = pow(G_weak, x_victim, P_weak)          # = 8  (stored in DB)
 
-    # Victim registers — DB stores y computed under the (attacker-controlled) weak group
+    # Victim registers -- DB stores y computed under the (attacker-controlled) weak group
     resp = client.post("/register", json={"client_id": client_id, "secret_y": y_victim})
     assert resp.status_code == 201
 

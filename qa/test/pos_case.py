@@ -9,7 +9,7 @@ from qa_utils import server, derive_password_x, BaseTestSuite
 class TestPositiveCases(BaseTestSuite):
 
     def test_register_creates_user_and_does_not_store_plain_password(self, client):
-        '''Testarea înregistrării'''
+        '''Testarea inregistrarii'''
         """Client send register data, server save public value, server doesn't keep plain password."""
         client_id = "test_user"
         raw_password = "my-secure-password-12345"
@@ -172,7 +172,7 @@ class TestPositiveCases(BaseTestSuite):
             server.db.session.add(server.User(client_id="parallel_bob", secret_y=str(y_bob)))
             server.db.session.commit()
 
-        # Both commit — two sessions coexist simultaneously
+        # Both commit -- two sessions coexist simultaneously
         r_alice = secrets_module.randbelow(server.P - 2) + 1
         t_alice = pow(server.G, r_alice, server.P)
         resp_alice = client.post("/login/commit", json={"client_id": "parallel_alice", "commitment_t": t_alice})

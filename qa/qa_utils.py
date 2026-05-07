@@ -2,7 +2,7 @@
 Shared utilities for the Schnorr ZKP QA suite.
 
 Exports:
-    server          — the loaded server module (Flask app, models, constants)
+    server          -- the loaded server module (Flask app, models, constants)
     derive_password_x(password_string) -> int
     register_user(client, client_id, password) -> (x, y)
     start_commit(client, client_id, rand_r=None) -> (rand_r, challenge_c, session_id)
