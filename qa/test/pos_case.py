@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import hashlib
 import secrets as secrets_module
 
 import jwt
@@ -31,6 +32,33 @@ class TestPositiveCases(BaseTestSuite):
             assert not hasattr(user, "password")
             serialized = f"{user.client_id}|{user.secret_y}"
             assert raw_password not in serialized
+
+
+    def test_register_does_not_store_hashed_password(self, client):
+        '''Testarea ca baza de date nu stocheaza parola hashuita'''
+        """Client send register data, server must not store any hash of the plain password."""
+        client_id = "test_user_hash"
+        raw_password = "my-secure-password-12345"
+        password_x, _ = derive_password_x(raw_password)
+        secret_y = pow(server.G, password_x, server.P)
+
+        response = client.post(
+            "/register",
+            json={"client_id": client_id, "secret_y": secret_y},
+        )
+        assert response.status_code == 201
+
+        sha256_hex = hashlib.sha256(raw_password.encode()).hexdigest()
+        sha512_hex = hashlib.sha512(raw_password.encode()).hexdigest()
+        md5_hex    = hashlib.md5(raw_password.encode()).hexdigest()
+
+        with server.app.app_context():
+            user = server.User.query.filter_by(client_id=client_id).first()
+            assert user is not None
+            serialized = f"{user.client_id}|{user.secret_y}"
+            assert sha256_hex not in serialized
+            assert sha512_hex not in serialized
+            assert md5_hex    not in serialized
 
 
     def test_register_rejects_duplicate_client_id_with_conflict(self, client):

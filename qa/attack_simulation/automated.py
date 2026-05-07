@@ -30,8 +30,9 @@ def reset_state():
 def client():
     return server.app.test_client()
 
-
-
+'''
+python -m pytest qa/attack_simulation/automated.py -v
+'''
 
 # ---------------------------------------------------------------------------
 # Data Breach simulation: stolen public key (secret_y) cannot log in
@@ -110,7 +111,7 @@ def test_challenge_and_session_id_uniqueness_over_10000_commits(client):
 
 
 # ---------------------------------------------------------------------------
-# Prompt 4 - MitM Weak Parameter Injection: DLP brute-force then forge login
+# Weakness - MitM Weak Parameter Injection: DLP brute-force then forge login
 # ---------------------------------------------------------------------------
 
 def test_mitm_weak_parameter_injection_allows_dlp_brute_force_and_login(client, monkeypatch):
@@ -171,3 +172,16 @@ def test_mitm_weak_parameter_injection_allows_dlp_brute_force_and_login(client, 
     )
     assert "token" in verify_resp.get_json()
 
+
+def test_mitm_weak_parameters_fails_against_hardcoded_server(client):
+    '''Testare atac MitM parametri slabi esueaza la inregistrare - server respinge y_weak care nu e membru subgrup'''
+    """Server rejects y_weak at /register because is_subgroup_member checks y^Q == 1 mod P_big.
+    y_weak = G^x mod P_weak does not satisfy that, so the attack is blocked before login."""
+    P_weak, Q_weak, G_weak = 23, 11, 4
+    x_victim = 50
+    y_weak = pow(G_weak, x_victim, P_weak)   # y_weak = 8; not in the server's subgroup
+
+    # Server checks y^Q mod P == 1; y_weak fails this, so registration is rejected
+    resp = client.post("/register", json={"client_id": "mitm_victim", "secret_y": y_weak})
+    assert resp.status_code == 422
+    assert resp.get_json() == {"reason": "invalid public value"}

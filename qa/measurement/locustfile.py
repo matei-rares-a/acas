@@ -1,12 +1,13 @@
 '''Testarea de Scalabilitate (Load Testing cu Locust) - simulare utilizatori simultani ZKP si OAuth2'''
 """HttpUser spawn with unique credentials on start, ZKP task do full commit+verify flow and fire single timed transaction, OAuth tasks do authorize+token flow, Locust collect stats and write HTML report on exit."""
 
-# locustfile.py -- Locust load-test scenarios for all four auth protocols.
-# Run against a live server:
-#   python server_app/server.py
-#   locust -f qa/measurement/locustfile.py --host=http://localhost:5000 --users 50 --spawn-rate 10 --headless --run-time 60s --html qa/measurement/generated/locust_report.html
-#
+''' locustfile.py -- Locust load-test scenarios for all four auth protocols.
+ Run against a live server:
 
+python server_app/server.py
+locust -f qa/measurement/locustfile.py --host=http://localhost:5000 --users 50 --spawn-rate 10 --headless --run-time 60s --html qa/measurement/generated/locust_report.html
+
+'''
 from pathlib import Path
 import secrets as secrets_module
 import sys
@@ -36,7 +37,7 @@ class SchnorrLoadUser(HttpUser):
 
     def on_start(self):
         client_id = f"locust_{secrets_module.token_hex(8)}"
-        password = secrets_module.token_hex(16)
+        password = f'password-locust_{secrets_module.token_hex(16)}'#secrets_module.token_hex(16)
         self._x, self._salt = derive_password_x(password)
         self._y = pow(server.G, self._x, server.P)
         self._client_id = client_id
