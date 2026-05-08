@@ -33,3 +33,9 @@ def manual_test_traffic_sniffing():
 """
     pass
 
+
+def mitm():
+    '''
+    if the client is compromised entirely, then the attacker can pretend to be the client entirely
+    so the protocol cannot protect against that.
+    '''

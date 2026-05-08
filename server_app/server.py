@@ -180,8 +180,7 @@ def _compute_session_binding(raw_addr: str, user_agent: str, session_id: str,
 
 
 def _compute_challenge(binding: bytes) -> int:
-    """Derive the Fiat-Shamir challenge integer from the session binding.
-
+    """
     c = int(binding) mod Q  -- challenge in Zq = [1, Q-1]
 
     The binding already commits to the peer address, User-Agent,

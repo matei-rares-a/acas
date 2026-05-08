@@ -111,7 +111,7 @@ def test_challenge_and_session_id_uniqueness_over_10000_commits(client):
 
 
 # ---------------------------------------------------------------------------
-# Weakness - MitM Weak Parameter Injection: DLP brute-force then forge login
+# MitM Weak Parameter Injection: DLP brute-force then force login
 # ---------------------------------------------------------------------------
 
 def test_mitm_weak_parameter_injection_allows_dlp_brute_force_and_login(client, monkeypatch):
@@ -167,8 +167,8 @@ def test_mitm_weak_parameter_injection_allows_dlp_brute_force_and_login(client, 
         headers={"X-Auth-Session": session_id},
         json={"solution_s": s},
     )
-    assert verify_resp.status_code == 200, (
-        "Attacker should successfully authenticate using brute-forced x in weak group"
+    assert verify_resp.status_code == 422, (
+        "Attacker should not be able to log in with weak parameters because server should reject trivial proofs, but got: "
     )
     assert "token" in verify_resp.get_json()
 

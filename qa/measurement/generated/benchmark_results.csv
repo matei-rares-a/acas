@@ -1,5 +1,5 @@
 operation,mean_ms,min_ms,max_ms,p95_ms,stdev_ms
-commitment_t = g^r mod p (ms),0.44267,0.3941,1.0195,0.588,0.083414
-ZKP verify math (ms),0.889154,0.7972,1.1176,0.9705,0.047122
-OAuth2 PKCE S256 challenge (ms),0.002391,0.0014,0.0451,0.0061,0.004616
-OAuth2 Simple hash check (ms),0.001212,0.001,0.0136,0.0013,0.001256
+commitment_t = g^r mod p (ms),0.51617,0.5064,0.5418,0.5268,0.005462
+ZKP verify math (ms),1.120778,1.1127,1.1475,1.1383,0.006421
+OAuth2 PKCE S256 challenge (ms),0.00396,0.0034,0.0221,0.0061,0.002015
+OAuth2 Simple hash check (ms),0.002548,0.0023,0.0048,0.003,0.000359

@@ -8,7 +8,7 @@ from qa_utils import server, derive_password_x, register_user, start_commit, Bas
 class TestNegativeCases(BaseTestSuite):
 
     def test_wrong_password_proof_is_rejected_and_session_is_deleted(self, client):
-        '''Testare verificare cu solutie folosind parola gresita (stolen secret_y, adversary trying to login with wrong password)'''
+        '''Testare verificare cu solutie folosind parola gresita si secret furat (stolen secret_y, adversary trying to login with wrong password)'''
         """Client send wrong proof, server reject login, server remove used session."""
         client_id = "client_test"
         correct_password = "correct-password"
@@ -107,4 +107,36 @@ class TestNegativeCases(BaseTestSuite):
         assert session_id_1 not in server.sessions
         active_for_client = [s for s in server.sessions.values() if s["client_id"] == client_id]
         assert len(active_for_client) == 0  
+
+    def test_register_rejects_duplicate_client_id_with_conflict(self, client):
+        '''Testarea conflict la inregistrare duplicat'''
+        """Client register once, server return 201, client register same client_id again, server return 409 and not duplicate user."""
+        client_id = "test_user"
+        initial_password = "initial-password-version1"
+        second_password = "second-password-version2"
+
+        initial_password_x,_ = derive_password_x(initial_password)
+        second_password_x,_ = derive_password_x(second_password)
+
+        initial_secret_y = pow(server.G, initial_password_x, server.P)
+        second_secret_y = pow(server.G, second_password_x, server.P)
+
+        with server.app.app_context():
+            server.db.session.add(
+                server.User(client_id=client_id, secret_y=str(initial_secret_y))
+            )
+            server.db.session.commit()
+
+        response = client.post(
+            "/register",
+            json={"client_id": client_id, "secret_y": second_secret_y},
+        )
+
+        assert response.status_code == 409
+        assert response.get_json() == {"reason": "already registered"}
+
+        with server.app.app_context():
+            users = server.User.query.filter_by(client_id=client_id).all()
+            assert len(users) == 1
+            assert users[0].secret_y == str(initial_secret_y)
 

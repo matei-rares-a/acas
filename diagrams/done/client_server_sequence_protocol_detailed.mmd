@@ -11,10 +11,8 @@ sequenceDiagram
     Note over UI,API: Registration
     UI->>API: GET /parameters
     API-->>UI: 200 { P, G }
-    Note over UI,API: P is a 2048-bit safe prime, Q = (P-1)/2, G = 4
     UI->>UI: x = derive(password, client_id) mod Q
     UI->>UI:  y = G^x mod P, discard x 
-    Note over UI: Instead of client_id, a salt in secure local storage should be used
     UI->>API: POST /register  { client_id, y }
     break missing client_id or secret_y field
         API-->>UI: 400 { reason: missing parameters }
@@ -111,4 +109,4 @@ sequenceDiagram
     end
     end
 
-    Note over API: Every response carries security and tracing headers
+    Note over API: Every response carries headers

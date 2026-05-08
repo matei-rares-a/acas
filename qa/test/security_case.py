@@ -12,11 +12,13 @@ import pytest
 
 from qa_utils import server, derive_password_x, register_user, start_commit, BaseTestSuite
 
-# =============================================================================
-# A. Commitment binding
-# =============================================================================
+
 
 class TestSecurityCases(BaseTestSuite):
+
+    # =============================================================================
+    # A. Commitment binding
+    # =============================================================================
 
     def test_commitment_binding_simulator_s_fails_against_bound_t(self, client):
         '''Math: simulator picks s freely -> t_sim = G^s * y^(-c) mod P, so (t_sim, c, s) self-verifies.

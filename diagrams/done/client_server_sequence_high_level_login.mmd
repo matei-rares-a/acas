@@ -6,7 +6,7 @@ sequenceDiagram
     C->>S: GET /parameters
     S-->>C: 200 { P, G }
 
-    Note over C: Derive x = derive(password, salt) mod Q<br/><br/> Pick random r in [1, Q-1] <BR/><br/>Compute T = G^r mod P
+    Note over C: Derive x = derive(password, client_id) mod Q<br/><br/> Pick random r in [1, Q-1] <BR/><br/>Compute T = G^r mod P
 
     C->>S: POST /login/commit { client_id, T }
         Note over S: Compute challenge <br/> c = H(peer_addr, UA, session_id, client_id, T) in [1, Q-1] <br/><br/>Generate session_id 
