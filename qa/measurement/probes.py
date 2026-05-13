@@ -18,7 +18,7 @@ if str(_QA_PATH) not in sys.path:
     sys.path.insert(0, str(_QA_PATH))
 from qa_utils import (
     server, SERVER_MODULE_PATH,
-    pkce_challenge,
+    derive_password_x, pkce_challenge,
     OAUTH_PKCE_CLIENT_ID, OAUTH_SIMPLE_CLIENT_ID, OAUTH_REDIRECT_URI,
     AUTHLIB_CLIENT_ID, AUTHLIB_REDIRECT_URI,
 )
@@ -526,6 +526,251 @@ def generate_comparison_charts(
 
 
 # ---------------------------------------------------------------------------
+# Probe 7 - Session memory footprint under commit flood
+# ---------------------------------------------------------------------------
+
+def run_memory_footprint_benchmark(
+    batches: tuple = (100, 500, 1000),
+    output_csv: str = str(_GENERATED / "memory_footprint_results.csv"),
+) -> None:
+    """
+    Send commits in increasing batch sizes and measure the server sessions dict
+    memory footprint (shallow, deep, tracemalloc) after each batch.
+    Saves memory_footprint_results.csv.
+    """
+    import sys as _sys
+    import tracemalloc
+
+    def _deep_sizeof(obj, seen=None):
+        if seen is None:
+            seen = set()
+        oid = id(obj)
+        if oid in seen:
+            return 0
+        seen.add(oid)
+        size = _sys.getsizeof(obj)
+        if isinstance(obj, dict):
+            size += sum(_deep_sizeof(k, seen) + _deep_sizeof(v, seen) for k, v in obj.items())
+        elif isinstance(obj, (list, tuple, set, frozenset)):
+            size += sum(_deep_sizeof(i, seen) for i in obj)
+        return size
+
+    password = "flood-probe-pass"
+    client_id = "flood_probe_user"
+    rows = []
+
+    with server.app.test_client() as c:
+        with server.app.app_context():
+            x, _ = derive_password_x(password)
+            y = pow(server.G, x, server.P)
+            server.db.session.add(server.User(client_id=client_id, secret_y=str(y)))
+            server.db.session.commit()
+
+        for batch in batches:
+            server.sessions.clear()
+            tracemalloc.start()
+
+            for _ in range(batch):
+                rand_r = secrets_module.randbelow(server.P - 2) + 1
+                t = pow(server.G, rand_r, server.P)
+                c.post("/login/commit", json={"client_id": client_id, "commitment_t": t})
+
+            current_mem, peak_mem = tracemalloc.get_traced_memory()
+            tracemalloc.stop()
+
+            deep_size = _deep_sizeof(server.sessions)
+            row = {
+                "batch": batch,
+                "shallow_bytes": _sys.getsizeof(server.sessions),
+                "deep_bytes": deep_size,
+                "tracemalloc_current_kb": current_mem // 1024,
+                "tracemalloc_peak_kb": peak_mem // 1024,
+                "active_entries": len(server.sessions),
+            }
+            rows.append(row)
+            print(
+                f"After {batch:>5} commits: "
+                f"shallow={row['shallow_bytes']} B, "
+                f"deep={row['deep_bytes']} B, "
+                f"tracemalloc current={row['tracemalloc_current_kb']} KB "
+                f"peak={row['tracemalloc_peak_kb']} KB, "
+                f"active entries={row['active_entries']}"
+            )
+
+    out = Path(output_csv)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", newline="") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=["batch", "shallow_bytes", "deep_bytes",
+                        "tracemalloc_current_kb", "tracemalloc_peak_kb", "active_entries"],
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+    print(f"Saved: {out}")
+
+
+# ---------------------------------------------------------------------------
+# Probe 8 - Server internals: unmeasured crypto functions + protected endpoints
+# ---------------------------------------------------------------------------
+
+def run_server_internals_benchmark(
+    iterations: int = 100,
+    output_csv: str = str(_GENERATED / "server_internals_results.csv"),
+) -> None:
+    """
+    Measures server.py functions and endpoints not covered by benchmark.py:
+      - is_subgroup_member()        pow(value, Q, P) subgroup check
+      - _compute_session_binding()  SHA-256 channel binding derivation
+      - _compute_challenge()        int.from_bytes + modulo reduction
+      - _issue_jwt()                HS256 JWT signing
+      - GET  /parameters            public parameters endpoint
+      - POST /register              user registration endpoint
+      - GET  /data                  protected resource access (requires JWT)
+      - POST /data                  protected resource write  (requires JWT)
+    Saves server_internals_results.csv.
+    """
+    import timeit
+    import statistics as _stats
+
+    P, Q, G = server.P, server.Q, server.G
+
+    # -- representative inputs -----------------------------------------------
+    sample_y = pow(G, 42, P)                 # valid subgroup element
+    sample_session_id = "sample-session-abc"
+    sample_client_id  = "internals_bench_user"
+    sample_binding    = server._compute_session_binding(
+        "127.0.0.1", "test-agent", sample_session_id, sample_client_id, sample_y
+    )
+
+    def _time(fn, n=iterations):
+        times = [timeit.timeit(fn, number=1) * 1000 for _ in range(n)]
+        return {
+            "mean":  _stats.mean(times),
+            "min":   min(times),
+            "max":   max(times),
+            "p95":   sorted(times)[int(n * 0.95)],
+            "stdev": _stats.stdev(times),
+        }
+
+    results = {}
+
+    results["is_subgroup_member (ms)"] = _time(
+        lambda: server.is_subgroup_member(sample_y)
+    )
+    results["_compute_session_binding (ms)"] = _time(
+        lambda: server._compute_session_binding(
+            "127.0.0.1", "test-agent", sample_session_id, sample_client_id, sample_y
+        )
+    )
+    results["_compute_challenge (ms)"] = _time(
+        lambda: server._compute_challenge(sample_binding)
+    )
+    results["_issue_jwt (ms)"] = _time(
+        lambda: server._issue_jwt(sample_client_id)
+    )
+
+    # -- endpoint latency (Flask test client) --------------------------------
+    with server.app.test_client() as c:
+        with server.app.app_context():
+            x, _ = derive_password_x("internals-bench-pw")
+            y = pow(G, x, P)
+            existing = server.User.query.filter_by(client_id=sample_client_id).first()
+            if not existing:
+                server.db.session.add(server.User(client_id=sample_client_id, secret_y=str(y)))
+                server.db.session.commit()
+
+        # GET /parameters
+        params_times = []
+        for _ in range(iterations):
+            t0 = time.perf_counter_ns()
+            c.get("/parameters")
+            params_times.append((time.perf_counter_ns() - t0) / 1e6)
+        results["GET /parameters (ms)"] = {
+            "mean":  _stats.mean(params_times),  "min": min(params_times),
+            "max":   max(params_times),
+            "p95":   sorted(params_times)[int(iterations * 0.95)],
+            "stdev": _stats.stdev(params_times),
+        }
+
+        # POST /register (first call creates, rest return 409 -- measures full path)
+        reg_client_id = "internals_reg_bench_user"
+        reg_times = []
+        for _ in range(iterations):
+            t0 = time.perf_counter_ns()
+            c.post("/register", json={"client_id": reg_client_id, "secret_y": str(y)})
+            reg_times.append((time.perf_counter_ns() - t0) / 1e6)
+        results["POST /register (ms)"] = {
+            "mean":  _stats.mean(reg_times),  "min": min(reg_times),
+            "max":   max(reg_times),
+            "p95":   sorted(reg_times)[int(iterations * 0.95)],
+            "stdev": _stats.stdev(reg_times),
+        }
+
+        # Obtain a JWT via a single ZKP login for /data measurements
+        rand_r = secrets_module.randbelow(P - 2) + 1
+        commitment_t = pow(G, rand_r, P)
+        server.sessions.clear()
+        cr = c.post("/login/commit", json={"client_id": sample_client_id, "commitment_t": commitment_t})
+        payload = cr.get_json()
+        s = (rand_r + int(payload["challenge_c"]) * x) % Q
+        vr = c.post("/login/verify",
+                    headers={"X-Auth-Session": payload["session_id"]},
+                    json={"solution_s": s})
+        jwt_token = vr.get_json().get("token", "")
+        auth_header = {"Authorization": f"Bearer {jwt_token}"}
+
+        # Seed one data record so GET /data returns 200
+        c.post("/data", headers=auth_header, json={"data": "bench-seed"})
+
+        # GET /data
+        data_get_times = []
+        for _ in range(iterations):
+            t0 = time.perf_counter_ns()
+            c.get("/data", headers=auth_header)
+            data_get_times.append((time.perf_counter_ns() - t0) / 1e6)
+        results["GET /data (ms)"] = {
+            "mean":  _stats.mean(data_get_times),  "min": min(data_get_times),
+            "max":   max(data_get_times),
+            "p95":   sorted(data_get_times)[int(iterations * 0.95)],
+            "stdev": _stats.stdev(data_get_times),
+        }
+
+        # POST /data
+        data_post_times = []
+        for _ in range(iterations):
+            t0 = time.perf_counter_ns()
+            c.post("/data", headers=auth_header, json={"data": "bench-value"})
+            data_post_times.append((time.perf_counter_ns() - t0) / 1e6)
+        results["POST /data (ms)"] = {
+            "mean":  _stats.mean(data_post_times),  "min": min(data_post_times),
+            "max":   max(data_post_times),
+            "p95":   sorted(data_post_times)[int(iterations * 0.95)],
+            "stdev": _stats.stdev(data_post_times),
+        }
+
+    out = Path(output_csv)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", newline="") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=["operation", "mean_ms", "min_ms", "max_ms", "p95_ms", "stdev_ms"],
+        )
+        writer.writeheader()
+        for op, v in results.items():
+            writer.writerow({
+                "operation": op,
+                "mean_ms":  round(v["mean"],  6),
+                "min_ms":   round(v["min"],   6),
+                "max_ms":   round(v["max"],   6),
+                "p95_ms":   round(v["p95"],   6),
+                "stdev_ms": round(v["stdev"], 6),
+            })
+            print(f"  {op:<40} mean={v['mean']:>8.4f} ms  p95={v['p95']:>8.4f} ms")
+    print(f"Saved: {out}")
+
+
+# ---------------------------------------------------------------------------
 # Pipeline helpers - server lifecycle
 # ---------------------------------------------------------------------------
 
@@ -578,6 +823,9 @@ def _wait_for_health(url: str = "http://127.0.0.1:5000/health", timeout: int = 2
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+'''
+python.exe qa/measurement/probes.py --run-all 100 60s
+'''
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "--help"
@@ -597,10 +845,15 @@ if __name__ == "__main__":
     elif cmd == "--comparison-charts":
         generate_comparison_charts()
 
+    elif cmd == "--server-internals":
+        run_server_internals_benchmark()
+
     elif cmd == "--all-offline":
         audit_traffic_content()
         generate_charts()
         generate_comparison_charts()
+        run_memory_footprint_benchmark()
+        run_server_internals_benchmark()
 
     elif cmd == "--run-all":
         # Optional args: --run-all [locust_users] [locust_runtime]
@@ -614,6 +867,8 @@ if __name__ == "__main__":
         _run("benchmark.py (latency + throughput CSVs)",[_PYTHON, "qa/measurement/benchmark.py"])
         audit_traffic_content()
         generate_charts()
+        run_memory_footprint_benchmark()
+        run_server_internals_benchmark()
 
         # -- Phase 2: live server required -----------------------------------
         print("\n=== Phase 2: live-server measurements ===")

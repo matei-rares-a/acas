@@ -2,12 +2,12 @@
 
 ## POST /login/commit (ZKP Step 1)
 ```json
-{'client_id': 'audit_traffic_user', 'commitment_t': '527875941272493478540218315348037108658903670438946984031042...'}
+{'client_id': 'audit_traffic_user', 'commitment_t': '467735640444666509381816212190994794655222680670604427805317...'}
 ```
 
 ## POST /login/verify (ZKP Step 2)
 ```json
-{'solution_s': '300364348104941802196354590741285562910211684989408377458085...'}
+{'solution_s': '327860321232495454645019369869571444381772322014672180016591...'}
 ```
 
 ## POST /classic/login (Autentificare Clasica)
@@ -18,13 +18,13 @@ Nota: parola este trimisa in clar catre server.
 
 ## POST /oauth/pkce/authorize (OAuth2 PKCE Step 1)
 ```json
-{'response_type': 'code', 'client_id': 'acas-pkce-client', 'username': 'audit_traffic_user', 'password': 'audit-secret', 'code_challenge': 'OSqtBLP5OCFmvnvD0K9fXJtDnsX3GJWjWg_Ooaya88g', 'code_challenge_method': 'S256'}
+{'response_type': 'code', 'client_id': 'acas-pkce-client', 'username': 'audit_traffic_user', 'password': 'audit-secret', 'code_challenge': '5QpymV8b_6vMhXGrl8Ucpn8xgKuqOv5JP7IKaqdnMTU', 'code_challenge_method': 'S256'}
 ```
 Nota: parola este trimisa catre authorization server (acelasi domeniu), nu catre client.
 
 ## POST /oauth/pkce/token (OAuth2 PKCE Step 2 - code exchange)
 ```json
-{'grant_type': 'authorization_code', 'client_id': 'acas-pkce-client', 'code': '<opaque-auth-code>', 'code_verifier': 'VSksNpDITsI200r7KO8cRh1C5cUKQsb5Le1Avdtcu_k7pLmQhlHMMHifma57...'}
+{'grant_type': 'authorization_code', 'client_id': 'acas-pkce-client', 'code': '<opaque-auth-code>', 'code_verifier': 'nCP3rIhBzYvWV8b3whO8l0lpNtANyn2h_Qvw0C_YunAkrljpTIyUEDeELOkm...'}
 ```
 Nota: code_verifier este un secret de scurta durata, parola nu mai apare in aceasta cerere.
 
@@ -41,11 +41,11 @@ Nota: parola este trimisa catre authorization server, fara PKCE.
 
 ## POST /authlib/oauth/authorize (Authlib PKCE Step 1 - form-encoded)
 ```
-{'response_type': 'code', 'client_id': 'acas-authlib-client', 'username': 'audit_traffic_user', 'password': 'audit-secret', 'code_challenge': 'OSqtBLP5OCFmvnvD0K9fXJtDnsX3GJWjWg_Ooaya88g', 'code_challenge_method': 'S256'}
+{'response_type': 'code', 'client_id': 'acas-authlib-client', 'username': 'audit_traffic_user', 'password': 'audit-secret', 'code_challenge': '5QpymV8b_6vMhXGrl8Ucpn8xgKuqOv5JP7IKaqdnMTU', 'code_challenge_method': 'S256'}
 ```
 Nota: echivalent cu OAuth2 PKCE dar folosind biblioteca Authlib, parametri form-encoded.
 
 ## POST /authlib/oauth/token (Authlib PKCE Step 2 - form-encoded)
 ```
-{'grant_type': 'authorization_code', 'client_id': 'acas-authlib-client', 'code': '<opaque-auth-code>', 'code_verifier': 'VSksNpDITsI200r7KO8cRh1C5cUKQsb5Le1Avdtcu_k7pLmQhlHMMHifma57...'}
+{'grant_type': 'authorization_code', 'client_id': 'acas-authlib-client', 'code': '<opaque-auth-code>', 'code_verifier': 'nCP3rIhBzYvWV8b3whO8l0lpNtANyn2h_Qvw0C_YunAkrljpTIyUEDeELOkm...'}
 ```

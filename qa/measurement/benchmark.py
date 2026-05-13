@@ -69,6 +69,29 @@ def save_benchmark_csv(
     print(f"Saved: {out}")
 
 
+def save_e2e_csv(
+    results: dict,
+    path: str = str(_GENERATED / "e2e_results.csv"),
+) -> None:
+    """Persist _benchmark_e2e_flows() results to CSV."""
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", newline="") as f:
+        writer = csv.DictWriter(
+            f, fieldnames=["operation", "mean_ms", "min_ms", "max_ms", "p95_ms"]
+        )
+        writer.writeheader()
+        for op, v in results.items():
+            writer.writerow({
+                "operation": op,
+                "mean_ms":   round(v["mean"], 6),
+                "min_ms":    round(v["min"],  6),
+                "max_ms":    round(v["max"],  6),
+                "p95_ms":    round(v["p95"],  6),
+            })
+    print(f"Saved: {out}")
+
+
 # ---------------------------------------------------------------------------
 # Throughput sweep: RPS at increasing burst sizes
 # ---------------------------------------------------------------------------
@@ -303,6 +326,29 @@ def gen_latency_table_zkp_fun_only(iterations: int = 100) -> str:
         row("Round-Trip Total (client)", rtt_times),
         "",
     ]
+    save_benchmark_csv(
+        {
+            "/login/commit (server side)": {
+                "mean": statistics.mean(commit_times), "min": min(commit_times),
+                "max": max(commit_times),
+                "p95": sorted(commit_times)[int(len(commit_times) * 0.95)],
+                "stdev": statistics.stdev(commit_times),
+            },
+            "/login/verify (server side)": {
+                "mean": statistics.mean(verify_times), "min": min(verify_times),
+                "max": max(verify_times),
+                "p95": sorted(verify_times)[int(len(verify_times) * 0.95)],
+                "stdev": statistics.stdev(verify_times),
+            },
+            "Round-Trip Total (client)": {
+                "mean": statistics.mean(rtt_times), "min": min(rtt_times),
+                "max": max(rtt_times),
+                "p95": sorted(rtt_times)[int(len(rtt_times) * 0.95)],
+                "stdev": statistics.stdev(rtt_times),
+            },
+        },
+        path=str(_GENERATED / "zkp_steps_latency.csv"),
+    )
     return "\n".join(lines)
 
 
@@ -555,6 +601,7 @@ class TestBenchmark(OAuthTestSuite):
         '''Testare comparatie latentza e2e ZKP vs OAuth2 inclusiv crypto client'''
         """Compare ZKP vs OAuth2 e2e: full authentication latency including all client-side crypto."""
         data = _benchmark_e2e_flows(iterations=100)
+        save_e2e_csv(data)
         header = (
             f"| {'Protocol Flow':<52} | {'Mean (ms)':>10} | {'Min (ms)':>10}"
             f" | {'Max (ms)':>10} | {'P95 (ms)':>10} |"
@@ -640,20 +687,6 @@ class TestBenchmark(OAuthTestSuite):
         assert len(server.sessions) <= 1
         assert sizes[1000]["deep_bytes"] < sizes[100]["deep_bytes"] * 20
 
-
-    r"""
-    Context initial (de reamintit agentului)
-    "Actioneaza ca un Security QA Automation Engineer. Scrie teste pentru urmatoarele prompturi"
-
-    Prompt 2: Testarea de Latenta (Micro-Benchmarking Client si Server)
-    "Foloseste benchmark-ul din testul test_benchmark_prints_latency_table (bazat pe libraria timeit)
-    pentru a masura latenta componentelor individuale ale sistemului nostru ZKP vs. Clasic.
-    Masoara timpul de executie pentru functiile de client: derivarea parolei si generarea angajamentului.
-    Masoara timpul de executie pentru functiile de server ZKP: /login/commit si /login/verify.
-    Ruleaza fiecare masuratoare de 100 de ori si calculeaza Media, Minimul, Maximul si P95 in ms."
-
- 
-    """
 
 # ---------------------------------------------------------------------------
 # Entry point: run tests (with logs) then generate both CSVs
