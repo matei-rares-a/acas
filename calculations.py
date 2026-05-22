@@ -48,5 +48,4 @@ right = (commitment_t * pow(secret_y, challenge_c, global_p)) % global_p # right
 proof = left == right
 print("Proof valid?", proof)
 
-#y,t,left,right sunt in Zp* = {1, 2, ..., p-1}, iar x,r,c,s sunt in Zq* = {1, 2, ..., q-1}  
-
+#y,t,left,right sunt in Zp* = {1, 2, ..., p-1}, iar x,r,c,s sunt in Zq* = {1, 2, ..., q-1}
