@@ -148,7 +148,7 @@ def test_mitm_weak_parameter_injection_allows_dlp_brute_force_and_login(client, 
     assert x_recovered == x_victim % Q_weak, f"Recovered x={x_recovered} != x_victim mod Q={x_victim % Q_weak}"
 
     # Attacker completes a fresh ZKP login using the recovered private key
-    rand_r = secrets_module.randbelow(P_weak - 2) + 1
+    rand_r = secrets_module.randbelow(Q_weak - 1) + 1
     t = pow(G_weak, rand_r, P_weak)
 
     commit_resp = client.post(

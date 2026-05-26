@@ -1,4 +1,4 @@
 operation,mean_ms,min_ms,max_ms,p95_ms,stdev_ms
-/login/commit (server side),1.904363,1.089,11.834,2.7639,1.134819
-/login/verify (server side),3.122543,1.6537,24.2825,4.0849,2.713567
-Round-Trip Total (client),5.05466,2.7586,29.4993,6.7521,3.47124
+/login/commit (server side),1.597591,1.1161,5.4941,2.7887,0.65957
+/login/verify (server side),2.414677,1.6652,15.5187,4.0076,1.451567
+Round-Trip Total (client),4.034324,2.7967,21.0392,6.7847,2.014547
