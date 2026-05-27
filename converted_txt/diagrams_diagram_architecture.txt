@@ -1,0 +1,62 @@
+graph TB
+    subgraph Browser["Browser — Client Application"]
+        subgraph Pages["HTML Pages"]
+            INDEX["index.html\nLanding"]
+            REG["register.html\nRegistration"]
+            LOGIN["login.html\nLogin"]
+        end
+        subgraph JS["JavaScript Layer"]
+            AUTH_JS["auth.js\nmodPow · KDF · fetchParameters\nrandomInRange · showAlert"]
+            REG_JS["register.js\nRegistration protocol flow"]
+            LOGIN_JS["login.js\nSchnorr login flow"]
+            NM_JS["network-monitor.js\nFetch interceptor & real-time logger"]
+        end
+    end
+
+    subgraph FlaskServer["Flask Server — Python"]
+        subgraph ZKPRoutes["ZKP Auth Routes  (server.py)"]
+            R1["GET  /health"]
+            R2["GET  /parameters"]
+            R3["POST /register"]
+            R4["POST /login/commit"]
+            R5["POST /login/verify"]
+            R6["GET·POST·PUT /data"]
+        end
+
+        subgraph OAuthRoutes["Custom OAuth2 Routes  (server_oauth.py)"]
+            O1["POST /oauth/pkce/register\nPOST /oauth/pkce/authorize\nPOST /oauth/pkce/token"]
+            O2["POST /oauth/simple/register\nPOST /oauth/simple/authorize\nPOST /oauth/simple/token"]
+            O3["POST /oauth/register|authorize|token\n(backward-compat → pkce)"]
+        end
+
+        subgraph AuthlibRoutes["Authlib OAuth2 Routes  (server_authlib.py)"]
+            A1["POST /authlib/register"]
+            A2["POST /authlib/oauth/authorize"]
+            A3["POST /authlib/oauth/token"]
+        end
+
+        VERIFIER["Schnorr Verifier\ng^s ≡ t · y^c (mod P)\n+ session binding check"]
+        BINDING["Session Binding\nSHA-256(addr|UA|session_id|client_id|t)\nc = int(binding) mod Q"]
+        MODELS["models.py\nUser · AuthToken · PersoData"]
+        EXT["extensions.py\nSQLAlchemy db"]
+        HEADERS["after_request hook\nREST & Security headers"]
+    end
+
+    subgraph Persistence["Persistence Layer"]
+        DB[("SQLite\nauth.db")]
+    end
+
+    INDEX & REG & LOGIN --> AUTH_JS
+    REG --> REG_JS
+    LOGIN --> LOGIN_JS
+    REG_JS & LOGIN_JS --> NM_JS
+    NM_JS -->|"HTTP / CORS"| ZKPRoutes
+    NM_JS -->|"HTTP / CORS"| OAuthRoutes
+    NM_JS -->|"HTTP / CORS"| AuthlibRoutes
+    R4 --> BINDING
+    R4 & R5 --> VERIFIER
+    BINDING --> VERIFIER
+    ZKPRoutes & OAuthRoutes & AuthlibRoutes --> MODELS
+    ZKPRoutes & OAuthRoutes & AuthlibRoutes --> HEADERS
+    MODELS --> EXT
+    EXT --> DB

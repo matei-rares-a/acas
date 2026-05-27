@@ -1,0 +1,23 @@
+erDiagram
+    USER {
+        int     id         PK
+        string  client_id  UK  "unique username"
+        string  secret_y       "G^x mod P  (Schnorr public key)"
+        datetime created_at    "auto-set on insert"
+    }
+
+    AUTH_TOKEN {
+        int     id         PK
+        int     user_id    FK
+        string  token      UK  "JWT signed with server secret"
+        datetime created_at    "auto-set on insert"
+    }
+
+    PERSO_DATA {
+        int     id         PK
+        int     user_id    FK
+        string  message    UK  "user's personal data payload"
+    }
+
+    USER ||--o| AUTH_TOKEN : "has (at most 1 active token)"
+    USER ||--o| PERSO_DATA : "has (at most 1 data record)"
