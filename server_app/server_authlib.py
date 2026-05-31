@@ -289,7 +289,6 @@ def authlib_register():
     Register an Authlib OAuth user -- stores a hashed password for the given
     Schnorr client_id. The user must already exist in the ZKP User table.
     '''
-    from models import User as _User
     data      = request.get_json(silent=True) or {}
     client_id = data.get("client_id", "").strip()
     password  = data.get("password", "")
@@ -357,4 +356,3 @@ def authlib_token():
     Exchanges an authorization code or refresh token for an access token.
     '''
     return _authorization.create_token_response()
-import jwt as pyjwt

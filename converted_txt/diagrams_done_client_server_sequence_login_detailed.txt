@@ -61,6 +61,6 @@ sequenceDiagram
     else proof invalid
         API->>API: DELETE sessions[session_id]
         API-->>UI: 401 { reason: verification failed }
-        UI-->>U: Error - unauthorized
+        UI-->>U: Error - unauthenticated
     end
     end

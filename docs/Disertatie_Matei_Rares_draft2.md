@@ -124,27 +124,23 @@ Matei Rareș
 
 Rezumat
 
-În prezent, oamenii se pot întâlni cu necesitatea de a accesa rapid și sigur diverse platforme digitale, fie în interes personal, fie profesional. Printre variantele disponibile este utilizarea unor sisteme de autentificare clasice, care pot fi o alegere practică în economisirea timpului la logare, indiferent dacă este vorba despre o aplicație web sau mobilă. O problemă majoră în alegerea unui astfel de sistem poate fi lipsa securității de încredere pe termen lung, deoarece interceptările neautorizate ale traficului pot afecta atât siguranța datelor cât și intimitatea utilizatorului. De multe ori, sursa principală de vulnerabilitate este chiar transmiterea parolei prin rețea, care, cu toate că este protejată aparent de protocoale precum TLS, ar putea fi decriptată ulterior de actori malițioși pentru profit personal.
-Dificultatea întâlnită de oameni pentru a-și păstra datele în siguranță în procesul de autentificare online, fapt ce poate duce la furt de identitate, riscuri de securitate sau pierderi financiare, mai ales în cazul breșelor de date de la nivelul serverelor, au dus la crearea unui protocol care să înlăture o parte din aceste neajunsuri, fiind propuse și câteva metode posibile pentru creșterea încrederii clientului în propriul sistem de logare.
-Alegerea acestei teme este motivată și de necesitatea de a reduce riscurile și costurile asociate eventualelor scurgeri viitoare de informații, prin utilizarea unor tehnici criptografice avansate de creștere a securității procesului de autorizare. În plus, s-a dorit să se exploreze metodele posibile de utilizare a demonstrațiilor de tip Zero-Knowledge (ZKP) într-o soluție practică care să ușureze modul în care utilizatorul își poate dovedi identitatea.
-Acest lucru s-a realizat prin implementarea unui protocol integrat cu standardul OAuth care să asigure o verificare matematică a identității și a datelor unui client pentru a furniza accesul într-o manieră sigură și fără partajare de secrete potențialilor atacatori.
-În introducere, este descrisă în detaliu tematica, abordând contextul și importanța acesteia, după care sunt analizate critic alte soluții existente care încearcă să rezolve problemele enumerate.
-Capitolul 1 oferă o prezentare a motivelor din spatele alegerii tehnologiilor și algoritmilor utilizați, explicând cum aceste decizii au contribuit la dezvoltarea arhitecturii sistemului de autentificare.
-Capitolul 2 se concentrează pe implementarea protocolului, oferind o descriere amănunțită a fiecărui pas din procesul de dezvoltare și a matematicii din spatele acestuia.
-La final, în secțiunea dedicată concluziilor sunt evidențiate rezultatele obținute și diverse modalități de îmbunătățire a soluției actuale urmată mai apoi de bibliografia care include referințele utilizate.
-Tehnologii principale folosite, alese pentru o implementare fluidă și predispusă dezvoltării sunt următoarele: Python [1], Flask [2], SQLite [3] și JavaScript [4].
+În prezent, aplicațiile web moderne impun mecanisme robuste de autentificare la distanță, prin care utilizatorul trebuie să-și demonstreze identitatea digitală pentru a obține acces la resurse protejate. Într-un model tradițional, acest proces se bazează pe transmiterea unui secret partajat către server, abordare care, deși protejată aparent de protocoale precum TLS, rămâne vulnerabilă în fața unor vectori de atac precum compromiterea bazelor de date, interceptarea traficului în vederea decriptării ulterioare sau atacurile de tip replay. Aceste riscuri pot conduce la furt de identitate, pierderi financiare și încălcarea confidențialității utilizatorilor.
+Dificultatea de a asigura o autentificare sigură fără a expune materialul secret pe rețea, conjugată cu creșterea constantă a suprafeței de atac în ecosistemul web, a motivat proiectarea unui protocol care să elimine aceste neajunsuri structurale, propunând totodată metode concrete de consolidare a încrederii utilizatorului în propriul sistem de autentificare.
+Alegerea acestei teme este susținută de necesitatea de a reduce riscurile și costurile asociate eventualelor breșe de securitate, prin utilizarea unor tehnici criptografice avansate bazate pe demonstrații cu cunoștințe zero (eng. Zero-Knowledge Proof). În plus, s-a urmărit explorarea integrării schemei de identificare Schnorr într-o soluție practică, în care utilizatorul își poate dovedi identitatea fără ca parola sau cheia privată să părăsească vreodată dispozitivul local.
+Acest lucru s-a realizat prin implementarea unui protocol hibrid care îmbină demonstrația criptografică Schnorr cu cadrul de autorizare delegată OAuth, asigurând o verificare matematică riguroasă a identității clientului, urmată de emiterea unui jeton JWT pentru accesul securizat la resurse, fără partajarea de secrete prin rețea.
+În introducere, este descrisă în detaliu tematica, abordând contextul și importanța acesteia, după care sunt analizate critic soluțiile existente de autentificare și vulnerabilitățile pe care le prezintă.
+Capitolul 1 oferă o prezentare a fundamentelor teoretice ZKP, schema Schnorr, OAuth, PKCE și JWT alături de motivele din spatele alegerii tehnologiilor utilizate, explicând cum aceste decizii au contribuit la dezvoltarea arhitecturii protocolului de autentificare.
+Capitolul 2 se concentrează pe implementarea protocolului, oferind o descriere amănunțită a fiecărui pas din procesul de dezvoltare, a modelului matematic subiacent și a interfeței de programare a aplicațiilor (API), incluzând și componenta experimentală de evaluare comparativă cu fluxurile OAuth clasice.
+La final, în secțiunea dedicată concluziilor sunt evidențiate rezultatele obținute prin testarea automatizată și evaluarea de performanță, diverse modalități de îmbunătățire a soluției actuale, urmată de bibliografia care include referințele utilizate.
+Tehnologii principale folosite, alese pentru o implementare fluidă și predispusă dezvoltării sunt următoarele: Python [1], Flask [2], SQLite [3] și JavaScript [4]. Pe partea de server, au fost utilizate biblioteci criptografice precum cryptography și sympy, iar pytest și Locust pentru evaluarea calității. Suplimentar, s-au implementat trei fluxuri OAuth 2.0 auxiliare (inclusiv o variantă PKCE și una bazată pe Authlib) ca bază de referință obiectivă pentru analiza comparativă.
 Din punct de vedere software, pentru a executa programul este nevoie de versiunea 3.10 de Python împreună cu diverse biblioteci criptografice, un mediu de rulare pentru serverul web, Npm [5] și un browser modern compatibil cu standardele actuale pentru interfața clientului.
-Din punct de vedere hardware, aplicația a fost testată pe un dispozitiv cu sistem de operare Windows 10, 16 GB RAM și un procesor AMD Ryzen 5 4600H.
- 
+
+Din punct de vedere hardware, aplicația a fost testată pe un dispozitiv cu sistem de operare Windows 10, 16 GB RAM și un procesor AMD Ryzen 5 4600H. 
 Introducere
-Ritmul Aplicațiile web moderne depind în mod inerent de mecanisme robuste de autentificare la distanță, prin care se impune demonstrarea legitimității unei identități digitale de către utilizator, etapă urmată de decizia serverului privind acordarea accesului solicitat. În mod tradițional, acest proces se bazează pe utilizarea unui secret partajat, precum o parolă sau un cod temporar. Cu toate că protecția la nivelul stratului de transport prin intermediul protocolului HTTPS reduce semnificativ probabilitatea interceptării datelor în tranzit, arhitectura clasică rămâne vulnerabilă în fața unei clase extinse de vectori de atac. Printre aceste vulnerabilități structurale se numără compromiterea bazelor de date, reutilizarea parolelor, configurarea defectuoasă a infrastructurii, capturarea traficului de rețea în vederea decriptării ulterioare, precum și atacurile de tip *replay* asupra unor materiale de autentificare care nu sunt ancorate corespunzător în contextul sesiunii curente.
-
-În acest context, standardul OAuth 2.0 a fost adoptat la scară largă ca mecanism principal pentru autorizarea delegată [1]. Cu toate acestea, cadrul de lucru menționat nu soluționează în mod intrinsec problema atestării identității utilizatorului fără a presupune transmiterea credențialelor. În majoritatea implementărilor actuale, faza de autentificare inițială delegată serverului de autorizare se bazează în continuare pe un mecanism clasic, expus riscului de exfiltrare a parolei. Astfel, se conturează necesitatea imperativă de a integra o metodă de autentificare superioară din punct de vedere criptografic în etapa premergătoare emiterii jetonului de acces.
-
+Ritmul Aplicațiile web moderne depind în mod inerent de mecanisme robuste de autentificare la distanță, prin care se impune demonstrarea legitimității unei identități digitale de către utilizator, etapă urmată de decizia serverului privind acordarea accesului solicitat. În mod tradițional, acest proces se bazează pe utilizarea unui secret partajat, precum o parolă sau un cod temporar. Cu toate că protecția la nivelul stratului de transport prin intermediul protocolului HTTPS reduce semnificativ probabilitatea interceptării datelor în tranzit, arhitectura clasică rămâne vulnerabilă în fața unei clase extinse de vectori de atac. Printre aceste vulnerabilități structurale se numără compromiterea bazelor de date, reutilizarea parolelor, configurarea defectuoasă a infrastructurii, capturarea traficului de rețea în vederea decriptării ulterioare, precum și atacurile de tip replay asupra unor materiale de autentificare care nu sunt ancorate corespunzător în contextul sesiunii curente.
+În acest context, standardul OAuth 2.0 a fost adoptat la scară largă ca mecanism principal pentru autorizarea delegată [6], [7], [8]. Cu toate acestea, cadrul de lucru menționat nu soluționează în mod intrinsec problema atestării identității utilizatorului fără a presupune transmiterea credențialelor [9], [11]. În majoritatea implementărilor actuale, faza de autentificare inițială delegată serverului de autorizare se bazează în continuare pe un mecanism clasic, expus riscului de exfiltrare a parolei [10]. Astfel, se conturează necesitatea imperativă de a integra o metodă de autentificare superioară din punct de vedere criptografic în etapa premergătoare emiterii jetonului de acces.
 Prin urmare, obiectivul principal al acestei lucrări este reprezentat de proiectarea și fundamentarea teoretică a unui sistem de securitate în care demonstrarea identității se realizează printr-o schemă criptografică Schnorr, fundamentată pe demonstrații cu cunoștințe zero (Zero-Knowledge Proof - ZKP), etapă urmată de emiterea unui jeton JWT pentru accesul securizat la resurse. Principiul arhitectural de bază impune ca parola, sau cheia privată derivată din aceasta, să nu părăsească în niciun moment perimetrul securizat al dispozitivului clientului. În această paradigmă, serverul stochează exclusiv valoarea publică asociată identității și validează riguros dovada matematică, fără a dispune de informații referitoare la secretul originar.
-
 Pe lângă implementarea fluxului ZKP, proiectul integrează o componentă experimentală complexă, menită să faciliteze o evaluare comparativă de profunzime. Astfel, au fost dezvoltate suplimentar două fluxuri OAuth 2.0 personalizate, incluzând o variantă bazată pe extensia PKCE și o versiune simplificată, precum și o a treia implementare generată prin intermediul bibliotecii Authlib. Aceste module secundare nu sunt destinate înlocuirii protocolului principal Schnorr, ci au rolul de a oferi o bază de referință obiectivă pentru analizarea costurilor operaționale, a structurii mesajelor tranzacționate și a gradului de expunere a credențialelor la nivelul rețelei.
-
 În plan practic, demersul științific își propune să clarifice validitatea realizării unei autentificări web complet funcționale în absența transmiterii parolei către server, precum și viabilitatea integrării acestui mecanism într-un model de autorizare pe bază de jetoane, compatibil la nivel conceptual cu ecosistemul OAuth. De asemenea, sunt evaluate în mod critic avantajele de securitate pe care protocolul propus le aduce în comparație cu soluțiile convenționale, cuantificându-se simultan costurile computaționale introduse. Nu în ultimul rând, sunt identificate limitările arhitecturii curente și sunt propuse modificările structurale necesare pentru o eventuală tranziție către un mediu de producție.
 
 Pentru a atinge aceste deziderate, documentația este structurată în trei secțiuni principale. În primul capitol sunt introduse fundamentele teoretice, tehnologiile utilizate și arhitectura generală a sistemului. Al doilea capitol este dedicat descrierii cerințelor funcționale, prezentării modelului matematic subiacent și detalierii implementării concrete a protocolului, inclusiv a interfeței de programare a aplicațiilor (API). În cele din urmă, al treilea capitol expune metodologia de testare și rezultatele experimentale obținute, oferind o analiză de ansamblu a avantajelor și limitărilor soluției implementate, alături de direcțiile viitoare de cercetare și dezvoltare..
@@ -156,32 +152,32 @@ Demonstrația cu cunoștințe zero (Zero-Knowledge Proof - ZKP) reprezintă un p
 
 În contextul securității cibernetice, principiul de bază al tehnologiei ZKP și avantajul său conceptual major impun ca, în niciun moment al procesului de autentificare, parola sau cheia privată să nu fie transmisă prin rețea, nici în format brut, nici măcar sub formă criptată. Această proprietate rezolvă vulnerabilități critice inerente protocoalelor tradiționale. Într-un sistem tradițional, chiar dacă parola este trimisă printr-un tunel securizat (HTTPS), serverul primește un material sensibil și trebuie să îl protejeze, fiind vulnerabil în cazul compromiterii canalului de transport.
 
-În arhitectura ZKP, rețeaua transportă exclusiv transcrisul unei dovezi (valori matematice efemere), care nu poate fi reutilizat în afara contextului în care a fost generat. Astfel, protocolul oferă o reziliență absolută la atacurile de interceptare a traficului de tip „Store Now, Decrypt Later”; dacă un adversar observă schimbul de mesaje, acesta va capta doar numere asociate unui proces tranzitoriu, extragerea secretului fiind imposibilă matematic. În al doilea rând, previne atacurile de tip Replay, deoarece natura interactivă a protocolului presupune emiterea unei provocări unice (challenge) de către server la fiecare încercare de conectare. Totodată, atenuează complet impactul breșelor de date (Data Leaks) prin eliminarea „secretului partajat”, serverul stocând exclusiv chei publice care sunt inutile unui atacator în lipsa dispozitivului și a parolei clientului.
+În arhitectura ZKP, rețeaua transportă exclusiv transcrisul unei dovezi (valori matematice efemere), care nu poate fi reutilizat în afara contextului în care a fost generat. Astfel, protocolul oferă o reziliență absolută la atacurile de interceptare a traficului de tip „Store Now, Decrypt Later” [14]; dacă un adversar observă schimbul de mesaje, acesta va capta doar numere asociate unui proces tranzitoriu, extragerea secretului fiind imposibilă matematic. În al doilea rând, previne atacurile de tip Replay, deoarece natura interactivă a protocolului presupune emiterea unei provocări unice (challenge) de către server la fiecare încercare de conectare. Totodată, atenuează complet impactul breșelor de date (Data Leaks) prin eliminarea „secretului partajat”, serverul stocând exclusiv chei publice care sunt inutile unui atacator în lipsa dispozitivului și a parolei clientului.
 
-În cadrul acestui proiect, tehnologia ZKP are un rol arhitectural vital, fiind utilizată pentru a consolida și înlocui mecanismele vulnerabile din fluxul standard OAuth 2.0. Conceptul nu rulează în izolare, ci se realizează printr-o mapare directă a fazelor ZKP peste etapele de autorizare delegată OAuth. Concret, demonstrația ZKP – implementată în acest sistem prin schema de identificare Schnorr – preia rolul parametrului clasic de validare (precum client_secret sau transmiterea parolei brute), oferind o garanție matematică a identității pentru emiterea tokenului de acces, fără ca secretul utilizatorului să părăsească vreodată mediul local al aplicației client.
+În cadrul acestui proiect, tehnologia ZKP are un rol arhitectural vital, fiind utilizată pentru a consolida și înlocui mecanismele vulnerabile din fluxul standard OAuth 2.0. Conceptul nu rulează în izolare, ci se realizează printr-o mapare directă a fazelor ZKP peste etapele de autorizare delegată OAuth [17]. Concret, demonstrația ZKP – implementată în acest sistem prin schema de identificare Schnorr – preia rolul parametrului clasic de validare (precum client_secret sau transmiterea parolei brute), oferind o garanție matematică a identității pentru emiterea tokenului de acces [15], [18], fără ca secretul utilizatorului să părăsească vreodată mediul local al aplicației client.
 I.1.2. 	Schema de identificare Schnorr 
-Schema Schnorr [] reprezintă una dintre cele mai consacrate și robuste construcții criptografice fundamentate pe dificultatea computațională a problemei logaritmului discret în grupuri finite. În cadrul acestei arhitecturi, fundamentul matematic este riguros definit prin utilizarea unui număr prim sigur (*safe prime*), notat cu $P$, ce satisface egalitatea $P = 2 \cdot Q + 1$, unde $Q$ constituie, la rândul său, un număr prim de dimensiuni mari. Peste acest număr prim se consideră grupul multiplicativ $\mathbb{Z}_P^* = \{1, 2, \dots, P-1\}$. Elementul central al schemei îl reprezintă alegerea unui generator $G \in \mathbb{Z}_P^*$ asociat subgrupului de ordin $Q$, determinat prin relația matematică $G = h^2 \bmod P$, impunându-se condițiile stricte de securitate ca $G \neq 1$ și $G^Q \bmod P = 1$, pentru o valoare aleatoare $h \in \mathbb{Z}_P^*$.
+Schema Schnorr [19], [20], [21], [25] reprezintă una dintre cele mai consacrate și robuste construcții criptografice fundamentate pe dificultatea computațională a problemei logaritmului discret în grupuri finite. În cadrul acestei arhitecturi, fundamentul matematic este riguros definit prin utilizarea unui număr prim sigur (safe prime), notat cu P, ce satisface egalitatea P = 2 · Q + 1, unde Q constituie, la rândul său, un număr prim de dimensiuni mari. Peste acest număr prim se consideră grupul multiplicativ Z_P= {1, 2, ..., P-1}. Elementul central al schemei îl reprezintă alegerea unui generator G ∈ Z_Pasociat subgrupului de ordin Q, determinat prin relația matematică G = h² mod P, impunându-se condițiile stricte de securitate ca G ≠ 1 și G^Q mod P = 1, pentru o valoare aleatoare h ∈ Z_P*.
 
-Pentru a asigura securitatea fără partajarea unui secret (*zero-knowledge*), protocolul implică generarea asimetrică a identității și o succesiune strictă de pași de interogare matematică:
+Pentru a asigura securitatea fără partajarea unui secret (zero-knowledge), protocolul implică generarea asimetrică a identității și o succesiune strictă de pași de interogare matematică:
 
-* **Generarea perechii de chei:** Cheia privată este reprezentată de o valoare secretă $x \in \mathbb{Z}_Q$, cunoscută exclusiv de către client și care nu părăsește niciodată dispozitivul local al acestuia. Cheia publică este dedusă matematic sub forma $y = G^x \bmod P$ și este transmisă către serverul de autentificare pentru a fi stocată și asociată identității utilizatorului.
-* **Etapa de angajament (Commitment):** Pentru a iniția sesiunea, clientul alege un nonce aleatoriu și efemer $r \in \mathbb{Z}_Q$. Pe baza acestuia, se calculează un angajament criptografic temporar $t = G^r \bmod P$, rezultând într-o valoare din $\mathbb{Z}_P^*$ transmisă către server.
-* **Generarea provocării (Challenge):** În forma clasică a protocolului, provocarea $c \in \mathbb{Z}_Q$ este aleasă aleatoriu de către entitatea verificatoare. În prezenta implementare, provocarea este derivată determinist din contextul extins al sesiunii HTTP și dintr-un identificator aleatoriu de sesiune generat de server. Această paradigmă modernă leagă explicit transcrisul protocolului de contextul curent de rețea, întărind în mod semnificativ protecția împotriva atacurilor de tip *relay* și *replay*.
-* **Calculul răspunsului (Response):** Dispunând de provocarea serverului, clientul atestă cunoașterea secretului $x$ fără a-l dezvălui, furnizând o dovadă matematică (soluția) calculată sub forma $s = (r + c \cdot x) \bmod Q$, valoare ce aparține grupului $\mathbb{Z}_Q$.
+Generarea perechii de chei: Cheia privată este reprezentată de o valoare secretă x ∈ Z_Q, cunoscută exclusiv de către client și care nu părăsește niciodată dispozitivul local al acestuia. Cheia publică este dedusă matematic sub forma y = G^x mod P și este transmisă către serverul de autentificare pentru a fi stocată și asociată identității utilizatorului.
+Etapa de angajament (Commitment): Pentru a iniția sesiunea, clientul alege un nonce aleatoriu și efemer r ∈ Z_Q. Pe baza acestuia, se calculează un angajament criptografic temporar t = G^r mod P, rezultând într-o valoare din Z_Ptransmisă către server.
+Generarea provocării (Challenge): În forma clasică a protocolului, provocarea c ∈ Z_Q este aleasă aleatoriu de către entitatea verificatoare. În prezenta implementare, provocarea este derivată determinist din contextul extins al sesiunii HTTP și dintr-un identificator aleatoriu de sesiune generat de server [22], [23]. Această paradigmă modernă leagă explicit transcrisul protocolului de contextul curent de rețea, întărind în mod semnificativ protecția împotriva atacurilor de tip relay și replay.
+Calculul răspunsului (Response): Dispunând de provocarea serverului, clientul atestă cunoașterea secretului x fără a-l dezvălui, furnizând o dovadă matematică (soluția) calculată sub forma s = (r + c · x) mod Q, valoare ce aparține grupului Z_Q.
 
-**Faza de verificare (Verification)** presupune o operațiune de validare *stateless* executată de server, utilizând exclusiv cheia publică $y$ stocată la momentul înregistrării. Validarea implică evaluarea concomitentă și compararea a doi termeni distincți:
+Faza de verificare (Verification)*presupune o operațiune de validare stateless executată de server, utilizând exclusiv cheia publică y stocată la momentul înregistrării. Validarea implică evaluarea concomitentă și compararea a doi termeni distincți:
 
 
-$$\text{left} = G^s \bmod P$$
+left = G^s mod P
 
-$$\text{right} = t \cdot y^c \bmod P$$
+right = t · y^c mod P
 
-Autentificarea este considerată pe deplin valabilă și acceptată de sistem dacă și numai dacă egalitatea fundamentală este satisfăcută, respectiv $\text{left} = \text{right}$ ($G^s \bmod P = t \cdot y^c \bmod P$). Această verificare riguroasă oferă garanția matematică a identității solicitantului, eliminând definitiv necesitatea schimbului sau expunerii unor secrete brute prin intermediul rețelei..
+Autentificarea este considerată pe deplin valabilă și acceptată de sistem dacă și numai dacă egalitatea fundamentală este satisfăcută, respectiv left = right (G^s mod P = t · y^c mod P). Această verificare riguroasă oferă garanția matematică a identității solicitantului, eliminând definitiv necesitatea schimbului sau expunerii unor secrete brute prin intermediul rețelei [24], [26].
 
 I.1.3. 	Oauth, JWT, PKCE
-Cadrul de autorizare delegată OAuth 2.0 reprezintă un standard industrial fundamental care permite aplicațiilor să obțină acces securizat la resurse protejate, fără a necesita expunerea sau transmiterea credențialelor direct către aplicația consumatoare. Pentru clienții publici, extensia PKCE (Proof Key for Code Exchange), definită prin specificația RFC 7636, adaugă un strat critic de protecție împotriva interceptării codului de autorizare. În contextul arhitecturii acestui proiect, acest cadru este implementat printr-un Server de Autentificare (Emitent de Token) ce are rolul de a verifica identitatea clientului și de a emite token-uri de acces (OAuth Access Tokens) în urma unei validări reușite.
+Cadrul de autorizare delegată OAuth 2.0 reprezintă un standard industrial fundamental care permite aplicațiilor să obțină acces securizat la resurse protejate, fără a necesita expunerea sau transmiterea credențialelor direct către aplicația consumatoare. Pentru clienții publici, extensia PKCE (Proof Key for Code Exchange), definită prin specificația RFC 7636 [28], adaugă un strat critic de protecție împotriva interceptării codului de autorizare. În contextul arhitecturii acestui proiect, acest cadru este implementat printr-un Server de Autentificare (Emitent de Token) ce are rolul de a verifica identitatea clientului și de a emite token-uri de acces (OAuth Access Tokens) în urma unei validări reușite.
 
-Odată ce etapa de verificare criptografică s-a încheiat cu succes, serverul generează un Access Token sub forma unui JSON Web Token (JWT) semnat, standardizat conform RFC 7519 și având o valabilitate limitată în timp. Integrarea acestui model optimizează performanța și fluidizează comunicarea client-server post-autentificare, aducând beneficii structurale majore: pentru toate cererile ulterioare, clientul interacționează cu serverul folosind exclusiv tokenul primit, atașat ca Bearer Token în antetul HTTP (ex. Authorization: Bearer <token_jwt>). Această abordare reduce costul operațional al verificărilor și elimină necesitatea reluării procesului complex ZKP la fiecare interacțiune cu resursele protejate, reproducând un model de lucru familiar aplicațiilor web moderne. Totodată, se garantează o separare strictă a resurselor prin caracterul stateless al validării; serverul poate verifica token-ul JWT emis utilizând doar cheia publică stocată la înregistrare, fără a mai fi necesară re-executarea protocolului Schnorr, asigurând un proces de autorizare extrem de eficient din punct de vedere computațional.
+Odată ce etapa de verificare criptografică s-a încheiat cu succes, serverul generează un Access Token sub forma unui JSON Web Token (JWT) semnat, standardizat conform RFC 7519 [27] și având o valabilitate limitată în timp. Integrarea acestui model optimizează performanța și fluidizează comunicarea client-server post-autentificare, aducând beneficii structurale majore: pentru toate cererile ulterioare, clientul interacționează cu serverul folosind exclusiv tokenul primit, atașat ca Bearer Token în antetul HTTP (ex. Authorization: Bearer <token_jwt>). Această abordare reduce costul operațional al verificărilor și elimină necesitatea reluării procesului complex ZKP la fiecare interacțiune cu resursele protejate, reproducând un model de lucru familiar aplicațiilor web moderne. Totodată, se garantează o separare strictă a resurselor prin caracterul stateless al validării; serverul poate verifica token-ul JWT emis utilizând doar cheia publică stocată la înregistrare, fără a mai fi necesară re-executarea protocolului Schnorr, asigurând un proces de autorizare extrem de eficient din punct de vedere computațional.
 
 Cu toate acestea, implementările tradiționale ale fluxurilor OAuth 2.0, inclusiv variantele standard PKCE sau fluxul simplu (Authorization Code), prezintă o deficiență fundamentală la nivelul canalului de comunicație. Conform auditului de trafic, în schemele clasice, parola sau secretul brut traversează rețeaua în prima etapă, fiind transmise în clar către serverul de autorizare. Chiar dacă acest material sensibil nu ajunge mai departe la serverul de resurse, el rămâne direct expus față de emitent, devenind o țintă viabilă pentru atacatorii care interceptează traficul prin tehnici de traffic sniffing.
 
@@ -192,12 +188,12 @@ Acest subcapitol explorează tehnologiile utilizate pe parcursul dezvoltării ap
 I.2.1. 	Python
 Nucleul aplicației, aflat pe partea de server, este dezvoltat în Python, un limbaj de programare interpretat, de nivel înalt și orientat pe obiect, selectat pentru claritatea sintaxei, viteza de dezvoltare și flexibilitatea oferită de un ecosistem vast de biblioteci. În cadrul acestui proiect, Python constituie fundamentul pentru dezvoltarea serverului de autentificare, implementarea logicii protocolului criptografic Zero-Knowledge Proof (ZKP) și arhitecturarea infrastructurii complexe de testare automatizată (Quality Assurance). Arhitectura software se bazează pe următoarele biblioteci și cadre de lucru principale:
 
-•	Flask v3.0.0 și Flask-CORS v4.0.0: Flask reprezintă un micro-framework optimizat pentru dezvoltarea de aplicații REST și prototipuri de cercetare, gestionând rutarea adreselor URL, parsarea cererilor HTTP și serializarea răspunsurilor JSON. Pentru a asigura interoperabilitatea în rețea și a separa logica de business de restul aplicației, cadrul a fost augmentat cu Flask-CORS, facilitând aplicarea politicilor de partajare a resurselor (Cross-Origin Resource Sharing) necesare interacțiunii directe cu aplicația client web.
-•	Flask-SQLAlchemy v3.1.1: Această bibliotecă asigură persistența datelor prin intermediul unui sistem ORM (Object-Relational Mapping), facilitând operațiunile CRUD peste o bază de date relațională SQLite locală (auth.db). Această abordare este deosebit de adecvată pentru un prototip de laborator, deoarece simplifică instalarea, minimizează dependențele externe și permite resetarea rapidă a stării în timpul testelor automate. Schema bazei de date integrează trei tabele fundamentale: utilizatorii înregistrați (stocând cheile publice secret_y), token-urile emise (AuthToken) și entitățile de date protejate (PersoData).
-•	PyJWT v2.12.1: Reprezintă un instrument esențial pentru crearea, semnarea și verificarea token-urilor conform standardului deschis RFC 7519 (JSON Web Token). În arhitectura proiectului, PyJWT este utilizat imperativ în faza de post-autentificare: în urma validării cu succes a demonstrației matematice Schnorr ZKP, serverul emite un Access Token semnat prin algoritmul HS256, delegând astfel autorizarea ulterioară a clientului fără a relua procesul criptografic.
-•	Authlib: Este o bibliotecă avansată dedicată securității, integrată în acest proiect pentru a furniza o implementare de referință a unui server de autorizare OAuth 2.0, conform specificațiilor standardizate (PKCE). Rolul acesteia este strict analitic, permițând o comparație tehnică și de performanță riguroasă, precum și evaluarea debitului de procesare, între fluxurile tradiționale de autorizare și paradigma inovatoare de autentificare ZKP.
-•	pytest v9.0.3 și Locust: Aceste pachete formează nucleul ecosistemului de evaluare și asigurare a calității (QA). Framework-ul pytest gestionează suita extinsă de testare automatizată, acoperind riguros cazurile funcționale pozitive și negative, scenariile limită și vectorii de atac la nivel criptografic. Complementar, Locust servește drept utilitar de load testing, fiind esențial pentru evaluarea încărcării concurente, a scalabilității și a debitului de procesare (throughput), simulând un număr masiv de utilizatori care traversează fluxul de autentificare.
-•	cryptography v45.0.1 și sympy: Oferă primitive criptografice și instrumente matematice avansate, necesare la nivelul logicii de bază pentru susținerea operațiunilor de securitate. Acestea facilitează generarea, validarea și testarea parametrilor globali ai grupului criptografic, asigurând suportul tranzitiv necesar mediului de rulare Python pentru validarea rigorii numerelor prime sigure (safe primes) utilizate ca fundament al protocolului Schnorr.
+•	Flask v3.0.0 și Flask-CORS v4.0.0 [29]: Flask reprezintă un micro-framework optimizat pentru dezvoltarea de aplicații REST și prototipuri de cercetare, gestionând rutarea adreselor URL, parsarea cererilor HTTP și serializarea răspunsurilor JSON. Pentru a asigura interoperabilitatea în rețea și a separa logica de business de restul aplicației, cadrul a fost augmentat cu Flask-CORS, facilitând aplicarea politicilor de partajare a resurselor (Cross-Origin Resource Sharing) necesare interacțiunii directe cu aplicația client web.
+•	Flask-SQLAlchemy v3.1.1 [30]: Această bibliotecă asigură persistența datelor prin intermediul unui sistem ORM (Object-Relational Mapping), facilitând operațiunile CRUD peste o bază de date relațională SQLite locală (auth.db). Această abordare este deosebit de adecvată pentru un prototip de laborator, deoarece simplifică instalarea, minimizează dependențele externe și permite resetarea rapidă a stării în timpul testelor automate. Schema bazei de date integrează trei tabele fundamentale: utilizatorii înregistrați (stocând cheile publice secret_y), token-urile emise (AuthToken) și entitățile de date protejate (PersoData).
+•	PyJWT v2.12.1 [31]: Reprezintă un instrument esențial pentru crearea, semnarea și verificarea token-urilor conform standardului deschis RFC 7519 (JSON Web Token). În arhitectura proiectului, PyJWT este utilizat imperativ în faza de post-autentificare: în urma validării cu succes a demonstrației matematice Schnorr ZKP, serverul emite un Access Token semnat prin algoritmul HS256, delegând astfel autorizarea ulterioară a clientului fără a relua procesul criptografic.
+•	Authlib [32]: Este o bibliotecă avansată dedicată securității, integrată în acest proiect pentru a furniza o implementare de referință a unui server de autorizare OAuth 2.0, conform specificațiilor standardizate (PKCE). Rolul acesteia este strict analitic, permițând o comparație tehnică și de performanță riguroasă, precum și evaluarea debitului de procesare, între fluxurile tradiționale de autorizare și paradigma inovatoare de autentificare ZKP.
+•	pytest v9.0.3 [33] și Locust [34]: Aceste pachete formează nucleul ecosistemului de evaluare și asigurare a calității (QA). Framework-ul pytest gestionează suita extinsă de testare automatizată, acoperind riguros cazurile funcționale pozitive și negative, scenariile limită și vectorii de atac la nivel criptografic. Complementar, Locust servește drept utilitar de load testing, fiind esențial pentru evaluarea încărcării concurente, a scalabilității și a debitului de procesare (throughput), simulând un număr masiv de utilizatori care traversează fluxul de autentificare.
+•	cryptography v45.0.1 [35] și sympy [36]: Oferă primitive criptografice și instrumente matematice avansate, necesare la nivelul logicii de bază pentru susținerea operațiunilor de securitate. Acestea facilitează generarea, validarea și testarea parametrilor globali ai grupului criptografic, asigurând suportul tranzitiv necesar mediului de rulare Python pentru validarea rigorii numerelor prime sigure (safe primes) utilizate ca fundament al protocolului Schnorr.
 
 I.2.2. 	Javascript
 Componenta client a sistemului este proiectată sub forma unei aplicații web statice fundamentate exclusiv pe tehnologii native (Vanilla JavaScript, HTML și CSS), excluzând framework-urile externe complexe pentru a obține o arhitectură rapidă, transparentă și capabilă să evidențieze cu precizie mecanismele de securitate. La nivel operațional, limbajul JavaScript orchestrează în mod dinamic interfața grafică, gestionând formularele, interacțiunile asincrone cu serverul și actualizările de stare în timp real.
@@ -216,22 +212,22 @@ Sistemul arhitectural este fundamentat pe interacțiunea a trei roluri logice di
 I.3.2. 	Cerințe Funcționale Principale
 
 Pentru a asigura o validare criptografică robustă și o integrare fluidă cu mecanismele de autorizare delegată, sistemul trebuie să respecte următorul flux operațional:
-•	Pre-schimbul parametrilor publici (Handshake): Sistemul trebuie să permită clientului obținerea parametrilor criptografici globali ai grupului ($P$, $G$) printr-un punct terminal (*endpoint*) dedicat. Această abordare previne atacurile de tip *Logjam*; prin utilizarea unor parametri specifici fiecărui server, se evită vulnerabilitatea majoră în fața unui pre-calcul masiv (utilizând algoritmi precum *Number Field Sieve*) realizat de un adversar cu resurse computaționale imense asupra unui grup standardizat comun.
-•	Înregistrarea identității (Setup / Precondiție):** Sistemul trebuie să permită clientului generarea locală a perechii de chei și transmiterea exclusivă a valorii publice ($y = G^x \bmod P$) alături de un identificator (`client_id`), serverul stocând doar această asociere. Parola nu părăsește niciodată dispozitivul clientului.
+•	Pre-schimbul parametrilor publici (Handshake): Sistemul trebuie să permită clientului obținerea parametrilor criptografici globali ai grupului (P, G) printr-un punct terminal (endpoint) dedicat. Această abordare previne atacurile de tip Logjam; prin utilizarea unor parametri specifici fiecărui server, se evită vulnerabilitatea majoră în fața unui pre-calcul masiv (utilizând algoritmi precum Number Field Sieve) realizat de un adversar cu resurse computaționale imense asupra unui grup standardizat comun.
+•	Înregistrarea identității (Setup / Precondiție): Sistemul trebuie să permită clientului generarea locală a perechii de chei și transmiterea exclusivă a valorii publice (y = G^x mod P) alături de un identificator (`client_id`), serverul stocând doar această asociere. Parola nu părăsește niciodată dispozitivul clientului.
 •	Autentificarea ZKP (Protocolul Schnorr):
-o	Inițierea (Commitment):* Clientul transmite un angajament criptografic efemer ($t = G^r \bmod P$), inițiind cererea de conectare fără a expune parola în clar.
-o	Provocarea (Challenge):* Serverul răspunde automat cu un număr aleatoriu unic, imposibil de anticipat, asociat strict unei sesiuni unice și unui context de rețea determinat.
-o	Răspunsul (Response):* Clientul calculează și transmite dovada matematică ($s$) utilizând secretul propriu, angajamentul inițial și provocarea primită.
-o	Verificarea:* Serverul validează matematic dovada; dacă ecuația este satisfăcută, serverul obține garanția absolută a identității solicitantului.
-•	Autorizarea Delegată și Sesiunea (OAuth):** În caz de succes al verificării, serverul trebuie să emită un jeton de acces (ex. JWT) semnat, cu o valabilitate limitată în timp. Pentru accesarea ulterioară a resurselor, clientul va consuma exclusiv acest jeton (*Bearer Token*), eliminând necesitatea reluării procesului complex ZKP. Adițional, sistemul va oferi fluxuri OAuth2 alternative pentru a facilita comparația experimentală.
+o	Inițierea (Commitment):Clientul transmite un angajament criptografic efemer (t = G^r mod P), inițiind cererea de conectare fără a expune parola în clar.
+o	Provocarea (Challenge):Serverul răspunde automat cu un număr aleatoriu unic, imposibil de anticipat, asociat strict unei sesiuni unice și unui context de rețea determinat.
+o	Răspunsul (Response):Clientul calculează și transmite dovada matematică (s) utilizând secretul propriu, angajamentul inițial și provocarea primită.
+o	Verificarea:Serverul validează matematic dovada; dacă ecuația este satisfăcută, serverul obține garanția absolută a identității solicitantului.
+•	Autorizarea Delegată și Sesiunea (OAuth): În caz de succes al verificării, serverul trebuie să emită un jeton de acces (ex. JWT) semnat, cu o valabilitate limitată în timp. Pentru accesarea ulterioară a resurselor, clientul va consuma exclusiv acest jeton (Bearer Token), eliminând necesitatea reluării procesului complex ZKP. Adițional, sistemul va oferi fluxuri OAuth2 alternative pentru a facilita comparația experimentală.
 
 I.3.3. 	Cerințe Nefuncționale și Constrângeri de Securitate
 Securitatea și robustețea sistemului sunt asigurate prin respectarea unor constrângeri stricte de proiectare:
-•	Zero-Knowledge și Reziliență la Interceptare (Anti-Sniffing):** În niciun moment al protocolului, parola sau cheia privată nu traversează rețeaua, nici măcar în format criptat. Sistemul permite autentificarea sigură chiar și pe canale nesigure sau compromise, oferind *Perfect Forward Secrecy* la nivel de aplicație (deși criptarea de transport HTTPS adaugă un nivel de securitate suplimentar, nu este o precondiție pentru protejarea secretului).
-•	Protecție la Replay și Legarea de Canal (Session Binding):** Transcrisul unei autentificări interceptate nu poate fi refolosit într-o altă sesiune. Sistemul garantează că un jeton emis este criptografic legat de sesiunea ZKP care l-a generat, prevenind transferul jetonului între contexte de rețea diferite.
-•	Separarea Resurselor (Statelessness):** Serverul de autorizare trebuie să valideze jetonul JWT exclusiv prin cheia publică, fără a re-executa protocolul Schnorr, asigurând o verificare eficientă și *stateless*.
-•	Robustețe și Validare Strictă a Parametrilor:** Valorile publice recepționate de la client trebuie validate matematic ca membri legitimi ai subgrupului corect. Cererile invalide, datele malformate și tentativele de fraudă trebuie gestionate nativ, respingând accesul fără a genera erori fatale de server.
-•	Transparență și Lipsa Anonimizării Identității:** Sistemul trebuie să fie suficient de transparent pentru a permite auditarea traficului și evaluarea comparativă. Este imperativ de precizat că implementarea nu urmărește anonimizarea; identificatorul `client_id` este transmis în clar în faza de înregistrare și în cea de angajament. Protocolul protejează exclusiv secretul de autentificare, nu și metadatele de identitate.
+•	Zero-Knowledge și Reziliență la Interceptare (Anti-Sniffing): În niciun moment al protocolului, parola sau cheia privată nu traversează rețeaua, nici măcar în format criptat. Sistemul permite autentificarea sigură chiar și pe canale nesigure sau compromise, oferind Perfect Forward Secrecy la nivel de aplicație (deși criptarea de transport HTTPS adaugă un nivel de securitate suplimentar, nu este o precondiție pentru protejarea secretului).
+•	Protecție la Replay și Legarea de Canal (Session Binding): Transcrisul unei autentificări interceptate nu poate fi refolosit într-o altă sesiune. Sistemul garantează că un jeton emis este criptografic legat de sesiunea ZKP care l-a generat, prevenind transferul jetonului între contexte de rețea diferite.
+•	Separarea Resurselor (Statelessness): Serverul de autorizare trebuie să valideze jetonul JWT exclusiv prin cheia publică, fără a re-executa protocolul Schnorr, asigurând o verificare eficientă și stateless.
+•	Robustețe și Validare Strictă a Parametrilor: Valorile publice recepționate de la client trebuie validate matematic ca membri legitimi ai subgrupului corect. Cererile invalide, datele malformate și tentativele de fraudă trebuie gestionate nativ, respingând accesul fără a genera erori fatale de server.
+•	Transparență și Lipsa Anonimizării Identității: Sistemul trebuie să fie suficient de transparent pentru a permite auditarea traficului și evaluarea comparativă. Este imperativ de precizat că implementarea nu urmărește anonimizarea; identificatorul `client_id` este transmis în clar în faza de înregistrare și în cea de angajament. Protocolul protejează exclusiv secretul de autentificare, nu și metadatele de identitate.
 I.4. 	Arhitectura protocol
 Sistemul urmează un model arhitectural pe trei niveluri (three-tier): nivelul de prezentare, nivelul de aplicație și nivelul de date. Această separare structurală îmbunătățește flexibilitatea, scalabilitatea și mentenanța proiectului, facilitând o delimitare clară a responsabilităților și garantând o decuplare eficientă a logicii de securitate. Sistemul de bază este conceput pe o arhitectură de tip Client-Server RESTful, având ca fundament criptografic dificultatea problemei logaritmului discret pe grupuri finite (implementat prin schema Schnorr)..
 I.4.1. 	Nivelul de prezentare 
@@ -305,31 +301,31 @@ II.2. 	Formalizarea protocolului
 II.2.1. 	Parametri și model matematic 
 Arhitectura implementată se fundamentează pe utilizarea unui prim sigur (safe prime – engl.) P, garantând astfel un număr prim Q = (P - 1) / 2. Prin stabilirea generatorului G = 4, operațiunile matematice se desfășoară exclusiv în subgrupul de ordin Q asociat lui Z_P*. Componentele esențiale ale schemei sunt definite după cum urmează:
 
-* **Cheia privată:** x
-* **Cheia publică:** y = G^x mod P
-* **Valoarea efemeră (nonce – engl.):** r
-* **Angajamentul (commitment – engl.):** t = G^r mod P
-* **Provocarea (challenge – engl.):** c
-* **Răspunsul:** s = (r + c * x) mod Q
+Cheia privată: x
+Cheia publică: y = G^x mod P
+Valoarea efemeră (nonce – engl.): r
+Angajamentul (commitment – engl.): t = G^r mod P
+Provocarea (challenge – engl.): c
+Răspunsul: s = (r + c x) mod Q
 
 Se observă că validarea identității este confirmată exclusiv prin satisfacerea următoarei egalități:
 
-G^s mod P = t * y^c mod P (1)
+G^s mod P = t y^c mod P (1)
 
-* s: răspunsul matematic calculat local de către client
-* t: angajamentul criptografic inițial
-* y: cheia publică stocată a utilizatorului
-* c: provocarea matematică verificată de server
+s: răspunsul matematic calculat local de către client
+t: angajamentul criptografic inițial
+y: cheia publică stocată a utilizatorului
+c: provocarea matematică verificată de server
 
 Spre deosebire de standardul Schnorr convențional, prezenta soluție tehnologică derivă provocarea printr-un mecanism riguros de legare a sesiunii (session binding – engl.), ancorând transcrisul criptografic de contextul rețelei observat la nivel de server:
 
 c = int(SHA-256(Addr | UA | SID | CID | t)) mod Q (2)
 
-* Addr: adresa TCP a partenerului de rețea
-* UA: agentul utilizator (User-Agent – engl.)
-* SID: identificatorul unic și temporar al sesiunii
-* CID: identificatorul asociat clientului
-* t: angajamentul criptografic recepționat anterior
+Addr: adresa TCP a partenerului de rețea
+UA: agentul utilizator (User-Agent – engl.)
+SID: identificatorul unic și temporar al sesiunii
+CID: identificatorul asociat clientului
+t: angajamentul criptografic recepționat anterior
 
 II.2.2. 	Faza de autenficiar
 Faza de autentificare este împărțită în două cereri HTTP.
@@ -341,7 +337,7 @@ Pasul 1, commit:
 5.	Serverul generează session_id, calculează valoarea de legare a sesiunii și derivă provocarea challenge_c.
 6.	Serverul răspunde cu provocarea challenge_c și session_id.
 Pasul 2, verify:
-1.	Clientul calculează s = (r + c * x) mod Q.
+1.	Clientul calculează s = (r + c x) mod Q.
 2.	Trimite POST /login/verify, incluzând solution_s în corpul JSON și X-Auth-Session: session_id în antet.
 3.	Serverul verifică existența sesiunii, expirarea ei, intervalul valid pentru s și coerența valorii de legare a sesiunii.
 4.	Serverul citește cheia publică y a utilizatorului din baza de date.
@@ -349,28 +345,22 @@ Pasul 2, verify:
 6.	Dacă dovada este validă, emite JWT-ul și șterge imediat sesiunea temporară.
 În implementarea curentă, sesiunea de autentificare are un TTL de 5 secunde, iar o a doua încercare de commit pentru același utilizator, apărută după o fereastră de 50 ms, este tratată ca potențială tentativă de preluare abuzivă a sesiunii și duce la invalidarea sesiunii existente. Acest comportament este util experimental și este acoperit de testele automate, însă reprezintă și un compromis de ergonomie care va fi discutat în capitolul de limitări.
 
-II.2.3. 	Emiterea si consumul token-ului
-
-După verificarea cu succes, serverul emite un JWT semnat cu HS256 și valabil 3600 de secunde. Token-ul include cel puțin client_id, momentul emiterii și momentul expirării. Pentru accesul la resursa protejată /data, clientul transmite token-ul în antetul Authorization.
-Prototipul acceptă mai multe scheme de compatibilitate (Bearer, Token, JWT, DPoP sau token brut), însă forma recomandată este cea standardizată prin RFC 6750:
-Authorization: Bearer <token>
-Această separare între autentificarea inițială și consumul token-ului este intenționată. Protocolul Schnorr nu este reluat pentru fiecare operație asupra resursei, ceea ce ar crește inutil costul operațional. În schimb, acesta servește la inițializarea unei sesiuni autorizate.
 II.3. 	Structura și serializarea mesajelor în protocolul HTTP
 
 
-Pentru a asigura interoperabilitatea și o comunicare deterministă între client (client – engl.) și server (server – engl.), protocolul definește formal schema de date, antetele necesare și formatul mesajelor transmise [1].
+Pentru a asigura interoperabilitatea și o comunicare deterministă între client (client – engl.) și server (server – engl.), protocolul definește formal schema de date, antetele necesare și formatul mesajelor transmise [37].
 
 A.	Antete și Convenții REST
 
-Interfața expusă este de tip REST JSON (Representational State Transfer – engl.), necesitând utilizarea tipului de conținut „application/json”. Pe lângă antetele standard de autorizare, implementarea emite o serie de antete suplimentare pentru trasabilitate și securitate, precum „Request-ID”, „API-Version”, „X-Response-Time”, „Server-Timing”, „X-Content-Type-Options”, „X-Frame-Options”, „Content-Security-Policy” și „Referrer-Policy” [2]. În cazul răspunsurilor neautorizate de tip 401, este inclus și antetul „WWW-Authenticate”. Punctele terminale (endpoints – engl.) principale ale arhitecturii sunt definite după cum urmează:
+Interfața expusă este de tip REST JSON (Representational State Transfer – engl.), necesitând utilizarea tipului de conținut „application/json”. Pe lângă antetele standard de autorizare, implementarea emite o serie de antete suplimentare pentru trasabilitate și securitate, precum „Request-ID”, „API-Version”, „X-Response-Time”, „Server-Timing”, „X-Content-Type-Options”, „X-Frame-Options”, „Content-Security-Policy” și „Referrer-Policy” [38]. În cazul răspunsurilor neautorizate de tip 401, este inclus și antetul „WWW-Authenticate”. Punctele terminale (endpoints – engl.) principale ale arhitecturii sunt definite după cum urmează:
 
-* /health (GET): Verificarea stării de funcționare a serverului.
-* /parameters (GET): Publicarea parametrilor criptografici globali P și G.
-* /register (POST): Înregistrarea identificatorului și a valorii publice a secretului.
-* /login/commit (POST): Inițierea autentificării prin transmiterea angajamentului criptografic.
-* /login/verify (POST): Verificarea dovezii matematice și emiterea jetonului.
-* /data (GET, POST, PUT): Accesarea resurselor protejate exclusiv prin jeton.
-* /oauth/pkce/* și /oauth/simple/* (POST): Fluxuri de autorizare comparativă (Authorization Code – engl.) [3].
+/health (GET): Verificarea stării de funcționare a serverului.
+/parameters (GET): Publicarea parametrilor criptografici globali P și G.
+/register (POST): Înregistrarea identificatorului și a valorii publice a secretului.
+/login/commit (POST): Inițierea autentificării prin transmiterea angajamentului criptografic.
+/login/verify (POST): Verificarea dovezii matematice și emiterea jetonului.
+/data (GET, POST, PUT): Accesarea resurselor protejate exclusiv prin jeton.
+/oauth/pkce/și /oauth/simple/(POST): Fluxuri de autorizare comparativă (Authorization Code – engl.) [3].
 B.	Structura Sarcinii Utile (JSON Payload)
 
 Valorile numerice masive, rezultate din calculele Schnorr, sunt serializate sub formă de șiruri de caractere (strings – engl.) reprezentând întregi zecimali, metodă implementată pentru a garanta precizia procesării la nivelul clientului web [4]. Formatul mesajelor pe parcursul etapelor de validare se structurează astfel:
@@ -390,7 +380,7 @@ Drept răspuns, entitatea verificatoare emite o provocare matematică și un ide
 { "token": "jwt-string" }
 C.	Semantica și Definirea Formală în Notație ABNF
 
-Fiecare variabilă implicată îndeplinește un rol fundamental în mitigarea vulnerabilităților de rețea. Provocarea generată de server invalidează atacurile de reluare (replay attacks – engl.) impunând o demonstrație temporală unică, în timp ce angajamentul asociază criptografic sesiunea de un element aleatoriu nedezvăluit. Pentru asigurarea standardizării formale, sintaxa se definește prin notația ABNF (Augmented Backus-Naur Form – engl.) [5]:
+Fiecare variabilă implicată îndeplinește un rol fundamental în mitigarea vulnerabilităților de rețea. Provocarea generată de server invalidează atacurile de reluare (replay attacks – engl.) impunând o demonstrație temporală unică, în timp ce angajamentul asociază criptografic sesiunea de un element aleatoriu nedezvăluit. Pentru asigurarea standardizării formale, sintaxa se definește prin notația ABNF (Augmented Backus-Naur Form – engl.) [39]:
 
 client-id = 1*(ALPHA / DIGIT / "-" / "*")
 schnorr-value = 1*DIGIT
@@ -411,21 +401,21 @@ Din punct de vedere conceptual, se observă că protocolul limitează transferul
 
 D.	Gestionarea Stării și Securitatea la Nivel HTTP
 
-Protocolul matematic impune retenția unei stări temporare (stateful – engl.) între momentul inițierii angajamentului și faza verificării. Pentru sistemele distribuite, este necesară externalizarea acestei stări către o memorie volatilă centralizată [7]. Permisiunile pre-solicitare sunt gestionate riguros prin strategii de partajare a resurselor între origini (Cross-Origin Resource Sharing – engl.). Odată finalizată autorizarea, se recomandă evitarea stocării jetonului în spații locale expuse vulnerabilităților de injecție a scripturilor (Cross-Site Scripting – engl.), fiind indicată încapsularea acestuia în cookie-uri protejate prin directivele „HttpOnly” și „Secure” [8]..”
+Protocolul matematic impune retenția unei stări temporare (stateful – engl.) între momentul inițierii angajamentului și faza verificării. Pentru sistemele distribuite, este necesară externalizarea acestei stări către o memorie volatilă centralizată [7]. Permisiunile pre-solicitare sunt gestionate riguros prin strategii de partajare a resurselor între origini (Cross-Origin Resource Sharing – engl.). Odată finalizată autorizarea, se recomandă evitarea stocării jetonului în spații locale expuse vulnerabilităților de injecție a scripturilor (Cross-Site Scripting – engl.), fiind indicată încapsularea acestuia în cookie-uri protejate prin directivele „HttpOnly” și „Secure” [40]..”
 
 II.4. 	Detalii de implementare
 A.	Server Flask
 
-Arhitectura de server bazată pe micro-framework-ul Flask (micro-framework – engl.) constituie nucleul logic de procesare, având rolul de a gestiona starea, de a efectua validări stricte și de a emite jetoane web (JSON Web Token – engl.) [1]. Implementarea operațională evidențiază următoarele elemente cheie:
+Arhitectura de server bazată pe micro-framework-ul Flask (micro-framework – engl.) constituie nucleul logic de procesare, având rolul de a gestiona starea, de a efectua validări stricte și de a emite jetoane web (JSON Web Token – engl.) [41]. Implementarea operațională evidențiază următoarele elemente cheie:
 
-1. Verificarea apartenenței la subgrup: Prin funcția „is_subgroup_member” se evaluează condiția matematică $\text{value}^Q \bmod P = 1$, respingându-se valorile triviale pentru eliminarea riscurilor asociate atacurilor de tip subgrup mic (small subgroup attack – engl.) [2].
+1. Verificarea apartenenței la subgrup: Prin funcția „is_subgroup_member” se evaluează condiția matematică value^Q mod P = 1, respingându-se valorile triviale pentru eliminarea riscurilor asociate atacurilor de tip subgrup mic (small subgroup attack – engl.) [2].
 2. Gestiunea sesiunilor concurente: Structura specializată „_SessionStore” integrează un index invers de tipul identificator de utilizator (client-id – engl.) către identificator de sesiune (session-id – engl.), facilitând detecția și blocarea tentativelor de angajament concurente pentru același utilizator.
-3. Legarea contextului de rețea și eliberarea jetonului: Prin intermediul funcției „_compute_session_binding” se corelează sesiunea cu datele de transport, urmând ca rutina „_issue_jwt” să genereze un jeton valid pentru o durată de o oră. Punctul terminal (endpoint – engl.) „/data” condiționează accesul la resurse de validarea prealabilă a semnăturii și a expirării jetonului, în timp ce antetele defensive de tip control cache (Cache-Control – engl.) previn stocarea datelor în nodurile intermediare [3].
+3. Legarea contextului de rețea și eliberarea jetonului: Prin intermediul funcției „_compute_session_binding” se corelează sesiunea cu datele de transport, urmând ca rutina „_issue_jwt” să genereze un jeton valid pentru o durată de o oră. Punctul terminal (endpoint – engl.) „/data” condiționează accesul la resurse de validarea prealabilă a semnăturii și a expirării jetonului, în timp ce antetele defensive de tip control cache (Cache-Control – engl.) [42] previn stocarea datelor în nodurile intermediare
 B.	Arhitectura Clientului Web
 Nivelul de prezentare execută în mod activ calculele criptografice direct în mediul de rulare al browserului (browser – engl.), fluxul fiind implementat în modulul „login.js” [4]:
 
-1. Succesiunea etapelor de logare: Procesul inițiază prin preluarea parametrilor P și G, urmată de derivarea locală a scalarului privat $x$. Ulterior, se generează un parametru aleatoriu $r$ prin interfața nativă „window.crypto.getRandomValues”, calculându-se angajamentul (commitment – engl.) $t$.
-2. Finalizarea autentificării și monitorizarea: Transmiterea angajamentului este urmată de recepționarea unei provocări (challenge – engl.) și a unui identificator de sesiune, elemente necesare calculării răspunsului final $s$. Pentru facilitarea auditării, un monitor integrat interceptează apelurile de preluare (fetch – engl.), afișând structura completă a antetelor și a sarcinilor utile (payloads – engl.) [5].
+1. Succesiunea etapelor de logare: Procesul inițiază prin preluarea parametrilor P și G, urmată de derivarea locală a scalarului privat x. Ulterior, se generează un parametru aleatoriu r prin interfața nativă „window.crypto.getRandomValues” [43], calculându-se angajamentul (commitment – engl.) t.
+2. Finalizarea autentificării și monitorizarea: Transmiterea angajamentului este urmată de recepționarea unei provocări (challenge – engl.) și a unui identificator de sesiune, elemente necesare calculării răspunsului final s. Pentru facilitarea auditării, un monitor integrat interceptează apelurile de preluare (fetch – engl.), afișând structura completă a antetelor și a sarcinilor utile (payloads – engl.) [5].
 C.	Fluxuri OAuth2 Comparativ
 
 În scop analitic, sistemul integrează trei variante distincte ale cadrului de autorizare OAuth2, implementate în modulele „server_oauth.py” și „server_authlib.py” [6]:
@@ -435,26 +425,26 @@ C.	Fluxuri OAuth2 Comparativ
 
 D.	Considerente Criptografice și Derivarea Secretului 
 Documentația evidențiază o demarcație clară între specificațiile teoretice de securitate și adaptările necesare fazei de prototip [8]:
-1. Modelul ideal de derivare: Conceptual, derivarea secretului privat $x$ din parola utilizatorului necesită utilizarea unei funcții cu rezistență sporită la atacuri de dicționar, precum scrypt (scrypt – engl.), aspect documentat în scriptul „calculations.py” prin aplicarea unui salt (salt – engl.) aleatoriu.
-2. Implementarea demonstrativă și optimizări: Din motive de portabilitate, modulul browser „auth.js” utilizează un hash SHA-256 aplicat asupra concatenării identificatorului cu parola, incluzând un mecanism de rezervă (fallback – engl.) cu parametri reduși ($P = 2089$, $G = 4$) în caz de indisponibilitate a serverului. Pentru alinierea la standardele de producție, se impune stocarea securizată a elementelor de salt pe client și eliminarea parametrilor criptografici slabi [9].
+1. Modelul ideal de derivare: Conceptual, derivarea secretului privat x din parola utilizatorului necesită utilizarea unei funcții cu rezistență sporită la atacuri de dicționar, precum scrypt (scrypt – engl.) [44], aspect documentat în scriptul „calculations.py” prin aplicarea unui salt (salt – engl.) aleatoriu.
+2. Implementarea demonstrativă și optimizări: Din motive de portabilitate, modulul browser „auth.js” utilizează un hash SHA-256 aplicat asupra concatenării identificatorului cu parola, incluzând un mecanism de rezervă (fallback – engl.) cu parametri reduși (P = 2089, G = 4) în caz de indisponibilitate a serverului. Pentru alinierea la standardele de producție, se impune stocarea securizată a elementelor de salt pe client și eliminarea parametrilor criptografici slabi [9].
 II.5. 	Considerente de securitat
 
 1)	 Rezistența la Interceptare și Decriptare Ulterioară
 
-Securitatea arhitecturii propuse nu este condiționată de criptarea canalului de transport (Transport Layer Security – TLS), ci rezidă în dificultatea computațională a rezolvării problemei logaritmului discret într-un grup de ordin prim [9]. În sistemele convenționale, compromiterea canalului prin strategii de stocare și decriptare ulterioară (store now, decrypt later – engl.) expune credențialele în clar. În schema Schnorr, un atacator care realizează interceptarea traficului (traffic sniffing – engl.) vizualizează exclusiv transcrisul efemer compus din angajament, provocare și soluție. Extragerea cheii private necesită determinarea variabilei din ecuația liniară:
+Securitatea arhitecturii propuse nu este condiționată de criptarea canalului de transport (Transport Layer Security – TLS), ci rezidă în dificultatea computațională a rezolvării problemei logaritmului discret într-un grup de ordin prim [45], [50]. În sistemele convenționale, compromiterea canalului prin strategii de stocare și decriptare ulterioară (store now, decrypt later – engl.) expune credențialele în clar. În schema Schnorr, un atacator care realizează interceptarea traficului (traffic sniffing – engl.) vizualizează exclusiv transcrisul efemer compus din angajament, provocare și soluție. Extragerea cheii private necesită determinarea variabilei din ecuația liniară:
 
-$$s = (r + c \cdot x) \bmod q$$
+s = (r + c · x) mod q
 
  (1)
 
 Unde:
 
-* $s$ reprezintă soluția matematică sau dovada transmisă de solicitant;
-* $r$ constituie numărul efemer aleatoriu (nonce – engl.) necunoscut atacatorului;
-* $c$ reprezintă provocarea unică generată de server;
-* $x$ constituie cheia privată (parola) protejată a utilizatorului.
+s reprezintă soluția matematică sau dovada transmisă de solicitant;
+r constituie numărul efemer aleatoriu (nonce – engl.) necunoscut atacatorului;
+c reprezintă provocarea unică generată de server;
+x constituie cheia privată (parola) protejată a utilizatorului.
 
-Prin urmare, utilizarea acestui mecanism asigură secretul perfect și imunitatea în fața compromiterii totale a stratului de transport [10].
+Prin urmare, utilizarea acestui mecanism asigură secretul perfect și imunitatea în fața compromiterii totale a stratului de transport [46], [47], [48], [49].
 
 2)	 Eliminarea Secretului Partajat și Reziliența la Scurgeri de Date
 
@@ -462,11 +452,11 @@ Spre deosebire de modelele clasice de autentificare, se elimină definitiv neces
 
 3)	 Atenuarea Atacurilor de Reluare și Deturnare
 
-Prevenirea atacurilor de reluare (replay attacks – engl.) este garantată prin caracterul interactiv al protocolului, serverul generând o provocare unică pentru fiecare tentativă de acces [12]. Soluția transmisă este validă strict corelată cu provocarea și angajamentul curente. Complementar, riscul de deturnare a sesiunii (session hijacking – engl.) este diminuat prin includerea unui parametru de expirare în structura jetonului eliberat, restrângând fereastra de oportunitate a vectorilor de atac.
+Prevenirea atacurilor de reluare (replay attacks – engl.) este garantată prin caracterul interactiv al protocolului, serverul generând o provocare unică pentru fiecare tentativă de acces [51]. Soluția transmisă este validă strict corelată cu provocarea și angajamentul curente. Complementar, riscul de deturnare a sesiunii (session hijacking – engl.) este diminuat prin includerea unui parametru de expirare în structura jetonului eliberat, restrângând fereastra de oportunitate a vectorilor de atac.
 
 4)	 Descentralizare și Identitate Auto-Suverană
 
-Arhitectura validează identitatea într-o manieră descentralizată, înscrisă în paradigma de identitate auto-suverană (self-sovereign identity – engl.) [13]. Prin eliminarea intermediarilor sau a furnizorilor terți de identitate, serverul acționează ca o entitate de verificare autonomă, atestarea realizându-se prin rigoare matematică directă între noduri.
+Arhitectura validează identitatea într-o manieră descentralizată, înscrisă în paradigma de identitate auto-suverană (self-sovereign identity – engl.) [52]. Prin eliminarea intermediarilor sau a furnizorilor terți de identitate, serverul acționează ca o entitate de verificare autonomă, atestarea realizându-se prin rigoare matematică directă între noduri.
 
 Capitolul III. 	Validare , rezultate ssi analiza
 În acest capitol sunt prezentate metodologia de testare, rezultatele obținute în urma rulării suitelor automate și a măsurătorilor de performanță, precum și o analiză critică a avantajelor și limitărilor protocolului propus.
@@ -478,80 +468,15 @@ Validarea sistemului a fost realizată printr-o strategie multistratificată, ac
 În completarea validării funcționale propriu-zise, metodologia a impus integrarea unor instrumente experimentale de evaluare a performanței (benchmark - engl.) destinate monitorizării latenței și a consumului de memorie, alături de simulări ale încărcării concurente (load testing - engl.) prin intermediul platformei Locust, audit sistematic de trafic și scenarii avansate de simulare a atacurilor. În consecință, pentru fundamentarea analizei curente, au fost parcurse trei execuții experimentale majore: validarea globală a calității codului, simularea automatizată a amenințărilor criptografice și fluxul complet de măsurare, acesta din urmă incluzând evaluări offline și testări în regim live cu cincizeci de utilizatori concurenți pe o durată prestabilită de treizeci de secunde, confirmându-se astfel în mod obiectiv viabilitatea operațională și reziliența soluției abordate.
 III.2. 	Validarea functionala si teste de securitat
 
-În cadrul procesului de evaluare empirică a sistemului propus, s-a procedat la analiza sistematică
-a cazurilor pozitive care validează comportamentul corect al platformei pe traseul nominal
-(happy path – engl.). Se observă că înregistrarea unui utilizator nou implică stocarea exclusivă la
-nivelul serverului a cheii publice definite prin relația y = G^x mod P, fără a se reține parola în
-formă brută sau sub aspectul unui rezumat criptografic (hash – engl.) calculabil, aspect confirmat
-prin verificarea explicită a faptului că înregistrarea serializată nu conține date în clar sau
-amprente de tip SHA-256, SHA-512 ori MD5. Fluxul complet de autentificare, structurat pe
-etapele de angajament (commit – engl.) și verificare (verify – engl.), a fost validat prin generarea
-de către client a unui element aleatoriu (nonce – engl.) notat cu r, determinarea angajamentului
-(commitment – engl.) t = G^r mod P, recepționarea provocării (challenge – engl.) c și
-transmiterea dovezii (proof – engl.) s = (r + c·x) mod Q către server. Serverul evaluează ulterior
-consistența ecuației de verificare G^s ≡ t · y^c (mod P), emite un jeton web securizat (JSON
-Web Token – engl., JWT) și elimină instanța de sesiune pentru a împiedica reutilizarea acesteia,
-asigurând totodată că accesul la resursele protejate returnează un cod de stare HTTP 200 în
-prezența unui jeton valid, respectiv un cod HTTP 401 în cazul absenței, expirării sau invalidității
-acestuia, fapt ce permite funcționarea paralelă și independentă a utilizatorilor multipli fără
-interferențe la nivelul stării.
-Evaluarea comportamentului defensiv al protocolului a impus implementarea unor scenarii
-negative menite să confirme respingerea controlată a tentativelor de acces neautorizat sau de
-fraudă electronică. În situația introducerii unei parole incorecte, se constată că dovada calculată
-pe baza unei valori eronate nu satisface ecuația de validare, determinând serverul să returneze
-codul HTTP 401 și să distrugă sesiunea utilizată pentru a bloca atacurile repetitive pe același
-canal. De asemenea, tentativele de retransmitere (replay attack – engl.), bazate pe refolosirea
-unui identificator de sesiune (session ID – engl.) și a unei soluții deja procesate, determină
-generarea unui răspuns de tip HTTP 404 sau HTTP 401 ca urmare a eliminării imediate a stării
-după prima utilizare validă. Fenomenul de depășire a timpului de viață (time-to-live – engl.,
-TTL), setat la o fereastră critică de 5 secunde între etapele de angajament și verificare, conduce
-la invalidarea automată a cererii cu un răspuns HTTP 401, în timp ce mecanismul de prevenire a
-deturnării (hijacking prevention – engl.), testat prin transmisii duble de tip angajament pentru
-același identificator, generează un cod de eroare HTTP 409 și anulează ambele sesiuni
+În cadrul procesului de evaluare empirică a sistemului propus, s-a procedat la analiza sistematică a cazurilor pozitive care validează comportamentul corect al platformei pe traseul nominal (happy path – engl.). Se observă că înregistrarea unui utilizator nou implică stocarea exclusivă la nivelul serverului a cheii publice definite prin relația y = G^x mod P, fără a se reține parola în formă brută sau sub aspectul unui rezumat criptografic (hash – engl.) calculabil, aspect confirmat prin verificarea explicită a faptului că înregistrarea serializată nu conține date în clar sau amprente de tip SHA-256, SHA-512 ori MD5. Fluxul complet de autentificare, structurat pe etapele de angajament (commit – engl.) și verificare (verify – engl.), a fost validat prin generarea de către client a unui element aleatoriu (nonce – engl.) notat cu r, determinarea angajamentului (commitment – engl.) t = G^r mod P, recepționarea provocării (challenge – engl.) c și transmiterea dovezii (proof – engl.) s = (r + c·x) mod Q către server. Serverul evaluează ulterior consistența ecuației de verificare G^s ≡ t · y^c (mod P), emite un jeton web securizat (JSON Web Token – engl., JWT) și elimină instanța de sesiune pentru a împiedica reutilizarea acesteia, asigurând totodată că accesul la resursele protejate returnează un cod de stare HTTP 200 în prezența unui jeton valid, respectiv un cod HTTP 401 în cazul absenței, expirării sau invalidității acestuia, fapt ce permite funcționarea paralelă și independentă a utilizatorilor multipli fără interferențe la nivelul stării.
 
-concurente pentru a bloca suprascrierea silențioasă, politică aplicată în mod similar și în cazul
-înregistrărilor duplicate.
-Determinarea robusteții algoritmului la frontierele matematice ale grupului Schnorr și în prezența
-unor date de intrare neconforme a fost realizată prin testarea extinsă a cazurilor limită (corner
-cases – engl.), context în care s-a urmărit reacția sistemului la valori ale soluției situate în afara
-intervalului admis, acestea din urmă fiind respinse prin coduri HTTP 422. Pentru a preveni
-atacurile bazate pe subgrupuri mici (small subgroup attack – engl.), introducerea unor chei
-publice triviale aparținând setului {0, 1, −1, P−1} sau a unor angajamente nule la faza de inițiere
-determină respingerea imediată a solicitărilor fără generarea de sesiuni orfane. În condiții de
-concurență ridicată, simularea a zece fire de execuție (threads – engl.) simultane pentru același
-utilizator a demonstrat stabilitatea mecanismului de blocare prin excludere reciprocă (mutex lock
-– engl.), lăsând activă cel mult o sesiune validă, în timp ce introducerea unor tipuri de date
-malformate în câmpurile numerice, cum ar fi numere cu virgulă mobilă (float – engl.), notații
-științifice, șiruri de caractere (strings – engl.) sau valori nule (null – engl.), este interceptată prin
-coduri HTTP 400 sau 422, confirmându-se totodată robustețea antetului de autentificare (X-
-Auth-Session header – engl.).
-Analiza proprietăților de securitate specifice schemei de identificare Schnorr a evidențiat
-rezistența protocolului în fața unor vectori de atac avansați, printre care se numără verificarea
-legării angajamentului (commitment binding – engl.). S-a demonstrat că un adversar capabil să
-construiască un istoric simulat valid, definit prin corelația t_sim = G^s · y^(−c) mod P fără
-cunoașterea prealabilă a valorii r, se află în imposibilitatea de a reutiliza acea dovadă falsificată
-împotriva unei sesiuni ancorate într-un angajament real diferit, serverul respingând prin HTTP
-401 orice corelație neconformă cu starea stocată. În mod corelat, tentativele de forjare a soluției
-(solution forgery – engl.) în absența cheii private, fie prin transmiterea elementului aleatoriu brut,
-fie prin alterarea biților (bit-flip – engl.) sau introducerea de valori marginale extreme, au fost
-sistematic invalidate prin mecanismele de verificare a domeniului matematic, securitatea fiind
-completată de imposibilitatea deducerii prin încercări succesives (brute-force – engl.) a
-identificatorilor de sesiune și de izolarea riguroasă a contextelor de lucru aparținând unor
-utilizatori distincți (cross-user isolation – engl.).
+Evaluarea comportamentului defensiv al protocolului a impus implementarea unor scenarii negative menite să confirme respingerea controlată a tentativelor de acces neautorizat sau de fraudă electronică. În situația introducerii unei parole incorecte, se constată că dovada calculată pe baza unei valori eronate nu satisface ecuația de validare, determinând serverul să returneze codul HTTP 401 și să distrugă sesiunea utilizată pentru a bloca atacurile repetitive pe același canal. De asemenea, tentativele de retransmitere (replay attack – engl.), bazate pe refolosirea unui identificator de sesiune (session ID – engl.) și a unei soluții deja procesate, determină generarea unui răspuns de tip HTTP 404 sau HTTP 401 ca urmare a eliminării imediate a stării după prima utilizare validă. Fenomenul de depășire a timpului de viață (time-to-live – engl., TTL), setat la o fereastră critică de 5 secunde între etapele de angajament și verificare, conduce la invalidarea automată a cererii cu un răspuns HTTP 401, în timp ce mecanismul de prevenire a deturnării (hijacking prevention – engl.), testat prin transmisii duble de tip angajament pentru același identificator, generează un cod de eroare HTTP 409 și anulează ambele sesiuni concurente pentru a bloca suprascrierea silențioasă, politică aplicată în mod similar și în cazul înregistrărilor duplicate.
 
-În vederea stabilirii unei analize comparative, s-a procedat la integrarea și validarea funcțională a
-trei variante ale protocolului OAuth2, acoperind fluxul securizat cu cheie de dovadă pentru
-schimbul de coduri (Proof Key for Code Exchange – engl., PKCE, conform RFC 7636) bazat pe
-provocări criptografice de tip S256, varianta standardizată fără această extensie dedicată
-canalelor securizate de server, precum și o implementare echivalentă bazată pe biblioteca
-specializată Authlib (Authlib PKCE – engl.). Ca urmare a execuției acestei suite cuprinzătoare de
-asigurare a calității (Quality Assurance – engl., QA), s-a obținut o rată de succes de sută la sută,
-fiind promovate integral toate cele 56 de teste planificate, structurate în 5 teste pozitive, 5 teste
-negative, 30 de cazuri limită, 8 teste de securitate și 8 teste operaționale OAuth2. Promovarea
-integrală a acestui ansamblu experimental atestă faptul că implementarea acoperă exhaustiv
-traseul nominal și gestionează de o manieră robustă scenariile de eroare, oferind un fundament
-empiric solid pentru evaluarea comparativă a performanței și securității dintre arhitecturile
-bazate pe dovezi cu zero cunoștințe (Zero-Knowledge
+Determinarea robusteții algoritmului la frontierele matematice ale grupului Schnorr și în prezența unor date de intrare neconforme a fost realizată prin testarea extinsă a cazurilor limită (corner cases – engl.), context în care s-a urmărit reacția sistemului la valori ale soluției situate în afara intervalului admis, acestea din urmă fiind respinse prin coduri HTTP 422. Pentru a preveni atacurile bazate pe subgrupuri mici (small subgroup attack – engl.), introducerea unor chei publice triviale aparținând setului {0, 1, −1, P−1} sau a unor angajamente nule la faza de inițiere determină respingerea imediată a solicitărilor fără generarea de sesiuni orfane. În condiții de concurență ridicată, simularea a zece fire de execuție (threads – engl.) simultane pentru același utilizator a demonstrat stabilitatea mecanismului de blocare prin excludere reciprocă (mutex lock – engl.), lăsând activă cel mult o sesiune validă, în timp ce introducerea unor tipuri de date malformate în câmpurile numerice, cum ar fi numere cu virgulă mobilă (float – engl.), notații științifice, șiruri de caractere (strings – engl.) sau valori nule (null – engl.), este interceptată prin coduri HTTP 400 sau 422, confirmându-se totodată robustețea antetului de autentificare (X- Auth-Session header – engl.).
+
+Analiza proprietăților de securitate specifice schemei de identificare Schnorr a evidențiat rezistența protocolului în fața unor vectori de atac avansați, printre care se numără verificarea legării angajamentului (commitment binding – engl.). S-a demonstrat că un adversar capabil să construiască un istoric simulat valid, definit prin corelația t_sim = G^s · y^(−c) mod P fără cunoașterea prealabilă a valorii r, se află în imposibilitatea de a reutiliza acea dovadă falsificată împotriva unei sesiuni ancorate într-un angajament real diferit, serverul respingând prin HTTP 401 orice corelație neconformă cu starea stocată. În mod corelat, tentativele de forjare a soluției (solution forgery – engl.) în absența cheii private, fie prin transmiterea elementului aleatoriu brut, fie prin alterarea biților (bit-flip – engl.) sau introducerea de valori marginale extreme, au fost sistematic invalidate prin mecanismele de verificare a domeniului matematic, securitatea fiind completată de imposibilitatea deducerii prin încercări succesives (brute-force – engl.) a identificatorilor de sesiune și de izolarea riguroasă a contextelor de lucru aparținând unor utilizatori distincți (cross-user isolation – engl.).
+
+În vederea stabilirii unei analize comparative, s-a procedat la integrarea și validarea funcțională a trei variante ale protocolului OAuth2, acoperind fluxul securizat cu cheie de dovadă pentru schimbul de coduri (Proof Key for Code Exchange – engl., PKCE, conform RFC 7636) bazat pe provocări criptografice de tip S256, varianta standardizată fără această extensie dedicată canalelor securizate de server, precum și o implementare echivalentă bazată pe biblioteca specializată Authlib (Authlib PKCE – engl.). Ca urmare a execuției acestei suite cuprinzătoare de asigurare a calității (Quality Assurance – engl., QA), s-a obținut o rată de succes de sută la sută, fiind promovate integral toate cele 56 de teste planificate, structurate în 5 teste pozitive, 5 teste negative, 30 de cazuri limită, 8 teste de securitate și 8 teste operaționale OAuth2. Promovarea integrală a acestui ansamblu experimental atestă faptul că implementarea acoperă exhaustiv traseul nominal și gestionează de o manieră robustă scenariile de eroare, oferind un fundament empiric solid pentru evaluarea comparativă a performanței și securității dintre arhitecturile bazate pe dovezi cu zero cunoștințe (Zero-Knowledge
 
 III.3. 	Evaluarea performantei, benchmark si masuratori
 
@@ -560,12 +485,12 @@ Evaluarea latenței individuale a operațiilor criptografice fundamentale din ca
 
 | Operație Criptografică | Medie (ms) | Min (ms) | Max (ms) | P95 (ms) | StdDev (ms) |
 | --- | --- | --- | --- | --- | --- |
-| Calculul angajamentului: $t = G^r \bmod P$ | 0,516 | 0,506 | 0,542 | 0,527 | 0,005 |
-| Verificarea Schnorr: $G^s \equiv t \cdot y^c \pmod P$ | 1,121 | 1,113 | 1,148 | 1,138 | 0,006 |
+| Calculul angajamentului: t = G^r mod P | 0,516 | 0,506 | 0,542 | 0,527 | 0,005 |
+| Verificarea Schnorr: G^s ≡ t · y^c (mod P) | 1,121 | 1,113 | 1,148 | 1,138 | 0,006 |
 | Challenge PKCE S256 (SHA-256) | 0,004 | 0,003 | 0,022 | 0,006 | 0,002 |
 | Hash check OAuth2 Simple | 0,003 | 0,002 | 0,005 | 0,003 | 0,0004 |
 
-Din analiza datelor, se observă că factorul de cost dominant în cadrul protocolului Zero-Knowledge Proof (ZKP) este reprezentat de operațiile de exponențiere modulară (respectiv $G^r \bmod P$, $G^s \bmod P$ și $y^c \bmod P$). Latența totală alocată fazei de verificare a fost cuantificată la aproximativ 1,12 ms. Deși această valoare este cu cel puțin două ordine de mărime superioară latențelor specifice operațiilor de dispersie (hash) utilizate de metodele OAuth 2.0 clasice, ea se încadrează în limitele optime pentru garantarea unei experiențe de autentificare interactive fluide.
+Din analiza datelor, se observă că factorul de cost dominant în cadrul protocolului Zero-Knowledge Proof (ZKP) este reprezentat de operațiile de exponențiere modulară (respectiv G^r mod P, G^s mod P și y^c mod P). Latența totală alocată fazei de verificare a fost cuantificată la aproximativ 1,12 ms. Deși această valoare este cu cel puțin două ordine de mărime superioară latențelor specifice operațiilor de dispersie (hash) utilizate de metodele OAuth 2.0 clasice, ea se încadrează în limitele optime pentru garantarea unei experiențe de autentificare interactive fluide.
 
 O analiză de granulație fină asupra operațiilor interne ale serverului a relevat costurile individuale de execuție la un nivel profund. S-a constatat că operația criptografică secundară dominantă este validarea apartenenței la subgrup (0,529 ms). Funcțiile auxiliare, precum derivarea parametrului de legare a sesiunii (Session Binding, 0,0023 ms) sau generarea provocării matematice (0,0007 ms), presupun eforturi computaționale neglijabile. Procesul final de emitere a jetonului JWT (0,0189 ms) reprezintă o fracțiune minimală din costul total de procesare.
 
@@ -579,16 +504,16 @@ O analiză de granulație fină asupra operațiilor interne ale serverului a rel
 | 50 | 171,2 | 301,3 | 329,3 | 841,8 |
 | 100 | 167,4 | 297,7 | 289,2 | 822,0 |
 
-Protocolul ZKP manifestă un debit stabil de aproximativ 170 RPS, valoare care prezintă o reziliență notabilă la creșterea gradului de concurență. Această constanță este justificată de natura fixă a costului exponențierilor modulare executate pe grupul criptografic de 2048 biți. În contrast, metodele OAuth 2.0, fundamentate exclusiv pe derivări hash, înregistrează performanțe cantitative superioare (290–830 RPS). Raportul de performanță stabilit, de aproximativ 1:1,7 în favoarea metodelor clasice, constituie compromisul computațional necesar pentru asigurarea proprietăților de securitate *zero-knowledge* și eliminarea vulnerabilităților de transport ale credențialelor.
+Protocolul ZKP manifestă un debit stabil de aproximativ 170 RPS, valoare care prezintă o reziliență notabilă la creșterea gradului de concurență. Această constanță este justificată de natura fixă a costului exponențierilor modulare executate pe grupul criptografic de 2048 biți. În contrast, metodele OAuth 2.0, fundamentate exclusiv pe derivări hash, înregistrează performanțe cantitative superioare (290–830 RPS). Raportul de performanță stabilit, de aproximativ 1:1,7 în favoarea metodelor clasice, constituie compromisul computațional necesar pentru asigurarea proprietăților de securitate zero-knowledge și eliminarea vulnerabilităților de transport ale credențialelor.
 
-Din perspectiva managementului memoriei, evaluările au indicat o amprentă extrem de redusă a stării temporare gestionate de server. Valorile maxime de alocare a memoriei au variat între 180 KB și 223 KB, numărul de sesiuni active simultane în structura `_SessionStore` rămânând la o valoare unitară în timpul testelor controlate. Aceste date validează eficiența stocării efemere în memoria aplicației pentru un mediu prototipal, menționându-se necesitatea externalizării acestei stări într-o bază de date *In-Memory* (e.g., Redis) pentru eventuale implementări distribuite. Totodată, consumul general al resurselor hardware în condiții de trafic live s-a dovedit a fi optimizat, înregistrându-se un nivel mediu al memoriei RAM de aproximativ 65 MB și utilizări tranzitorii ale procesorului situate sub pragul de 4,70%.
+Din perspectiva managementului memoriei, evaluările au indicat o amprentă extrem de redusă a stării temporare gestionate de server. Valorile maxime de alocare a memoriei au variat între 180 KB și 223 KB, numărul de sesiuni active simultane în structura `_SessionStore` rămânând la o valoare unitară în timpul testelor controlate. Aceste date validează eficiența stocării efemere în memoria aplicației pentru un mediu prototipal, menționându-se necesitatea externalizării acestei stări într-o bază de date In-Memory (e.g., Redis) pentru eventuale implementări distribuite. Totodată, consumul general al resurselor hardware în condiții de trafic live s-a dovedit a fi optimizat, înregistrându-se un nivel mediu al memoriei RAM de aproximativ 65 MB și utilizări tranzitorii ale procesorului situate sub pragul de 4,70%.
 
 
 Pentru a atesta practic fiabilitatea arhitecturii propuse, s-a efectuat un audit riguros al traficului HTTP, comparându-se conținutul pachetelor transmise în fiecare paradigmă de autentificare. Această procedură de testare are o valoare probatorie fundamentală pentru prezenta cercetare, confirmând următoarele aspecte de securitate:
 
-* **În cadrul protocolului ZKP:** Punctele terminale destinate autentificării (`POST /login/commit` și `POST /login/verify`) vehiculează exclusiv valori numerice efemere (angajamentul $t$ și dovada matematică $s$). Se demonstrează lipsa oricărui derivat al parolei sau al secretului primar din mesajele interceptate.
-* **În fluxul de autentificare clasic:** Parola este expediată în format brut (plaintext) în corpul cererii de inițiere, fiind complet expusă oricărui adversar capabil să intercepteze canalul de transport nesecurizat.
-* **În schemele OAuth 2.0 PKCE și Simple:** Deși credențialele nu sunt propagate către serverul de resurse, ele sunt transmise obligatoriu în prima instanță către serverul de autorizare, vulnerabilitatea de la nivelul rețelei menținându-se nealterată.
+În cadrul protocolului ZKP: Punctele terminale destinate autentificării (`POST /login/commit` și `POST /login/verify`) vehiculează exclusiv valori numerice efemere (angajamentul t și dovada matematică s). Se demonstrează lipsa oricărui derivat al parolei sau al secretului primar din mesajele interceptate.
+În fluxul de autentificare clasic: Parola este expediată în format brut (plaintext) în corpul cererii de inițiere, fiind complet expusă oricărui adversar capabil să intercepteze canalul de transport nesecurizat.
+În schemele OAuth 2.0 PKCE și Simple: Deși credențialele nu sunt propagate către serverul de resurse, ele sunt transmise obligatoriu în prima instanță către serverul de autorizare, vulnerabilitatea de la nivelul rețelei menținându-se nealterată.
 
 Astfel, se atestă practic că schema criptografică Schnorr integrată reprezintă singura variantă operațională în care materialul secret nu traversează rețeaua. Prin urmare, capturarea integrală a unui schimb de mesaje ZKP nu oferă unui atacator nicio informație exploatabilă pentru o autentificare frauduloasă ulterioară sau pentru extragerea credențialelor.
 
@@ -598,39 +523,39 @@ Validarea finală a stabilității arhitecturale a constat într-un test dinamic
 În acest scenariu, cu parametri care emulează o rețea reală, divergențele de latență între protocolul ZKP și fluxurile tradiționale s-au estompat semnificativ, timpii medii de răspuns situându-se în jurul valorii de 4100 ms pentru toate protocoalele testate. Această convergență demonstrează că diferențele strict criptografice sunt puternic atenuate de costurile asociate infrastructurii, de alocarea resurselor de rețea (traffic shaping) și de overhead-ul utilitarului de testare. În concluzie, s-a validat empiric capacitatea serverului de a susține cerințe de procesare în medii cu un grad ridicat de concurență, menținând în același timp un nivel de securitate net superior standardelor actuale..
 III.4. 	Simularea atacurilor si analiza vulnerabilitatilor
 
-Pentru evaluarea exhaustivă a robusteții arhitecturii propuse, a fost elaborată și executată o campanie experimentală axată pe simularea automată a principalilor vectori de atac cibernetic. În cadrul acestei metodologii de validare, s-a vizat în primul rând reziliența sistemului la compromiterea bazei de date (Data Breach). Astfel, s-a simulat un scenariu critic în care un adversar obține acces neautorizat la stocarea serverului, extrăgând cheia publică $y = G^x \bmod P$. S-a demonstrat matematic și practic imposibilitatea impersonării utilizatorului legitim pe baza exclusivă a acestei valori. O încercare de a construi o dovadă falsificată, utilizând cheia publică în locul scalarului secret, formulată prin $s_{attacker} = (r + c \cdot y) \bmod Q$, a condus inevitabil la eșecul validării $G^{s_{attacker}} \equiv t \cdot y^c \pmod P$. Această respingere a autentificării, materializată prin codul de eroare HTTP 401, este fundamentată pe inegalitatea $y \neq x$ în spațiul exponenților. Prin urmare, se confirmă faptul că sustragerea materialului criptografic public nu furnizează unui atacator capacitatea de generare a unor dovezi valide cu cunoștințe zero.
+Pentru evaluarea exhaustivă a robusteții arhitecturii propuse, a fost elaborată și executată o campanie experimentală axată pe simularea automată a principalilor vectori de atac cibernetic. În cadrul acestei metodologii de validare, s-a vizat în primul rând reziliența sistemului la compromiterea bazei de date (Data Breach). Astfel, s-a simulat un scenariu critic în care un adversar obține acces neautorizat la stocarea serverului, extrăgând cheia publică y = G^x mod P. S-a demonstrat matematic și practic imposibilitatea impersonării utilizatorului legitim pe baza exclusivă a acestei valori. O încercare de a construi o dovadă falsificată, utilizând cheia publică în locul scalarului secret, formulată prin s_attacker = (r + c y) mod Q, a condus inevitabil la eșecul validării G^s_attacker ≡ t · y^c (mod P). Această respingere a autentificării, materializată prin codul de eroare HTTP 401, este fundamentată pe inegalitatea y ≠ x în spațiul exponenților. Prin urmare, se confirmă faptul că sustragerea materialului criptografic public nu furnizează unui atacator capacitatea de generare a unor dovezi valide cu cunoștințe zero.
 
-În completarea analizei de securitate, s-a evaluat calitatea sursei de entropie criptografică utilizată pentru generarea provocărilor și a identificatorilor de sesiune. Printr-o secvență de 10.000 de cereri de angajament (commit-uri) consecutive, s-a verificat distribuția statistică și absența coliziunilor. Toate valorile au fost confirmate ca fiind strict unice și corect încadrate în intervalul matematic specificat ($[1, P-2]$), validându-se astfel eficacitatea generatorului de numere pseudo-aleatoare securizat criptografic (CSPRNG) implementat în arhitectură. Această unicitate este critică pentru prevenirea atacurilor de tip *Replay* și pentru menținerea integrității fiecărei sesiuni de autorizare.
+În completarea analizei de securitate, s-a evaluat calitatea sursei de entropie criptografică utilizată pentru generarea provocărilor și a identificatorilor de sesiune. Printr-o secvență de 10.000 de cereri de angajament (commit-uri) consecutive, s-a verificat distribuția statistică și absența coliziunilor. Toate valorile au fost confirmate ca fiind strict unice și corect încadrate în intervalul matematic specificat ([1, P-2]), validându-se astfel eficacitatea generatorului de numere pseudo-aleatoare securizat criptografic (CSPRNG) implementat în arhitectură. Această unicitate este critică pentru prevenirea atacurilor de tip Replay și pentru menținerea integrității fiecărei sesiuni de autorizare.
 
-Pe de altă parte, o suprafață de atac vulnerabilă în cadrul protocoalelor bazate pe problema logaritmului discret este reprezentată de faza de distribuție a parametrilor publici. În acest sens, s-a simulat un atac de tip Man-in-the-Middle (MitM) bazat pe injectarea unor parametri slabi (precum $P=23$, $Q=11$ și $G=4$). S-a demonstrat că, prin acceptarea acestor parametri minimali, complexitatea problemei logaritmului discret colapsează, permițând rezolvarea acesteia prin forță brută în mai puțin de $P-2$ pași. În consecință, un adversar poate recupera cheia privată a victimei și poate finaliza cu succes fluxul protocolului în calitate de impostor. Această vulnerabilitate impune constrângerea arhitecturală ca aplicația client să ancoreze (*pinning*) valorile parametrilor de referință și să respingă în mod proactiv orice deviație detectată în rețea. Totodată, s-a validat faptul că implementarea serverului, atunci când rămâne strict atașată de parametrii originari de înaltă securitate și respinge valorile publice ce nu aparțin grupului legitim, neutralizează eficient o astfel de încercare de atac.
+Pe de altă parte, o suprafață de atac vulnerabilă în cadrul protocoalelor bazate pe problema logaritmului discret este reprezentată de faza de distribuție a parametrilor publici. În acest sens, s-a simulat un atac de tip Man-in-the-Middle (MitM) bazat pe injectarea unor parametri slabi (precum P=23, Q=11 și G=4). S-a demonstrat că, prin acceptarea acestor parametri minimali, complexitatea problemei logaritmului discret colapsează, permițând rezolvarea acesteia prin forță brută în mai puțin de P-2 pași. În consecință, un adversar poate recupera cheia privată a victimei și poate finaliza cu succes fluxul protocolului în calitate de impostor. Această vulnerabilitate impune constrângerea arhitecturală ca aplicația client să ancoreze (pinning) valorile parametrilor de referință și să respingă în mod proactiv orice deviație detectată în rețea. Totodată, s-a validat faptul că implementarea serverului, atunci când rămâne strict atașată de parametrii originari de înaltă securitate și respinge valorile publice ce nu aparțin grupului legitim, neutralizează eficient o astfel de încercare de atac.
 
-Pentru a demonstra fezabilitatea securității arhitecturii propuse pe termen lung, a fost realizat un test de performanță (benchmark) care evidențiază complexitatea inerentă a problemei logaritmului discret. Prin escaladarea progresivă a dimensiunii grupului criptografic, pornind de la instanțe triviale de 8 biți și urcând treptat către dimensiunile specificate de protocol, s-a reconfirmat creșterea exponențială a efortului de calcul. Prin fundamentarea sistemului pe un număr prim sigur (*safe prime*) de 2048 de biți și un subgrup operațional de aproximativ 1023 de biți, obținerea cheii private prin metode exhaustive devine computațional nefezabilă în ipotezele standard de complexitate algoritmică actuale.
+Pentru a demonstra fezabilitatea securității arhitecturii propuse pe termen lung, a fost realizat un test de performanță (benchmark) care evidențiază complexitatea inerentă a problemei logaritmului discret. Prin escaladarea progresivă a dimensiunii grupului criptografic, pornind de la instanțe triviale de 8 biți și urcând treptat către dimensiunile specificate de protocol, s-a reconfirmat creșterea exponențială a efortului de calcul. Prin fundamentarea sistemului pe un număr prim sigur (safe prime) de 2048 de biți și un subgrup operațional de aproximativ 1023 de biți, obținerea cheii private prin metode exhaustive devine computațional nefezabilă în ipotezele standard de complexitate algoritmică actuale.
 
 În concluzie, rezultatele campaniei de testare automată consolidează garanțiile de securitate ale protocolului și evidențiază două principii critice de proiectare. În primul rând, delegarea exclusivă a cheilor publice către stocarea serverului atenuează în mod complet riscul de impersonare în cazul unei scurgeri de date. În al doilea rând, distribuția dinamică a parametrilor operaționali rămâne o componentă arhitecturală critică, ce necesită aplicarea unor mecanisme stricte de ancorare și validare matematică în vederea extinderii soluției către un mediu de producție matur..
 
 III.5. 	Discutii finale
 
-În urma evaluărilor efectuate în campania de testare, s-a demonstrat faptul că implementarea protocolului Schnorr îndeplinește cu strictețe rigorile funcționale, de securitate și de performanță predefinite. În primul rând, s-a validat corectitudinea matematică a sistemului, ecuația de verificare $G^s \equiv t \cdot y^c \pmod P$ fiind satisfăcută în toate scenariile ce implică utilizarea unor credențiale valide și respinsă sistematic în cazul tentativelor de falsificare a dovezilor (*forgery*) sau al utilizării unor credențiale eronate. În al doilea rând, auditul de trafic a confirmat menținerea proprietății *zero-knowledge* la nivelul stratului de transport. Astfel, s-a observat că niciun mesaj HTTP transmis pe parcursul procesului de autentificare nu conține parola brută sau derivate directe ale acesteia.
+În urma evaluărilor efectuate în campania de testare, s-a demonstrat faptul că implementarea protocolului Schnorr îndeplinește cu strictețe rigorile funcționale, de securitate și de performanță predefinite. În primul rând, s-a validat corectitudinea matematică a sistemului, ecuația de verificare G^s ≡ t · y^c (mod P) fiind satisfăcută în toate scenariile ce implică utilizarea unor credențiale valide și respinsă sistematic în cazul tentativelor de falsificare a dovezilor (forgery) sau al utilizării unor credențiale eronate. În al doilea rând, auditul de trafic a confirmat menținerea proprietății zero-knowledge la nivelul stratului de transport. Astfel, s-a observat că niciun mesaj HTTP transmis pe parcursul procesului de autentificare nu conține parola brută sau derivate directe ale acesteia.
 
-De asemenea, s-a demonstrat rezistența arhitecturii la vectori de atac consacrați, sistemul respingând cu succes tentativele de tip *replay*, *session hijacking*, compromitere a datelor (*data breach*), precum și injectările de angajamente simulate (*simulator attacks*). Din perspectiva performanței, evaluările au indicat o latență a verificării criptografice de aproximativ 1,12 ms per operație și un debit susținut de circa 170 de cereri pe secundă (RPS). În consecință, protocolul se încadrează în parametrii optimi pentru autentificarea interactivă, compromisul temporal față de schemele clasice bazate exclusiv pe funcții de rezumare (hash) fiind justificat de garanțiile criptografice superioare obținute. Totuși, s-a constatat că parametrii utilizați în prezenta iterație, precum generatorul $G = 4$ și funcția de derivare a cheilor *scrypt* cu un factor de cost $n = 2^{11}$, sunt adecvați exclusiv unui prototip de cercetare. Pentru o viitoare tranziție către un mediu de producție, se impune adoptarea unui generator standardizat (conform specificației RFC 3526) și utilizarea unor parametri *scrypt* aliniați la recomandările curente de securitate OWASP ($n \ge 2^{14}$).
+De asemenea, s-a demonstrat rezistența arhitecturii la vectori de atac consacrați, sistemul respingând cu succes tentativele de tip replay, session hijacking, compromitere a datelor (data breach), precum și injectările de angajamente simulate (simulator attacks). Din perspectiva performanței, evaluările au indicat o latență a verificării criptografice de aproximativ 1,12 ms per operație și un debit susținut de circa 170 de cereri pe secundă (RPS). În consecință, protocolul se încadrează în parametrii optimi pentru autentificarea interactivă, compromisul temporal față de schemele clasice bazate exclusiv pe funcții de rezumare (hash) fiind justificat de garanțiile criptografice superioare obținute. Totuși, s-a constatat că parametrii utilizați în prezenta iterație, precum generatorul G = 4 și funcția de derivare a cheilor scrypt cu un factor de cost n = 2^11, sunt adecvați exclusiv unui prototip de cercetare. Pentru o viitoare tranziție către un mediu de producție, se impune adoptarea unui generator standardizat (conform specificației RFC 3526) [53], [54] și utilizarea unor parametri scrypt aliniați la recomandările curente de securitate OWASP (n ≥ 2^14).
 
 ### Avantajele arhitecturii propuse
 
-Arhitectura implementată prezintă avantaje structurale majore, atât din perspectiva analizei academice, cât și în vederea proiectării unor mecanisme de autentificare cu un grad ridicat de reziliență. Un beneficiu fundamental constă în eliminarea transmiterii parolei prin rețea în cadrul fluxului principal de autentificare, aspect care atenuează drastic impactul interceptării pachetelor de date. Suplimentar, prin faptul că la nivelul serverului se stochează exclusiv cheia publică a utilizatorului (*secret_y*), lipsind cu desăvârșire secretul privat, vulnerabilitățile asociate potențialelor breșe de securitate la nivelul bazei de date sunt minimizate considerabil.
+Arhitectura implementată prezintă avantaje structurale majore, atât din perspectiva analizei academice, cât și în vederea proiectării unor mecanisme de autentificare cu un grad ridicat de reziliență. Un beneficiu fundamental constă în eliminarea transmiterii parolei prin rețea în cadrul fluxului principal de autentificare, aspect care atenuează drastic impactul interceptării pachetelor de date. Suplimentar, prin faptul că la nivelul serverului se stochează exclusiv cheia publică a utilizatorului (secret_y), lipsind cu desăvârșire secretul privat, vulnerabilitățile asociate potențialelor breșe de securitate la nivelul bazei de date sunt minimizate considerabil.
 
-O altă proprietate esențială a sistemului este ancorarea transcrisului criptografic de o sesiune temporară și de contextul specific rețelei, decizie de proiectare ce neutralizează atacurile de tip *replay* și *relay*. Pe de altă parte, integrarea jetoanelor de tip JWT (JSON Web Tokens) post-autentificare facilitează un acces la resurse eficient și compatibil cu standardele arhitecturale ale interfețelor API moderne. Transparența procesului este garantată prin intermediul instrumentelor de observabilitate integrate, iar prezența fluxurilor comparative bazate pe standardul OAuth 2.0 permite o evaluare riguroasă a compromisului inerent dintre securitate și performanță. Mai mult, disponibilitatea unui punct terminal dedicat parametrilor globali (*/parameters*) fundamentează conceptual posibilitatea utilizării unor parametri criptografici specifici fiecărui server, reducând dependența de constante definite exclusiv la nivelul aplicației client. În concluzie, din perspectivă academică, validarea acestui protocol modifică paradigma modelului de încredere: serverul este degrevat de responsabilitatea protejării unui secret partajat, asumându-și strict rolul de verificator al unor relații matematice asimetrice.
+O altă proprietate esențială a sistemului este ancorarea transcrisului criptografic de o sesiune temporară și de contextul specific rețelei, decizie de proiectare ce neutralizează atacurile de tip replay și relay. Pe de altă parte, integrarea jetoanelor de tip JWT (JSON Web Tokens) post-autentificare facilitează un acces la resurse eficient și compatibil cu standardele arhitecturale ale interfețelor API moderne. Transparența procesului este garantată prin intermediul instrumentelor de observabilitate integrate, iar prezența fluxurilor comparative bazate pe standardul OAuth 2.0 permite o evaluare riguroasă a compromisului inerent dintre securitate și performanță. Mai mult, disponibilitatea unui punct terminal dedicat parametrilor globali (*/parameters*) fundamentează conceptual posibilitatea utilizării unor parametri criptografici specifici fiecărui server, reducând dependența de constante definite exclusiv la nivelul aplicației client. În concluzie, din perspectivă academică, validarea acestui protocol modifică paradigma modelului de încredere: serverul este degrevat de responsabilitatea protejării unui secret partajat, asumându-și strict rolul de verificator al unor relații matematice asimetrice.
 
 ### Limitări și constrângeri de proiectare
 
-În ciuda beneficiilor enumerate, sistemul actual prezintă anumite limitări structurale care necesită o analiză riguroasă. În primul rând, s-a observat că fluxul bazat pe demonstrații cu cunoștințe zero (ZKP) introduce o latență de execuție superioară în comparație cu schemele clasice OAuth 2.0, aspect validat de măsurătorile de performanță. În al doilea rând, cerința menținerii unei stări temporare între etapele de angajament (*commit*) și verificare (*verify*) adaugă un nivel de complexitate în scenariile de scalare orizontală. O altă limitare conceptuală o reprezintă transmiterea identificatorului de client (*client_id*) în clar, fapt ce invalidează asigurarea anonimității la nivel de metadate. Totodată, post-verificare, token-ul JWT devine unicul artefact de acces; prin urmare, compromiterea acestuia conferă unui atacator autorizări nelegitime până la momentul expirării jetonului.
+În ciuda beneficiilor enumerate, sistemul actual prezintă anumite limitări structurale care necesită o analiză riguroasă. În primul rând, s-a observat că fluxul bazat pe demonstrații cu cunoștințe zero (ZKP) introduce o latență de execuție superioară în comparație cu schemele clasice OAuth 2.0, aspect validat de măsurătorile de performanță. În al doilea rând, cerința menținerii unei stări temporare între etapele de angajament (commit) și verificare (verify) adaugă un nivel de complexitate în scenariile de scalare orizontală. O altă limitare conceptuală o reprezintă transmiterea identificatorului de client (client_id) în clar, fapt ce invalidează asigurarea anonimității la nivel de metadate. Totodată, post-verificare, token-ul JWT devine unicul artefact de acces; prin urmare, compromiterea acestuia conferă unui atacator autorizări nelegitime până la momentul expirării jetonului.
 
-La nivelul implementării clientului, s-a utilizat o derivare simplificată a secretului prin intermediul funcției SHA-256, nefiind integrată o funcție de derivare a cheilor (KDF) cu consum ridicat de memorie. S-a implementat, de asemenea, un mecanism de rezervă (*fallback*) către parametri criptografici de dimensiuni reduse, compromis acceptabil într-un mediu controlat, dar critic într-o implementare de producție. Mai mult, distribuția parametrilor publici nu este protejată prin mecanisme de semnare digitală sau fixare a certificatelor (*pinning*), devenind un vector de vulnerabilitate în absența securizării prin protocolul TLS. La nivelul infrastructurii serverului, stocarea în memorie a sesiunilor, politicile CORS permisive, utilizarea sistemului de gestiune SQLite și definirea statică a cheilor secrete subliniază caracterul pur experimental al aplicației. Nu în ultimul rând, s-a identificat faptul că un timp de viață (TTL) al sesiunii fixat la 5 secunde este restrictiv pentru clienții mobili sau rețelele cu latență ridicată, în timp ce fereastra de 50 de milisecunde utilizată pentru diferențierea competiției pentru resurse (*race conditions*) de atacurile de preluare a sesiunii (*hijacking*) prezintă instabilitate operațională în afara mediului de laborator.
+La nivelul implementării clientului, s-a utilizat o derivare simplificată a secretului prin intermediul funcției SHA-256, nefiind integrată o funcție de derivare a cheilor (KDF) cu consum ridicat de memorie. S-a implementat, de asemenea, un mecanism de rezervă (fallback) către parametri criptografici de dimensiuni reduse, compromis acceptabil într-un mediu controlat, dar critic într-o implementare de producție. Mai mult, distribuția parametrilor publici nu este protejată prin mecanisme de semnare digitală sau fixare a certificatelor (pinning), devenind un vector de vulnerabilitate în absența securizării prin protocolul TLS [64]. La nivelul infrastructurii serverului, stocarea în memorie a sesiunilor, politicile CORS permisive, utilizarea sistemului de gestiune SQLite și definirea statică a cheilor secrete subliniază caracterul pur experimental al aplicației. Nu în ultimul rând, s-a identificat faptul că un timp de viață (TTL) al sesiunii fixat la 5 secunde este restrictiv pentru clienții mobili sau rețelele cu latență ridicată, în timp ce fereastra de 50 de milisecunde utilizată pentru diferențierea competiției pentru resurse (race conditions) de atacurile de preluare a sesiunii (hijacking) prezintă instabilitate operațională în afara mediului de laborator.
 
 ### Direcții de dezvoltare și îmbunătățire
 
-Pentru a asigura maturizarea sistemului și alinierea acestuia la standardele industriale de securitate, se propun mai multe direcții strategice de optimizare. Se impune, cu prioritate, standardizarea procesului de derivare a secretului prin implementarea unor algoritmi robuști (ex. *scrypt* sau *Argon2*), proces dependent de un *salt* criptografic generat și stocat în mod securizat pe dispozitivul clientului. Este imperativă eliminarea procedurilor de rezervă (*fallback*) destinate parametrilor slabi și implementarea unui sistem de validare a parametrilor publici prin fixarea amprentelor criptografice. Referitor la fundamentul matematic, se recomandă creșterea dimensiunii grupului ciclic la minimum 2048 de biți sau, preferabil, tranziția către o schemă Schnorr aplicată pe curbe eliptice (ECC), pentru o eficientizare a costurilor computaționale.
+Pentru a asigura maturizarea sistemului și alinierea acestuia la standardele industriale de securitate, se propun mai multe direcții strategice de optimizare. Se impune, cu prioritate, standardizarea procesului de derivare a secretului prin implementarea unor algoritmi robuști (ex. scrypt sau Argon2), proces dependent de un salt criptografic generat și stocat în mod securizat pe dispozitivul clientului. Este imperativă eliminarea procedurilor de rezervă (fallback) destinate parametrilor slabi și implementarea unui sistem de validare a parametrilor publici prin fixarea amprentelor criptografice. Referitor la fundamentul matematic, se recomandă creșterea dimensiunii grupului ciclic la minimum 2048 de biți sau, preferabil, tranziția către o schemă Schnorr aplicată pe curbe eliptice (ECC) [62], [63], pentru o eficientizare a costurilor computaționale. Sistemele de autentificare ZKP pot fi îmbunătățite prin utilizarea unor protocoale alternative de tip SRP [55], PAKE [56], J-PAKE [57], [58] sau prin adoptarea celor mai recente protocoale documentate în literatura de specialitate [59], [60].
 
-Pentru a remedia limitările de scalabilitate și persistență, infrastructura necesită externalizarea stocării sesiunilor către soluții de tip *in-memory data structure store* (precum Redis) și migrarea stratului de date relațional către platforme robuste, precum PostgreSQL sau MySQL. Din perspectiva gestionării jetoanelor, se preconizează trecerea de la semnături simetrice (HS256) către algoritmi asimetrici (RS256 sau ES256), decuplând astfel procesele de emitere de cele de verificare a token-urilor. Consolidarea perimetrului de securitate va presupune integrarea unor mecanisme de limitare a ratei de acces (*rate limiting*), implementarea jurnalizării structurate a evenimentelor de securitate și a unor liste de revocare a jetoanelor. În mod obligatoriu, comunicarea trebuie restricționată exclusiv prin protocolul HTTPS, cu aplicarea unor politici CORS riguroase. Pe termen lung, extinderea arhitecturii prin încorporarea jetoanelor de tip *proof-of-possession* va elimina riscurile inerente modelului de acces bazat exclusiv pe transmiterea unui *bearer token*, ridicând substanțial nivelul global de securitate al protocolului.
+Pentru a remedia limitările de scalabilitate și persistență, infrastructura necesită externalizarea stocării sesiunilor către soluții de tip in-memory data structure store (precum Redis) și migrarea stratului de date relațional către platforme robuste, precum PostgreSQL sau MySQL. Din perspectiva gestionării jetoanelor, se preconizează trecerea de la semnături simetrice (HS256) către algoritmi asimetrici (RS256 sau ES256), decuplând astfel procesele de emitere de cele de verificare a token-urilor. Consolidarea perimetrului de securitate va presupune integrarea unor mecanisme de limitare a ratei de acces (rate limiting), implementarea jurnalizării structurate a evenimentelor de securitate și a unor liste de revocare a jetoanelor. În mod obligatoriu, comunicarea trebuie restricționată exclusiv prin protocolul HTTPS [61], cu aplicarea unor politici CORS riguroase. Pe termen lung, extinderea arhitecturii prin încorporarea jetoanelor de tip proof-of-possession va elimina riscurile inerente modelului de acces bazat exclusiv pe transmiterea unui bearer token, ridicând substanțial nivelul global de securitate al protocolului.
 
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -645,134 +570,81 @@ Prin urmare, concluzia principală a lucrării este că autentificarea bazată p
 
 Bibliografie
 
-[1]	***, Angular Framework, https://angular.dev/, ultima accesare: 26/06/2024.
-[2]	***, Python Programming Language, https://www.python.org, ultima accesare: 26/06/2024.
-[3]	***, Solidity programming language, https://soliditylang.org, ultima accesare: 26/06/2024. 
-[4]	***, Ganache-UI, https://github.com/trufflesuite/ganache-ui, ultima accesare: 26/06/2024.
-[5]	***, Npm, https://www.npmjs.com/, ultima accesare: 26/06/2024. 
-[6]	***, NodeJs, https://nodejs.org/en, ultima accesare: 26/06/2024.
-[7]	***, Solidity Compiler https://docs.soliditylang.org/en/latest/installing-solidity.html, ultima                 accesare: 26/06/2024.
-[8]	***, Autodna, https://www.autodna.ro/, ultima accesare: 26/06/2024.
-[9]	***, Rarom, https://www.rarom.ro/, ultima accesare: 26/06/2024. 
-[10]	***, Vincheck, https://www.vincheck.ro/, ultima accesare: 26/06/2024.
-[11]	***, CarVertical, https://www.carvertical.com/, ultima accesare: 26/06/2024.
-[12]	***, Smart Contracts, https://www.ibm.com/topics/smart-contracts, ultima accesare: 26/06/2024.
-[13]	***, Blockchain, https://www.ibm.com/topics/blockchain, ultima accesare: 26/06/2024.
-[14]	***, What is blockchain, https://www.oracle.com/ro/blockchain/what-is-blockchain/ , ultima              accesare: 26/06/2024.
-[15]	F. Casino, E. Politou, E. Alepis and C. Patsakis, "Immutability and Decentralized Storage: An Analysis of Emerging Threats," in IEEE Access, vol. 8, pp. 4737-4744, 2020, doi: 10.1109/ACCESS.2019.2962017.
-[16]	E. Politou, F. Casino, E. Alepis and C. Patsakis, "Blockchain Mutability: Challenges and Proposed Solutions," in IEEE Transactions on Emerging Topics in Computing, vol. 9, no. 4, pp. 1972-1986, 1 Oct.-Dec. 2021, doi: 10.1109/TETC.2019.2949510.
-[17]	H. S. Kim and K. Wang, "Immutability Measure for Different Blockchain Structures," 2018 IEEE 39th Sarnoff Symposium, Newark, NJ, USA, 2018, pp. 1-6, doi: 10.1109/SARNOF.2018.8720496.
-[18]	***, Ethereum, https://ethereum.org/en/, ultima accesare: 26/06/2024. 
-[19]	R. K. Kaushal, N. Kumar, S. N. Panda and V. Kukreja, "Immutable Smart Contracts on Blockchain Technology: Its Benefits and Barriers,"2021 9th International Conference on Reliability, Infocom Technologies and Optimization (Trends and Future Directions) (ICRITO), Noida, India, 2021, pp. 1-5, doi: 10.1109/ICRITO51393.2021.9596538.
-[20]	Mehdi Salehi, Jeremy Clark, and Mohammad Mannan. 2023. Not so Immutable: Upgradeability of Smart Contracts on Ethereum. In Financial Cryptography and Data Security. FC 2022 International Workshops: CoDecFin, DeFi, Voting, WTSC, Grenada, May 6, 2022, Revised Selected Papers. Springer-Verlag, Berlin, Heidelberg, 539–554. https://doi.org/10.1007/978-3-031-32415-4_33.
-[21]	***, Decentralized Applications (dApps): Definition, Uses, Pros and Cons, https://www.investopedia.com/terms/d/decentralized-applications-dapps.asp, ultima accesare: 26/06/2024.
-[22]	Dietrich F., Turgut A., Palm D., Louw L. (2020). Smart Contract-Based Blockchain Solution to Reduce Supply Chain Risks. In: Lalic, B., Majstorovic, V., Marjanovic, U., von Cieminski, G., Romero, D. (eds) Advances in Production Management Systems. Towards Smart and Digital Manufacturing. APMS 2020. IFIP Advances in Information and Communication Technology, vol 592. Springer, Cham. https://doi.org/10.1007/978-3-030-57997-5_20.
-[23]	Aldyaflah, I.M., Zhao W., Upadhyay H.; Lagos L., The Design and Implementation of a Secure           Datastore Based on Ethereum Smart Contract. Appl. Sci. 2023, 13, 5282. https://doi.org/10.3390/app13095282.
-[24]	***, Gas (Ethereum): How Gas Fees Work on the Ethereum Blockchain, https://www.investopedia.com/terms/g/gas-ethereum.asp, ultima accesare: 26/06/2024.
-[25]	***, What is EIP-1559?, https://consensys.io/blog/what-is-eip-1559-how-will-it-change-ethereum, ultima accesare: 26/06/2024.
-[26]	Florin Leon, Inteligență artificială – note de curs, http://florinleon.byethost24.com/curs_ia.html,        ultima vizitare: 26/06/2024.
-[27]	Zhang Peter. (2000). Neural Networks for Classification: A Survey. Systems, Man, and Cybernetics, Part C: Applications and Reviews, IEEE Transactions on. 30. 451 - 462. 10.1109/5326.897072.
-[28]	***, Data binding, https://angular.jp/guide/binding-overview, ultima accesare: 26/06/2024.
-[29]	***, Sweetalert2, https://sweetalert2.github.io/, ultima accesare: 26/06/2024.
-[30]	***, Structural directives , https://angular.jp/guide/structural-directives, ultima accesare: 26/06/2024.
-[31]	***, Flask Framework, https://flask.palletsprojects.com/en/3.0.x/, ultima accesare: 26/06/2024.
-[32]	***, Tensorflow library, https://www.tensorflow.org/, ultima accesare: 26/06/2024.
-[33]	***, Keras, https://keras.io/, ultima accesare: 26/06/2024.
-[34]	***, Web3, https://web3py.readthedocs.io/en/stable/, ultima accesare: 26/06/2024.
-[35]	***, Solcx, https://pypi.org/project/py-solc-x/, ultima accesare: 26/06/2024.
-[36]	***, SalAlchemy library, https://www.sqlalchemy.org/, ultima accesare: 26/06/2024.
-[37]	***, PyJWT, https://pyjwt.readthedocs.io/en/stable/, ultima accesare: 26/06/2024.
-[38]	***, RFC 7519, https://datatracker.ietf.org/doc/html/rfc7519, ultima accesare: 26/06/2024.
-[39]	Paul P., Aithal P. S., Saavedra R., Ghosh Surajit, Blockchain Technology and Its Types—A Short Review (December 26, 2021). International Journal of Applied Science and Engineering (IJASE), 9(2), 189-200. (2021). ISSN: 2321-0745. , Available at SSRN: https://ssrn.com/abstract=4050933.
-[40]	***, Three-tier Architecture, https://www.ibm.com/topics/three-tierarchitecture, ultima                         accesare: 26/06/2024.
-[41]	Alexandru Achip, Programare orientată pe servicii – note de laborator, ***, ultima                                      accesare: 26/06/2024.
-[42]	***, Spring Framework, https://spring.io/projects/spring-framework, ultima accesare: 26/06/2024.
-[43]	***, Java Programming Language, https://www.java.com/en/, ultima accesare: 26/06/2024.
-[44]	***, Web3j, https://docs.web3j.io/4.11.0/, ultima accesare: 26/06/2024.
-[45]	***, Remix, https://remix.ethereum.org/#lang=en&optimize=false&runs=200&evmVersion=null&version=soljson-v0.8.18+commit.87f61d96.js, ultima accesare: 26/06/2024.
-[46]	***, Visual Studio Code, https://code.visualstudio.com/, ultima accesare: 26/06/2024.
-[47]	***, Truffle Suite, https://archive.trufflesuite.com/, ultima accesare: 26/06/2024.
-[48]	***, Pycharm, https://www.jetbrains.com/pycharm/, ultima accesare: 26/06/2024.
-[49]	***, Solidity Plugin Pycharm, https://plugins.jetbrains.com/plugin/9475-solidity, ultima                          accesare: 26/06/2024.
-[50]	***, Binary losss function, https://arize.com/blog-course/binary-cross-entropy-log-loss/, ultima         accesare: 26/06/2024.
-[51]	Florin Leon, Învățare automată – note de curs, http://florinleon.byethost24.com/curs_ia.html, ultima accesare: 26/06/2024.
-[52]	***, Sigmoid Function in Artificial Neural Networks, https://www.analyticsvidhya.com/blog/2023/01/why-is-sigmoid-function-important-in-artificial-neural-networks/, ultima accesare: 26/06/2024.
-[53]	***, Mainnet, https://academy.binance.com/en/glossary/mainnet, ultima accesare: 26/06/2024.
-[54]	Vitalik Buterin, EIP-170: Contract code size limit, https://eips.ethereum.org/EIPS/eip-170, ultima    accesare: 26/06/2024.
-[55]	***, IPFS, https://ipfs.tech/, ultima accesare: 26/06/2024
+[1]	***, Python Programming Language, https://www.python.org, ultima accesare: 26/06/2024.
+[2]	***, Flask Framework, https://flask.palletsprojects.com/en/3.0.x/, ultima accesare: 30/05/2026.
+[3]	***, SQLite, https://www.sqlite.org/, ultima accesare: 30/05/2026.
+[4]	***, JavaScript / ECMAScript Language Specification, https://ecma-international.org/publications-and-standards/standards/ecma-262/, ultima accesare: 30/05/2026.
+[5]	***, Npm, https://www.npmjs.com/, ultima accesare: 30/05/2026.
+[6]	D. Hardt, "The OAuth 2.0 Authorization Framework", RFC 6749, Internet Engineering Task Force, oct. 2012, https://datatracker.ietf.org/doc/html/rfc6749.
+[7]	***, OAuth 2.0, https://oauth.net/2/, ultima accesare: 30/05/2026.
+[8]	***, OAuth, https://oauth.net/, ultima accesare: 30/05/2026.
+[9]	D. Hardt et al., "The OAuth 2.1 Authorization Framework (Draft)", Internet Engineering Task Force, https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1, ultima accesare: 30/05/2026.
+[10]	S. Li, "A Study on the Applicability of OAuth in the E-Commerce Environment", IEEE International Conference on Service Sciences, 2013, doi: 10.1109/ICSS.2013.24, https://ieeexplore.ieee.org/abstract/document/6625487.
+[11]	V. S. P. Farag, "An Analysis of the OAuth 2.0 Standard", IEEE Symposium on Security and Privacy Workshops, 2011, https://ieeexplore.ieee.org/abstract/document/6123701.
+[12]	S. Goldwasser, S. Micali, C. Rackoff, "The Knowledge Complexity of Interactive Proof Systems", SIAM Journal on Computing, vol. 18, nr. 1, pp. 186-208, 1989, doi: 10.1137/0218012, https://people.csail.mit.edu/silvio/Selected%20Scientific%20Papers/Proof%20Systems/The_Knowledge_Complexity_Of_Interactive_Proof_Systems.pdf.
+[13]	M. A. Ferrag, S. Manoj, "Overview and Applications of Zero Knowledge Proof (ZKP)", Academia, 2020, https://www.academia.edu/43094897/Overview_and_Applications_of_Zero_Knowledge_Proof_ZKP.
+[14]	E. Ben-Sasson, I. Bentov, Y. Horesh, M. Riabzev, "Scalable, Transparent, and Post-Quantum Secure Computational Integrity (ZK-STARKs)", Cryptology ePrint Archive, Report 2018/046, https://eprint.iacr.org/2018/46.
+[15]	A. Sakala et al., "zkAt: A Zero-Knowledge Authentication Primitive", Cryptology ePrint Archive, Report 2025/921, https://eprint.iacr.org/2025/921.
+[16]	A. Amro, T. T. Nguyen, "Blockchain Authentication Scheme Using zk-SNARK Zero-Knowledge Proofs", Electronics, vol. 13, nr. 14, art. 2730, 2024, https://www.mdpi.com/2079-9292/13/14/2730.
+[17]	M. Boubakri et al., "Integrating Zero-Knowledge Proofs with OAuth 2.0 for Multi-Agent Systems", E3S Web of Conferences, vol. 469, 2023, https://www.e3s-conferences.org/articles/e3sconf/abs/2023/106/e3sconf_icegc2023_00085/e3sconf_icegc2023_00085.html.
+[18]	D. Terpstra, "Token-Based Authentication and Authorization Using Zero-Knowledge Proofs for Web API Security", Master's Thesis, Dakota State University, 2023, https://scholar.dsu.edu/theses/425/.
+[19]	C. P. Schnorr, "Efficient Signature Generation by Smart Cards", Journal of Cryptology, vol. 4, nr. 3, pp. 161-174, 1991, doi: 10.1007/BF00196725, https://link.springer.com/article/10.1007/bf00196725.
+[20]	A. J. Menezes, P. C. van Oorschot, S. A. Vanstone, "Handbook of Applied Cryptography", CRC Press, 1996, https://cacr.uwaterloo.ca/hac/.
+[21]	J. Katz, Y. Lindell, "Introduction to Modern Cryptography", ed. 2, CRC Press, 2014.
+[22]	F. Hao, "Schnorr Non-interactive Zero-Knowledge Proof", RFC 8235, Internet Engineering Task Force, sept. 2017, https://www.rfc-editor.org/rfc/rfc8235.html.
+[23]	***, zkDocs: Schnorr Zero-Knowledge Protocol, https://www.zkdocs.com/docs/zkdocs/zero-knowledge-protocols/schnorr/, ultima accesare: 30/05/2026.
+[24]	***, zkp-hmac-communication-js: JavaScript implementation of a Schnorr-style ZKP protocol combined with HMAC, https://github.com/zk-Call/zkp-hmac-communication-js, ultima accesare: 30/05/2026.
+[25]	***, Schnorr Signature, Wikipedia, https://en.wikipedia.org/wiki/Schnorr_signature, ultima accesare: 30/05/2026.
+[26]	D. Boneh, "Applied Cryptography: Schnorr Identification Protocol", Stanford CS355, Lecture 5, 2019, https://crypto.stanford.edu/cs355/19sp/lec5.pdf.
+[27]	M. Jones, J. Bradley, N. Sakimura, "JSON Web Token (JWT)", RFC 7519, Internet Engineering Task Force, mai 2015, https://datatracker.ietf.org/doc/html/rfc7519.
+[28]	S. Sakimura, J. Bradley, N. Agarwal, "Proof Key for Code Exchange by OAuth Public Clients (PKCE)", RFC 7636, Internet Engineering Task Force, sept. 2015, https://datatracker.ietf.org/doc/html/rfc7636.
+[29]	***, Flask-CORS, https://flask-cors.readthedocs.io/, ultima accesare: 30/05/2026.
+[30]	***, Flask-SQLAlchemy, https://flask-sqlalchemy.palletsprojects.com/, ultima accesare: 30/05/2026.
+[31]	***, PyJWT, https://pyjwt.readthedocs.io/en/stable/, ultima accesare: 30/05/2026.
+[32]	***, Authlib, https://authlib.org/, ultima accesare: 30/05/2026.
+[33]	***, pytest, https://docs.pytest.org/, ultima accesare: 30/05/2026.
+[34]	***, Locust, https://locust.io/, ultima accesare: 30/05/2026.
+[35]	***, cryptography (Python library), https://cryptography.io/en/latest/, ultima accesare: 30/05/2026.
+[36]	***, SymPy, https://www.sympy.org/, ultima accesare: 30/05/2026.
+[37]	R. Fielding, J. Reschke, "Hypertext Transfer Protocol (HTTP/1.1): Semantics and Content", RFC 7231, Internet Engineering Task Force, iun. 2014, https://datatracker.ietf.org/doc/html/rfc7231.
+[38]	***, OWASP Secure Headers Project, https://owasp.org/www-project-secure-headers/, ultima accesare: 30/05/2026.
+[39]	D. Crocker, P. Overell, "Augmented BNF for Syntax Specifications: ABNF", RFC 5234, Internet Engineering Task Force, ian. 2008, https://datatracker.ietf.org/doc/html/rfc5234.
+[40]	***, OWASP Cross-Site Scripting (XSS) Prevention Cheat Sheet, https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Scripting_Prevention_Cheat_Sheet.html, ultima accesare: 30/05/2026.
+[41]	D. Wong, "Real-World Cryptography", Manning Publications, 2021, cap. 12.
+[42]	***, MDN Web Docs: Cache-Control, https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control, ultima accesare: 30/05/2026.
+[43]	***, MDN Web Docs: Crypto.getRandomValues(), https://developer.mozilla.org/en-US/docs/Web/API/Crypto/getRandomValues, ultima accesare: 30/05/2026.
+[44]	C. Percival, S. Josefsson, "The scrypt Password-Based Key Derivation Function", RFC 7914, Internet Engineering Task Force, aug. 2016, https://datatracker.ietf.org/doc/html/rfc7914.
+[45]	W. Diffie, M. Hellman, "New Directions in Cryptography", IEEE Transactions on Information Theory, vol. 22, nr. 6, pp. 644-654, nov. 1976, doi: 10.1109/TIT.1976.1055638.
+[46]	E. Rescorla, "The Transport Layer Security (TLS) Protocol Version 1.3", RFC 8446, Internet Engineering Task Force, aug. 2018, https://www.rfc-editor.org/rfc/rfc8446.
+[47]	R. P. Fernandez et al., "Post-Quantum Threats to TLS: A Survey", Cryptography, vol. 9, nr. 4, art. 73, 2025, https://www.mdpi.com/2410-387X/9/4/73.
+[48]	A. Papachristodoulou et al., "TLS 1.3 Traffic Analysis: Challenges and Insufficiencies", Electronics, vol. 13, nr. 20, art. 4000, 2024, https://www.mdpi.com/2079-9292/13/20/4000.
+[49]	***, What the Post-Quantum Shift Means for Your Security Strategy, TechRadar, https://www.techradar.com/pro/what-the-post-quantum-shift-means-for-your-security-strategy, ultima accesare: 30/05/2026.
+[50]	D. J. Bernstein, T. Lange, "Post-Quantum Cryptography", Cryptology ePrint Archive, Report 2015/1075, 2015, https://eprint.iacr.org/2015/1075.pdf.
+[51]	***, OWASP Testing Guide: Session Management, https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/06-Session_Management_Testing/, ultima accesare: 30/05/2026.
+[52]	C. Allen, "The Path to Self-Sovereign Identity", 2016, http://www.lifewithalacrity.com/2016/04/the-path-to-self-soverereign-identity.html.
+[53]	***, Nostr Community Group: HTTP Schnorr Authentication Draft, https://nostrcg.github.io/http-schnorr-auth, ultima accesare: 30/05/2026.
+[54]	P. Kumar, "Efficacy of Schnorr Signature for Stateless Authentication", Medium, https://medium.com/%40prathyusha756/efficacy-of-schnorr-signature-for-stateless-authentication-5ae5d65ec5d3, ultima accesare: 30/05/2026.
+[55]	T. Wu, "The Secure Remote Password Protocol (SRP)", RFC 5054, Internet Engineering Task Force, nov. 2007, https://datatracker.ietf.org/doc/html/rfc5054.
+[56]	***, PAKE: Password Authenticated Key Exchange, https://asecuritysite.com/pake, ultima accesare: 30/05/2026.
+[57]	***, Password Authenticated Key Exchange by Juggling (J-PAKE), Wikipedia, https://en.wikipedia.org/wiki/Password_Authenticated_Key_Exchange_by_Juggling, ultima accesare: 30/05/2026.
+[58]	***, SRP: A Zero-Knowledge Protocol for Password Authentication, Medium, https://medium.com/@mainnetready/srp-a-zero-knowledge-protocol-for-password-authentication-1e19582aab29, ultima accesare: 30/05/2026.
+[59]	V. Shah et al., "Survey on Zero-Knowledge Proof Authentication Protocols", arXiv:2401.11735, 2024, https://arxiv.org/abs/2401.11735.
+[60]	***, Zero Knowledge Authentication, Sedicii, https://sedicii.com/news/zero-knowledge-authentication/, ultima accesare: 30/05/2026.
+[61]	***, Meta Engineering Blog: Post-Quantum Readiness for TLS, https://engineering.fb.com/2024/05/22/security/post-quantum-readiness-tls-pqr-meta/, ultima accesare: 30/05/2026.
+[62]	***, Cloudflare Blog: A Primer on Lattice Cryptography, https://blog.cloudflare.com/lattice-crypto-primer/, ultima accesare: 30/05/2026.
+[63]	A. Z. Vyas et al., "Side-Channel Vulnerabilities of Post-Quantum Cryptographic Algorithms", DIVA Portal, 2023, https://www.diva-portal.org/smash/get/diva2%3A1742628/FULLTEXT01.pdf.
+[64]	F. Deng et al., "Real-World Implementation Weaknesses and Attack Risks in TLS", Computers and Security, 2025, https://www.sciencedirect.com/science/article/abs/pii/S1574013725000140.
 
 
-oauth 
-https://oauth.net/2/ 
-https://datatracker.ietf.org/doc/html/rfc6749  oauth rfc
-https://ieeexplore.ieee.org/abstract/document/6625487  shows how token leakage, traffic sniffing, and replay attacks can compromise OAuth systems
-https://ieeexplore.ieee.org/abstract/document/6123701   - more on what oauth is used for
-https://oauth.net/  - official site
-https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1 - last draft for v2.1
-
-Schnorr
-https://link.springer.com/article/10.1007/bf00196725  - first publication about schnorr signature algorithm
-https://github.com/zk-Call/zkp-hmac-communication-js?tab=readme-ov-file  - JavaScript implementation of a Schnorr-style zero-knowledge proof protocol combined with HMAC communication that lets a prover demonstrate knowledge of a secret (without revealing it) and authenticate messages securely between a client and server.
-
-Books that consider schnorr for zkp authentication and comparison with other algorithms
-https://theswissbay.ch/pdf/Gentoomen%20Library/Cryptography/Handbook%20of%20Applied%20Cryptography%20-%20Alfred%20J.%20Menezes.pdf  
-https://eclass.uniwa.gr/modules/document/file.php/CSCYB105/Reading%20Material/%5BJonathan_Katz%2C_Yehuda_Lindell%5D_Introduction_to_Mo%282nd%29.pdf  
-
-Miscellaneous about schnorr
-https://en.wikipedia.org/wiki/Schnorr_signature  
-https://www.geeksforgeeks.org/computer-networks/schnorr-digital-signature/  
-https://www.geeksforgeeks.org/software-engineering/schnorr-identification-scheme/  
-https://www.rfc-editor.org/rfc/rfc8235.html  - Schnorr Non‑interactive Zero‑Knowledge (NIZK) Proof, describing how to prove knowledge of a discrete logarithm (e.g., a secret key) without revealing it
-https://www.zkdocs.com/docs/zkdocs/zero-knowledge-protocols/schnorr/  - diagram and explanations of a identification way using schnorr (continued here also https://crypto.stanford.edu/cs355/19sp/lec5.pdf )
-
-Zkp
-https://people.csail.mit.edu/silvio/Selected%20Scientific%20Papers/Proof%20Systems/The_Knowledge_Complexity_Of_Interactive_Proof_Systems.pdf  definitions of zkp
-https://www.academia.edu/43094897/Overview_and_Applications_of_Zero_Knowledge_Proof_ZKP  -applications of zkp
-https://eprint.iacr.org/2018/46   first practical implementation of transparent, post‑quantum secure zero‑knowledge proofs (ZK‑STARKs) that can be verified extremely efficiently (sublinear in data size) without relying on trusted setup
-https://eprint.iacr.org/2025/921  - introduces zkAt, zero-knowledge authentication primitive that enables users to prove they satisfy authentication policies (such as signing requirements) without revealing those policies or sensitive details
-https://www.mdpi.com/2079-9292/13/14/2730  - blockchain authentication scheme using zk-SNARK zero-knowledge proofs that enables privacy-preserving, anonymous user authentication while also allowing proactive revocation of credentials
-https://www.e3s-conferences.org/articles/e3sconf/abs/2023/106/e3sconf_icegc2023_00085/e3sconf_icegc2023_00085.html   investigates how Zero-Knowledge Proofs (ZKP) can be integrated with OAuth 2.0 to improve anonymity and security in multi-agent distributed systems, exploring ways to verify claims without exposing sensitive data(schnorr is not included)
-
-https://scholar.dsu.edu/theses/425/  token‑based authentication and authorization method using zero‑knowledge proofs to enhance web API security and privacy, demonstrating improved performance and resilience compared to traditional API authentication techniques
-
-TLS 
-https://www.rfc-editor.org/rfc/rfc8446  - latest rfc on TLS (former SSL), talks about the standard, improvements on the protocol and notes the known attacks (like 0‑RTT replay attacks, side channels, and traffic analysis )
-https://www.mdpi.com/2410-387X/9/4/73  - discusses a future threat to TLS posed by quantum computers. It emphasizes that if post‑quantum cryptography (PQC) is not implemented, the current key exchange mechanisms would become insecure, leaving all previously and future transmitted data vulnerable to compromise
-https://www.mdpi.com/2079-9292/13/20/4000  - TLS 1.3 strengthens privacy so much that analyzing traffic becomes technically challenging, and current methods are often insufficient.
-https://www.techradar.com/pro/what-the-post-quantum-shift-means-for-your-security-strategy  
-https://engineering.fb.com/2024/05/22/security/post-quantum-readiness-tls-pqr-meta/  - meta tries to add PQC
-
-https://www.sciencedirect.com/science/article/abs/pii/S1574013725000140  - notes real-world implementation weaknesses and potential attack risks (misuses that could bring side‑channel, network attacks, zero‑day exploits), and emphasizes the need for future countermeasures and improved security practices.
-https://www.diva-portal.org/smash/get/diva2%3A1742628/FULLTEXT01.pdf  - studies the side‑channel vulnerabilities of post‑quantum cryptographic algorithms (Saber, CRYSTALS‑Kyber) and shows that even quantum‑safe schemes can be compromised in practice if implementations leak information through physical channels, highlighting the need for stronger resistance in future PQC designs
-
-
-Other similar projects/researches
-https://nostrcg.github.io/http-schnorr-auth  - draft implementation of auth through schnorr
-https://medium.com/%40prathyusha756/efficacy-of-schnorr-signature-for-stateless-authentication-5ae5d65ec5d3  - discussing efficiency of a authentication system with schnorr
-
-
-Quantum 
-https://eprint.iacr.org/2015/1075.pdf  - analyzes the impending threat that large‑scale quantum computers pose to current public‑key cryptography
-
-Algorithm similar to Schnorr
-https://datatracker.ietf.org/doc/html/rfc5054   
-
-ZKP Authentication Protocols
-https://asecuritysite.com/pake  
-https://en.wikipedia.org/wiki/Password_Authenticated_Key_Exchange_by_Juggling  
-https://medium.com/@mainnetready/srp-a-zero-knowledge-protocol-for-password-authentication-1e19582aab29  
-https://arxiv.org/abs/2401.11735  
-https://sedicii.com/news/zero-knowledge-authentication/ 
 
 
 -------------------------------------------------------------------
-https://blog.cloudflare.com/lattice-crypto-primer/  - protejarea unui secret impotriva quantum computing
-Protectie extra: folosirea unui canal cu PQC (lattice based criptography)
-Hybrid Auth: Folosirea Schnorr peste un canal deja securizat cu un algoritm post-cuantic pentru schimbul de chei.
+
+
 Anexe
 Anexa 1. 	Schema arhitecturii
 
-A1. este schema arhitecturala a aplicației, iar elementele acesteia sunt după cum urmează:
+A1. este schema arhitecturală a aplicației, iar elementele acesteia sunt după cum urmează:
 ●	Dreptunghiurile mari, fără colturi rotunjite sunt nivelele arhitecturii.
 ●	Dreptunghiurile mici a căror colturi sunt rotunjite reprezintă module ce îndeplinesc un scop.
 ●	Săgețile reprezintă comunicarea între doua componente.

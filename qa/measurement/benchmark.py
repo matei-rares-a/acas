@@ -59,19 +59,7 @@ def _oauth_authorize(c, prefix, client_id_param, redirect_uri, username, passwor
     return (codes[0] if codes else None), bool(codes)
 
 
-    """Print a micro-benchmark results dict as a Markdown table with StdDev."""
-    header = (
-        f"| {'Operation':<42} | {'Mean':>8} | {'Min':>8}"
-        f" | {'Max':>8} | {'P95':>8} | {'StdDev':>8} | Unit |"
-    )
-    sep = "|" + "-" * 44 + "|" + ("-" * 10 + "|") * 5 + "------|"
-    print(header)
-    print(sep)
-    for op, v in results.items():
-        print(
-            f"| {op:<42} | {v['mean']:>8.4f} | {v['min']:>8.4f}"
-            f" | {v['max']:>8.4f} | {v['p95']:>8.4f} | {v.get('stdev', 0):>8.4f} | ms   |"
-        )
+
 
 
 def save_benchmark_csv(
@@ -608,7 +596,7 @@ class TestBenchmark(OAuthTestSuite):
         import sys as _sys
         import tracemalloc
 
-        P, G, Q = server.P, server.G, server.Q
+        P, G = server.P, server.G
 
         def _deep_sizeof(obj, seen=None):
             """Recursively sum sys.getsizeof over obj and all nested objects."""

@@ -10,14 +10,13 @@ import subprocess
 import sys
 import time
 import matplotlib.pyplot as plt
-import matplotlib.style as mstyle
 
 
 _QA_PATH = Path(__file__).resolve().parents[1]
 if str(_QA_PATH) not in sys.path:
     sys.path.insert(0, str(_QA_PATH))
 from qa_utils import (
-    server, SERVER_MODULE_PATH,
+    server,
     derive_password_x, pkce_challenge,
     OAUTH_PKCE_CLIENT_ID, OAUTH_SIMPLE_CLIENT_ID, OAUTH_REDIRECT_URI,
     AUTHLIB_CLIENT_ID, AUTHLIB_REDIRECT_URI,
@@ -25,7 +24,6 @@ from qa_utils import (
 from measurement_utils import setup_isolated_test_user
 from benchmark import (
     _benchmark_latency as run_micro_benchmark,
-    run_throughput_sweep,
 )
 
 _GENERATED = Path(__file__).resolve().parent / "generated"
@@ -54,7 +52,6 @@ def audit_traffic_content(output_md: str = str(_GENERATED / "audit_traffic_conte
     commit_resp = client.post("/login/commit", json=commit_body)
     payload = commit_resp.get_json()
     c = int(payload["challenge_c"])
-    session_id = payload["session_id"]
     s = (rand_r + c * x) % server.Q
     verify_body = {"solution_s": str(s)}
 
@@ -262,7 +259,6 @@ def generate_charts(latency_data: dict | None = None, output_dir: str = str(_GEN
                 "code_challenge": challenge, "code_challenge_method": "S256",
             })
             import re as _re2
-            from urllib.parse import urlparse as _up2, parse_qs as _pqs2
             ar_match = _re2.search(r'name="auth_request_id"\s+value="([^"]+)"',
                                    get_r.data.decode("utf-8") if get_r.status_code == 200 else "")
             ar_id = ar_match.group(1) if ar_match else ""
