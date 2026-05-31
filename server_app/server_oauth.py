@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
-from flask import Blueprint, jsonify, redirect, request
+from flask import Blueprint, jsonify, make_response, redirect, request
 
 
 # ---------------------------------------------------------------------------
@@ -33,10 +33,13 @@ Simplicity: in-memory stores per implementation
 OAUTH_PASSWORD_HASHES     = {"pkce": {}, "simple": {}}
 OAUTH_AUTHORIZATION_CODES = {"pkce": {}, "simple": {}}
 OAUTH_REFRESH_TOKENS      = {"pkce": {}, "simple": {}}
+# Pending authorize requests: keyed by auth_request_id, stored between GET and POST /authorize.
+OAUTH_PENDING_REQUESTS    = {"pkce": {}, "simple": {}}
 
 
 def clear_oauth_state():
-    for store in (OAUTH_PASSWORD_HASHES, OAUTH_AUTHORIZATION_CODES, OAUTH_REFRESH_TOKENS):
+    for store in (OAUTH_PASSWORD_HASHES, OAUTH_AUTHORIZATION_CODES,
+                  OAUTH_REFRESH_TOKENS, OAUTH_PENDING_REQUESTS):
         for impl in store:
             store[impl].clear()
 
@@ -145,6 +148,24 @@ def _validate_scope(scope_text):
     return " ".join(sorted(requested))
 
 
+def _html_login_form(action_url, auth_request_id, error=None):
+    '''Return a minimal HTML login form with a hidden auth_request_id field.
+    The browser submits username + password back to action_url via POST.
+    '''
+    error_html = f'<p style="color:red;margin:0 0 8px">{error}</p>' if error else ""
+    return (
+        '<!doctype html><html><head><meta charset="utf-8"><title>Login</title></head>'
+        '<body style="font-family:sans-serif;max-width:320px;margin:60px auto">'
+        f'<h2>Login</h2>{error_html}'
+        f'<form method="post" action="{action_url}">'
+        f'<input type="hidden" name="auth_request_id" value="{auth_request_id}">'
+        '<label>Username<br><input type="text" name="username" autofocus style="width:100%"></label><br><br>'
+        '<label>Password<br><input type="password" name="password" style="width:100%"></label><br><br>'
+        '<button type="submit" style="width:100%">Login</button>'
+        '</form></body></html>'
+    )
+
+
 # ---------------------------------------------------------------------------
 # PKCE route handlers  (POST /oauth/pkce/...)
 # ---------------------------------------------------------------------------
@@ -160,28 +181,25 @@ def pkce_register():
 
     if not client_id or not password:
         return _oauth_error("invalid_request", "missing client_id or password", 400)
-    if not _User.query.filter_by(client_id=client_id).first():
-        return _oauth_error("invalid_grant", "user not registered", 400)
 
     OAUTH_PASSWORD_HASHES["pkce"][client_id] = _hash_password(password)
     return jsonify({"status": "OAuth pkce user registered"}), 201
 
 
-@pkce_bp.route('/authorize', methods=['POST'])
-def pkce_authorize():
-    '''POST /oauth/pkce/authorize -- authorization code grant with mandatory PKCE (S256).'''
-    data = request.get_json(silent=True) or {}
-
-    response_type         = data.get("response_type", "code")
-    client_id             = data.get("client_id")
-    redirect_uri          = data.get("redirect_uri")
-    username              = data.get("username")
-    password              = data.get("password")
-    state                 = data.get("state")
-    code_challenge        = data.get("code_challenge")
-    code_challenge_method = data.get("code_challenge_method", "S256")
-    response_mode         = data.get("response_mode", "json")
-    scope_text            = data.get("scope", "openid profile")
+@pkce_bp.route('/authorize', methods=['GET'])
+def pkce_authorize_get():
+    '''GET /oauth/pkce/authorize -- validate client params, store pending request, return HTML login form.
+    The browser initiates this with all OAuth params in the query string.
+    The server stores the request and returns a login form; the user's credentials never pass through
+    the client app -- they are submitted directly to the Authorization Server.
+    '''
+    response_type         = request.args.get("response_type", "code")
+    client_id             = request.args.get("client_id")
+    redirect_uri          = request.args.get("redirect_uri")
+    state                 = request.args.get("state")
+    code_challenge        = request.args.get("code_challenge")
+    code_challenge_method = request.args.get("code_challenge_method", "S256")
+    scope_text            = request.args.get("scope", "openid profile")
 
     if response_type != "code":
         return _oauth_error("unsupported_response_type", "only authorization code flow is supported", 400)
@@ -197,42 +215,57 @@ def pkce_authorize():
     if code_challenge_method != "S256":
         return _oauth_error("invalid_request", "only S256 code_challenge_method is supported", 400)
 
-    if not username or not password:
-        return _oauth_error("invalid_request", "missing username or password", 400)
-
-    user        = _User.query.filter_by(client_id=username).first()
-    stored_hash = OAUTH_PASSWORD_HASHES["pkce"].get(username)
-    if not user or stored_hash is None or not secrets.compare_digest(stored_hash, _hash_password(password)):
-        return _oauth_error("access_denied", "resource owner authentication failed", 401)
-
     scope = _validate_scope(scope_text)
     if scope is None:
         return _oauth_error("invalid_scope", "requested scope is not allowed", 400)
 
-    authorization_code = secrets.token_urlsafe(32)
-    OAUTH_AUTHORIZATION_CODES["pkce"][authorization_code] = {
+    auth_request_id = secrets.token_urlsafe(32)
+    OAUTH_PENDING_REQUESTS["pkce"][auth_request_id] = {
         "client_id":             client_id,
-        "resource_owner":        username,
         "redirect_uri":          redirect_uri,
         "scope":                 scope,
+        "state":                 state,
         "code_challenge":        code_challenge,
         "code_challenge_method": code_challenge_method,
         "expires_at":            time.time() + OAUTH_AUTH_CODE_TTL_SECONDS,
     }
+    html = _html_login_form(request.path, auth_request_id)
+    return make_response(html, 200, {"Content-Type": "text/html; charset=utf-8"})
 
-    if response_mode == "redirect":
-        query = {"code": authorization_code}
-        if state:
-            query["state"] = state
-        return redirect(f"{redirect_uri}?{urlencode(query)}", code=302)
 
-    return jsonify({
-        "code":         authorization_code,
-        "state":        state,
-        "redirect_uri": redirect_uri,
-        "expires_in":   OAUTH_AUTH_CODE_TTL_SECONDS,
-        "scope":        scope,
-    }), 200
+@pkce_bp.route('/authorize', methods=['POST'])
+def pkce_authorize():
+    '''POST /oauth/pkce/authorize -- authenticate user from login form submission (RFC 6749 §4.1.2).
+    Reads form-encoded fields: auth_request_id, username, password.
+    On success: 302 redirect to redirect_uri?code=...&state=...
+    On auth failure: 401 JSON (allows headless test clients to inspect the error).
+    '''
+    auth_request_id = request.form.get("auth_request_id", "")
+    username        = request.form.get("username", "").strip()
+    password        = request.form.get("password", "")
+
+    pending = OAUTH_PENDING_REQUESTS["pkce"].pop(auth_request_id, None)
+    if not pending or pending["expires_at"] < time.time():
+        return _oauth_error("invalid_request", "authorization request not found or expired", 400)
+
+    stored_hash = OAUTH_PASSWORD_HASHES["pkce"].get(username)
+    if stored_hash is None or not secrets.compare_digest(stored_hash, _hash_password(password)):
+        return _oauth_error("access_denied", "resource owner authentication failed", 401)
+
+    authorization_code = secrets.token_urlsafe(32)
+    OAUTH_AUTHORIZATION_CODES["pkce"][authorization_code] = {
+        "client_id":             pending["client_id"],
+        "resource_owner":        username,
+        "redirect_uri":          pending["redirect_uri"],
+        "scope":                 pending["scope"],
+        "code_challenge":        pending["code_challenge"],
+        "code_challenge_method": pending["code_challenge_method"],
+        "expires_at":            time.time() + OAUTH_AUTH_CODE_TTL_SECONDS,
+    }
+    query = {"code": authorization_code}
+    if pending["state"]:
+        query["state"] = pending["state"]
+    return redirect(f"{pending['redirect_uri']}?{urlencode(query)}", code=302)
 
 
 @pkce_bp.route('/token', methods=['POST'])
@@ -318,26 +351,21 @@ def simple_register():
 
     if not client_id or not password:
         return _oauth_error("invalid_request", "missing client_id or password", 400)
-    if not _User.query.filter_by(client_id=client_id).first():
-        return _oauth_error("invalid_grant", "user not registered", 400)
 
     OAUTH_PASSWORD_HASHES["simple"][client_id] = _hash_password(password)
     return jsonify({"status": "OAuth simple user registered"}), 201
 
 
-@simple_bp.route('/authorize', methods=['POST'])
-def simple_authorize():
-    '''POST /oauth/simple/authorize -- authorization code grant without PKCE.'''
-    data = request.get_json(silent=True) or {}
-
-    response_type = data.get("response_type", "code")
-    client_id     = data.get("client_id")
-    redirect_uri  = data.get("redirect_uri")
-    username      = data.get("username")
-    password      = data.get("password")
-    state         = data.get("state")
-    response_mode = data.get("response_mode", "json")
-    scope_text    = data.get("scope", "openid profile")
+@simple_bp.route('/authorize', methods=['GET'])
+def simple_authorize_get():
+    '''GET /oauth/simple/authorize -- validate client params, store pending request, return HTML login form.
+    The browser initiates this with all OAuth params in the query string.
+    '''
+    response_type = request.args.get("response_type", "code")
+    client_id     = request.args.get("client_id")
+    redirect_uri  = request.args.get("redirect_uri")
+    state         = request.args.get("state")
+    scope_text    = request.args.get("scope", "openid profile")
 
     if response_type != "code":
         return _oauth_error("unsupported_response_type", "only authorization code flow is supported", 400)
@@ -348,40 +376,53 @@ def simple_authorize():
     if err:
         return err
 
-    if not username or not password:
-        return _oauth_error("invalid_request", "missing username or password", 400)
-
-    user = _User.query.filter_by(client_id=username).first()
-    stored_hash = OAUTH_PASSWORD_HASHES["simple"].get(username)
-    if not user or stored_hash is None or not secrets.compare_digest(stored_hash, _hash_password(password)):
-        return _oauth_error("access_denied", "resource owner authentication failed", 401)
-
     scope = _validate_scope(scope_text)
     if scope is None:
         return _oauth_error("invalid_scope", "requested scope is not allowed", 400)
 
+    auth_request_id = secrets.token_urlsafe(32)
+    OAUTH_PENDING_REQUESTS["simple"][auth_request_id] = {
+        "client_id":    client_id,
+        "redirect_uri": redirect_uri,
+        "scope":        scope,
+        "state":        state,
+        "expires_at":   time.time() + OAUTH_AUTH_CODE_TTL_SECONDS,
+    }
+    html = _html_login_form(request.path, auth_request_id)
+    return make_response(html, 200, {"Content-Type": "text/html; charset=utf-8"})
+
+
+@simple_bp.route('/authorize', methods=['POST'])
+def simple_authorize():
+    '''POST /oauth/simple/authorize -- authenticate user from login form submission (RFC 6749 §4.1.2).
+    Reads form-encoded fields: auth_request_id, username, password.
+    On success: 302 redirect to redirect_uri?code=...&state=...
+    On auth failure: 401 JSON.
+    '''
+    auth_request_id = request.form.get("auth_request_id", "")
+    username        = request.form.get("username", "").strip()
+    password        = request.form.get("password", "")
+
+    pending = OAUTH_PENDING_REQUESTS["simple"].pop(auth_request_id, None)
+    if not pending or pending["expires_at"] < time.time():
+        return _oauth_error("invalid_request", "authorization request not found or expired", 400)
+
+    stored_hash = OAUTH_PASSWORD_HASHES["simple"].get(username)
+    if stored_hash is None or not secrets.compare_digest(stored_hash, _hash_password(password)):
+        return _oauth_error("access_denied", "resource owner authentication failed", 401)
+
     authorization_code = secrets.token_urlsafe(32)
     OAUTH_AUTHORIZATION_CODES["simple"][authorization_code] = {
-        "client_id":      client_id,
+        "client_id":      pending["client_id"],
         "resource_owner": username,
-        "redirect_uri":   redirect_uri,
-        "scope":          scope,
+        "redirect_uri":   pending["redirect_uri"],
+        "scope":          pending["scope"],
         "expires_at":     time.time() + OAUTH_AUTH_CODE_TTL_SECONDS,
     }
-
-    if response_mode == "redirect":
-        query = {"code": authorization_code}
-        if state:
-            query["state"] = state
-        return redirect(f"{redirect_uri}?{urlencode(query)}", code=302)
-
-    return jsonify({
-        "code":         authorization_code,
-        "state":        state,
-        "redirect_uri": redirect_uri,
-        "expires_in":   OAUTH_AUTH_CODE_TTL_SECONDS,
-        "scope":        scope,
-    }), 200
+    query = {"code": authorization_code}
+    if pending["state"]:
+        query["state"] = pending["state"]
+    return redirect(f"{pending['redirect_uri']}?{urlencode(query)}", code=302)
 
 
 @simple_bp.route('/token', methods=['POST'])
@@ -453,6 +494,11 @@ def simple_token():
 @compat_bp.route('/register', methods=['POST'])
 def compat_register():
     return pkce_register()
+
+
+@compat_bp.route('/authorize', methods=['GET'])
+def compat_authorize_get():
+    return pkce_authorize_get()
 
 
 @compat_bp.route('/authorize', methods=['POST'])

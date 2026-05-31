@@ -123,7 +123,7 @@ class TestNegativeCases(BaseTestSuite):
 
         with server.app.app_context():
             server.db.session.add(
-                server.User(client_id=client_id, secret_y=str(initial_secret_y))
+                server.User(client_id=client_id, secret_y=initial_secret_y.to_bytes(256, 'big'))
             )
             server.db.session.commit()
 
@@ -138,5 +138,5 @@ class TestNegativeCases(BaseTestSuite):
         with server.app.app_context():
             users = server.User.query.filter_by(client_id=client_id).all()
             assert len(users) == 1
-            assert users[0].secret_y == str(initial_secret_y)
+            assert users[0].secret_y == initial_secret_y.to_bytes(256, 'big')
 

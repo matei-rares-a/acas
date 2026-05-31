@@ -1,10 +1,12 @@
 import csv
+import re as _re
 import secrets as secrets_module
 import sys
 import time
 import timeit
 import statistics
 from pathlib import Path
+from urllib.parse import urlparse as _urlparse, parse_qs as _parse_qs
 
 import pytest
 
@@ -29,7 +31,34 @@ from measurement_utils import setup_isolated_test_user
 # CSV persistence helpers
 # ---------------------------------------------------------------------------
 
-def print_benchmark_table(results: dict) -> None:
+def _oauth_authorize(c, prefix, client_id_param, redirect_uri, username, password,
+                     code_challenge=None, code_challenge_method=None, scope="openid profile"):
+    """Execute GET+POST authorize flow and return (code, ok).
+    Mirrors the RFC 6749 browser redirect pattern used by the server.
+    """
+    qs = {"response_type": "code", "client_id": client_id_param,
+          "redirect_uri": redirect_uri, "scope": scope}
+    if code_challenge:
+        qs["code_challenge"] = code_challenge
+        qs["code_challenge_method"] = code_challenge_method or "S256"
+    get_resp = c.get(f"/{prefix}/authorize", query_string=qs)
+    if get_resp.status_code != 200:
+        return None, False
+    html = get_resp.data.decode("utf-8")
+    m = _re.search(r'name="auth_request_id"\s+value="([^"]+)"', html)
+    auth_req_id = m.group(1) if m else ""
+    post_resp = c.post(
+        f"/{prefix}/authorize",
+        data={"auth_request_id": auth_req_id, "username": username, "password": password},
+        follow_redirects=False,
+    )
+    if post_resp.status_code != 302:
+        return None, False
+    loc = post_resp.headers.get("Location", "")
+    codes = _parse_qs(_urlparse(loc).query).get("code")
+    return (codes[0] if codes else None), bool(codes)
+
+
     """Print a micro-benchmark results dict as a Markdown table with StdDev."""
     header = (
         f"| {'Operation':<42} | {'Mean':>8} | {'Min':>8}"
@@ -147,66 +176,34 @@ def run_throughput_sweep(
             rows.append({"users": burst, "method": "ZKP", "rps": rps})
             print(f"    ZKP          : {zkp_ok}/{burst} OK  {rps:.2f} RPS")
 
-            # -- OAuth2 PKCE: authorize + token -------------------------------
+            # -- OAuth2 PKCE: authorize only (GET + POST -> 302) -------------
             t0 = time.perf_counter()
             pkce_ok = 0
             for _ in range(burst):
                 code_verifier = secrets_module.token_urlsafe(48)
                 challenge = pkce_challenge(code_verifier)
-                auth_resp = c.post(
-                    "/oauth/pkce/authorize",
-                    json={
-                        "response_type": "code",
-                        "client_id": OAUTH_PKCE_CLIENT_ID,
-                        "redirect_uri": OAUTH_REDIRECT_URI,
-                        "username": client_id_base,
-                        "password": password,
-                        "scope": "openid profile",
-                        "code_challenge": challenge,
-                        "code_challenge_method": "S256",
-                        "response_mode": "json",
-                    },
+                code, ok = _oauth_authorize(
+                    c, "oauth/pkce", OAUTH_PKCE_CLIENT_ID, OAUTH_REDIRECT_URI,
+                    client_id_base, password,
+                    code_challenge=challenge, code_challenge_method="S256",
                 )
-                if auth_resp.status_code != 200:
-                    continue
-                c.post("/oauth/pkce/token", json={
-                    "grant_type": "authorization_code",
-                    "client_id": OAUTH_PKCE_CLIENT_ID,
-                    "redirect_uri": OAUTH_REDIRECT_URI,
-                    "code": auth_resp.get_json()["code"],
-                    "code_verifier": code_verifier,
-                })
-                pkce_ok += 1
+                if ok:
+                    pkce_ok += 1
             elapsed = time.perf_counter() - t0
             rps = round(pkce_ok / elapsed, 4) if elapsed > 0 else 0
             rows.append({"users": burst, "method": "OAuth2 PKCE", "rps": rps})
             print(f"    OAuth2 PKCE  : {pkce_ok}/{burst} OK  {rps:.2f} RPS")
 
-            # -- OAuth2 Simple: authorize + token -----------------------------
+            # -- OAuth2 Simple: authorize only (GET + POST -> 302) -----------
             t0 = time.perf_counter()
             simple_ok = 0
             for _ in range(burst):
-                auth_resp = c.post(
-                    "/oauth/simple/authorize",
-                    json={
-                        "response_type": "code",
-                        "client_id": OAUTH_SIMPLE_CLIENT_ID,
-                        "redirect_uri": OAUTH_REDIRECT_URI,
-                        "username": client_id_base,
-                        "password": password,
-                        "scope": "openid profile",
-                        "response_mode": "json",
-                    },
+                code, ok = _oauth_authorize(
+                    c, "oauth/simple", OAUTH_SIMPLE_CLIENT_ID, OAUTH_REDIRECT_URI,
+                    client_id_base, password,
                 )
-                if auth_resp.status_code != 200:
-                    continue
-                c.post("/oauth/simple/token", json={
-                    "grant_type": "authorization_code",
-                    "client_id": OAUTH_SIMPLE_CLIENT_ID,
-                    "redirect_uri": OAUTH_REDIRECT_URI,
-                    "code": auth_resp.get_json()["code"],
-                })
-                simple_ok += 1
+                if ok:
+                    simple_ok += 1
             elapsed = time.perf_counter() - t0
             rps = round(simple_ok / elapsed, 4) if elapsed > 0 else 0
             rows.append({"users": burst, "method": "OAuth2 Simple", "rps": rps})
@@ -455,7 +452,7 @@ def _benchmark_e2e_flows(iterations=100):
         x, _ = derive_password_x(password)
         y = pow(G, x, P)
         with server.app.app_context():
-            server.db.session.add(server.User(client_id=client_id, secret_y=str(y)))
+            server.db.session.add(server.User(client_id=client_id, secret_y=y.to_bytes(256, 'big')))
             server.db.session.commit()
         c.post("/oauth/pkce/register",   json={"client_id": client_id, "password": password})
         c.post("/oauth/simple/register", json={"client_id": client_id, "password": password})
@@ -481,57 +478,39 @@ def _benchmark_e2e_flows(iterations=100):
             "max": max(zkp_times), "p95": sorted(zkp_times)[int(len(zkp_times) * 0.95)],
         }
 
-        # -- OAuth2 PKCE: authorize + token ------------------------------------
+        # -- OAuth2 PKCE: authorize only (GET + POST -> 302 redirect) ----------
         pkce_times = []
         for _ in range(iterations):
-            t0 = _time.perf_counter()
             code_verifier = secrets_module.token_urlsafe(48)
             challenge = pkce_challenge(code_verifier)
-            auth_resp = c.post(
-                "/oauth/pkce/authorize",
-                json={
-                    "response_type": "code", "client_id": OAUTH_PKCE_CLIENT_ID,
-                    "redirect_uri": OAUTH_REDIRECT_URI, "username": client_id,
-                    "password": password, "scope": "openid profile",
-                    "code_challenge": challenge, "code_challenge_method": "S256",
-                    "response_mode": "json",
-                },
+            t0 = _time.perf_counter()
+            code, ok = _oauth_authorize(
+                c, "oauth/pkce", OAUTH_PKCE_CLIENT_ID, OAUTH_REDIRECT_URI,
+                client_id, password,
+                code_challenge=challenge, code_challenge_method="S256",
             )
-            if auth_resp.status_code != 200:
-                continue
-            c.post("/oauth/pkce/token", json={
-                "grant_type": "authorization_code", "client_id": OAUTH_PKCE_CLIENT_ID,
-                "redirect_uri": OAUTH_REDIRECT_URI, "code": auth_resp.get_json()["code"],
-                "code_verifier": code_verifier,
-            })
             pkce_times.append((_time.perf_counter() - t0) * 1000)
+            if not ok:
+                continue
 
-        results["OAuth2 PKCE full flow (authorize + token) (ms)"] = {
+        results["OAuth2 PKCE login (authorize GET + POST) (ms)"] = {
             "mean": statistics.mean(pkce_times), "min": min(pkce_times),
             "max": max(pkce_times), "p95": sorted(pkce_times)[int(len(pkce_times) * 0.95)],
         }
 
-        # -- OAuth2 Simple: authorize + token ----------------------------------
+        # -- OAuth2 Simple: authorize only (GET + POST -> 302 redirect) --------
         simple_times = []
         for _ in range(iterations):
             t0 = _time.perf_counter()
-            auth_resp = c.post(
-                "/oauth/simple/authorize",
-                json={
-                    "response_type": "code", "client_id": OAUTH_SIMPLE_CLIENT_ID,
-                    "redirect_uri": OAUTH_REDIRECT_URI, "username": client_id,
-                    "password": password, "scope": "openid profile", "response_mode": "json",
-                },
+            code, ok = _oauth_authorize(
+                c, "oauth/simple", OAUTH_SIMPLE_CLIENT_ID, OAUTH_REDIRECT_URI,
+                client_id, password,
             )
-            if auth_resp.status_code != 200:
-                continue
-            c.post("/oauth/simple/token", json={
-                "grant_type": "authorization_code", "client_id": OAUTH_SIMPLE_CLIENT_ID,
-                "redirect_uri": OAUTH_REDIRECT_URI, "code": auth_resp.get_json()["code"],
-            })
             simple_times.append((_time.perf_counter() - t0) * 1000)
+            if not ok:
+                continue
 
-        results["OAuth2 Simple full flow (authorize + token) (ms)"] = {
+        results["OAuth2 Simple login (authorize GET + POST) (ms)"] = {
             "mean": statistics.mean(simple_times), "min": min(simple_times),
             "max": max(simple_times), "p95": sorted(simple_times)[int(len(simple_times) * 0.95)],
         }
@@ -619,7 +598,7 @@ class TestBenchmark(OAuthTestSuite):
         output = capsys.readouterr().out
         sys.stdout.write(output)
         assert "ZKP full flow" in output
-        assert "OAuth2 PKCE full flow" in output
+        assert "OAuth2 PKCE login" in output
         assert "Authlib PKCE full flow" in output
         assert all(v["mean"] >= 0 for v in data.values())
 
@@ -650,7 +629,7 @@ class TestBenchmark(OAuthTestSuite):
             with server.app.app_context():
                 x, _ = derive_password_x("flood-pass")
                 y = pow(G, x, P)
-                server.db.session.add(server.User(client_id="flood_user", secret_y=str(y)))
+                server.db.session.add(server.User(client_id="flood_user", secret_y=y.to_bytes(256, 'big')))
                 server.db.session.commit()
 
             sizes = {}

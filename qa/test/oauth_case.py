@@ -1,4 +1,6 @@
+import re as _re
 import secrets as secrets_module
+from urllib.parse import urlparse as _urlparse, parse_qs as _parse_qs
 
 import pytest
 
@@ -23,64 +25,100 @@ def _register_oauth(client, client_id, password):
     return x, y
 
 
+def _code_from_redirect(resp):
+    """Parse the authorization code from a 302 Location header."""
+    loc = resp.headers.get("Location", "")
+    codes = _parse_qs(_urlparse(loc).query).get("code")
+    return codes[0] if codes else None
+
+
 def _authorize_oauth_pkce(client, username, password, code_verifier=None, scope="openid profile"):
+    """Execute the RFC 6749 browser-style authorize flow for PKCE.
+    Step 1: GET /oauth/pkce/authorize  -> HTML login form (auth_request_id hidden field).
+    Step 2: POST /oauth/pkce/authorize (form) -> 302 redirect with code, or 4xx JSON on error.
+    Returns (post_resp, code_verifier).
+    """
     if code_verifier is None:
         code_verifier = secrets_module.token_urlsafe(48)
-    resp = client.post(
+
+    get_resp = client.get(
         "/oauth/pkce/authorize",
-        json={
-            "response_type": "code",
-            "client_id": OAUTH_PKCE_CLIENT_ID,
-            "redirect_uri": OAUTH_REDIRECT_URI,
-            "username": username,
-            "password": password,
-            "scope": scope,
-            "code_challenge": pkce_challenge(code_verifier),
+        query_string={
+            "response_type":         "code",
+            "client_id":             OAUTH_PKCE_CLIENT_ID,
+            "redirect_uri":          OAUTH_REDIRECT_URI,
+            "scope":                 scope,
+            "code_challenge":        pkce_challenge(code_verifier),
             "code_challenge_method": "S256",
-            "response_mode": "json",
         },
     )
-    return resp, code_verifier
+    if get_resp.status_code != 200:
+        return get_resp, code_verifier
+
+    html = get_resp.data.decode("utf-8")
+    m = _re.search(r'name="auth_request_id"\s+value="([^"]+)"', html)
+    auth_request_id = m.group(1) if m else ""
+
+    post_resp = client.post(
+        "/oauth/pkce/authorize",
+        data={"auth_request_id": auth_request_id, "username": username, "password": password},
+        follow_redirects=False,
+    )
+    return post_resp, code_verifier
 
 
 def _exchange_oauth_pkce_code(client, code, code_verifier):
     return client.post(
         "/oauth/pkce/token",
         json={
-            "grant_type": "authorization_code",
-            "client_id": OAUTH_PKCE_CLIENT_ID,
-            "redirect_uri": OAUTH_REDIRECT_URI,
-            "code": code,
+            "grant_type":    "authorization_code",
+            "client_id":     OAUTH_PKCE_CLIENT_ID,
+            "redirect_uri":  OAUTH_REDIRECT_URI,
+            "code":          code,
             "code_verifier": code_verifier,
         },
     )
 
 
 def _authorize_oauth_simple(client, username, password, scope="openid profile"):
-    return client.post(
+    """Execute the RFC 6749 browser-style authorize flow for Simple OAuth.
+    Step 1: GET /oauth/simple/authorize -> HTML login form.
+    Step 2: POST /oauth/simple/authorize (form) -> 302 redirect with code, or 4xx JSON on error.
+    Returns post_resp.
+    """
+    get_resp = client.get(
         "/oauth/simple/authorize",
-        json={
+        query_string={
             "response_type": "code",
-            "client_id": OAUTH_SIMPLE_CLIENT_ID,
-            "redirect_uri": OAUTH_REDIRECT_URI,
-            "username": username,
-            "password": password,
-            "scope": scope,
-            "response_mode": "json",
+            "client_id":     OAUTH_SIMPLE_CLIENT_ID,
+            "redirect_uri":  OAUTH_REDIRECT_URI,
+            "scope":         scope,
         },
     )
+    if get_resp.status_code != 200:
+        return get_resp
 
+    html = get_resp.data.decode("utf-8")
+    m = _re.search(r'name="auth_request_id"\s+value="([^"]+)"', html)
+    auth_request_id = m.group(1) if m else ""
+
+    return client.post(
+        "/oauth/simple/authorize",
+        data={"auth_request_id": auth_request_id, "username": username, "password": password},
+        follow_redirects=False,
+    )
 
 def _exchange_oauth_simple_code(client, code):
     return client.post(
         "/oauth/simple/token",
         json={
-            "grant_type": "authorization_code",
-            "client_id": OAUTH_SIMPLE_CLIENT_ID,
+            "grant_type":   "authorization_code",
+            "client_id":    OAUTH_SIMPLE_CLIENT_ID,
             "redirect_uri": OAUTH_REDIRECT_URI,
-            "code": code,
+            "code":         code,
         },
     )
+
 
 class TestOAuthCases(OAuthTestSuite):
 
@@ -89,11 +127,10 @@ class TestOAuthCases(OAuthTestSuite):
         """OAuth PKCE authorize endpoint should issue an authorization code after user login."""
         _register_oauth(client, "oauth_user", "oauth-pass")
         resp, _ = _authorize_oauth_pkce(client, "oauth_user", "oauth-pass")
-        assert resp.status_code == 200
-        payload = resp.get_json()
-        assert "code" in payload
-        assert payload.get("redirect_uri") == OAUTH_REDIRECT_URI
-        assert payload.get("expires_in") > 0
+        assert resp.status_code == 302
+        code = _code_from_redirect(resp)
+        assert code is not None
+        assert OAUTH_REDIRECT_URI in resp.headers["Location"]
 
 
     def test_oauth_pkce_token_returns_bearer_and_refresh_tokens(self, client):
@@ -101,7 +138,8 @@ class TestOAuthCases(OAuthTestSuite):
         """OAuth PKCE token endpoint should exchange a valid authorization code for bearer tokens."""
         _register_oauth(client, "oauth_user", "oauth-pass")
         auth_resp, code_verifier = _authorize_oauth_pkce(client, "oauth_user", "oauth-pass")
-        resp = _exchange_oauth_pkce_code(client, auth_resp.get_json()["code"], code_verifier)
+        assert auth_resp.status_code == 302
+        resp = _exchange_oauth_pkce_code(client, _code_from_redirect(auth_resp), code_verifier)
         assert resp.status_code == 200
         payload = resp.get_json()
         assert "access_token" in payload
@@ -124,7 +162,8 @@ class TestOAuthCases(OAuthTestSuite):
         """OAuth PKCE token exchange must reject mismatched PKCE verifiers."""
         _register_oauth(client, "oauth_user3", "oauth-pass")
         auth_resp, _ = _authorize_oauth_pkce(client, "oauth_user3", "oauth-pass", code_verifier="expected-verifier")
-        resp = _exchange_oauth_pkce_code(client, auth_resp.get_json()["code"], "wrong-verifier")
+        assert auth_resp.status_code == 302
+        resp = _exchange_oauth_pkce_code(client, _code_from_redirect(auth_resp), "wrong-verifier")
         assert resp.status_code == 400
         assert resp.get_json().get("error") == "invalid_grant"
 
@@ -134,13 +173,14 @@ class TestOAuthCases(OAuthTestSuite):
         """OAuth PKCE refresh_token grant should issue a new bearer token and rotate refresh tokens."""
         _register_oauth(client, "oauth_user4", "oauth-pass")
         auth_resp, code_verifier = _authorize_oauth_pkce(client, "oauth_user4", "oauth-pass")
-        token_resp = _exchange_oauth_pkce_code(client, auth_resp.get_json()["code"], code_verifier)
+        assert auth_resp.status_code == 302
+        token_resp = _exchange_oauth_pkce_code(client, _code_from_redirect(auth_resp), code_verifier)
         refresh_token = token_resp.get_json()["refresh_token"]
         refresh_resp = client.post(
             "/oauth/pkce/token",
             json={
-                "grant_type": "refresh_token",
-                "client_id": OAUTH_PKCE_CLIENT_ID,
+                "grant_type":    "refresh_token",
+                "client_id":     OAUTH_PKCE_CLIENT_ID,
                 "refresh_token": refresh_token,
             },
         )
@@ -155,8 +195,8 @@ class TestOAuthCases(OAuthTestSuite):
         """Simple OAuth flow should exchange authorization code without PKCE verifier."""
         _register_oauth(client, "oauth_simple_user", "oauth-pass")
         auth_resp = _authorize_oauth_simple(client, "oauth_simple_user", "oauth-pass")
-        assert auth_resp.status_code == 200
-        resp = _exchange_oauth_simple_code(client, auth_resp.get_json()["code"])
+        assert auth_resp.status_code == 302
+        resp = _exchange_oauth_simple_code(client, _code_from_redirect(auth_resp))
         assert resp.status_code == 200
         payload = resp.get_json()
         assert payload.get("token_type") == "Bearer"
@@ -169,13 +209,14 @@ class TestOAuthCases(OAuthTestSuite):
         """Simple OAuth refresh_token grant should issue a new bearer token and rotate refresh tokens."""
         _register_oauth(client, "oauth_simple_user2", "oauth-pass")
         auth_resp = _authorize_oauth_simple(client, "oauth_simple_user2", "oauth-pass")
-        token_resp = _exchange_oauth_simple_code(client, auth_resp.get_json()["code"])
+        assert auth_resp.status_code == 302
+        token_resp = _exchange_oauth_simple_code(client, _code_from_redirect(auth_resp))
         refresh_token = token_resp.get_json()["refresh_token"]
         refresh_resp = client.post(
             "/oauth/simple/token",
             json={
-                "grant_type": "refresh_token",
-                "client_id": OAUTH_SIMPLE_CLIENT_ID,
+                "grant_type":    "refresh_token",
+                "client_id":     OAUTH_SIMPLE_CLIENT_ID,
                 "refresh_token": refresh_token,
             },
         )
@@ -204,32 +245,40 @@ class TestOAuthCases(OAuthTestSuite):
             json={"client_id": "compat_user", "password": "compat-pass"},
         ).status_code == 201
 
-        # Authorize via compat alias -- PKCE S256 required because compat -> pkce
-        auth_resp = client.post(
+        # GET /oauth/authorize -> HTML form (compat -> pkce, PKCE S256 required)
+        get_resp = client.get(
             "/oauth/authorize",
-            json={
+            query_string={
                 "response_type":         "code",
                 "client_id":             OAUTH_PKCE_CLIENT_ID,
                 "redirect_uri":          OAUTH_REDIRECT_URI,
-                "username":              "compat_user",
-                "password":              "compat-pass",
                 "scope":                 "openid profile",
                 "code_challenge":        pkce_challenge(code_verifier),
                 "code_challenge_method": "S256",
-                "response_mode":         "json",
             },
         )
-        assert auth_resp.status_code == 200
-        code = auth_resp.get_json()["code"]
+        assert get_resp.status_code == 200
+        html = get_resp.data.decode()
+        m = _re.search(r'name="auth_request_id"\s+value="([^"]+)"', html)
+        auth_request_id = m.group(1) if m else ""
+
+        # POST /oauth/authorize with form credentials
+        auth_resp = client.post(
+            "/oauth/authorize",
+            data={"auth_request_id": auth_request_id, "username": "compat_user", "password": "compat-pass"},
+            follow_redirects=False,
+        )
+        assert auth_resp.status_code == 302
+        code = _code_from_redirect(auth_resp)
 
         # Exchange code via compat alias
         token_resp = client.post(
             "/oauth/token",
             json={
-                "grant_type":   "authorization_code",
-                "client_id":    OAUTH_PKCE_CLIENT_ID,
-                "redirect_uri": OAUTH_REDIRECT_URI,
-                "code":         code,
+                "grant_type":    "authorization_code",
+                "client_id":     OAUTH_PKCE_CLIENT_ID,
+                "redirect_uri":  OAUTH_REDIRECT_URI,
+                "code":          code,
                 "code_verifier": code_verifier,
             },
         )

@@ -1,0 +1,82 @@
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant UI as Client App
+    participant API as Server
+    participant DB as Database
+
+    U->>UI: Enter client_id, password
+
+    rect rgb(220, 245, 235)
+    Note over UI,API: OAuth Simple Registration
+    UI->>API: POST /oauth/simple/register  { client_id, password }
+    break missing client_id or password
+        API->>UI: 400 { error: invalid_request }
+    end
+    break user not in ZKP registry
+        API->>UI: 400 { error: invalid_grant }
+    end
+    Note over API: store SHA-256(password) for client_id
+    API->>API: 
+    API->>UI: 201 { status: OAuth simple user registered }
+    end
+
+    rect rgb(220, 245, 235)
+    Note over UI,API: Authorization Code (no PKCE)
+    UI->>API: POST /oauth/simple/authorize  { response_type: code, client_id, redirect_uri, username, password, scope }
+    break unsupported response_type
+        API->>UI: 400 { error: unsupported_response_type }
+    end
+    break missing client_id or redirect_uri
+        API->>UI: 400 { error: invalid_request }
+    end
+    break unknown client or redirect_uri not registered
+        API->>UI: 400 { error: unauthorized_client }
+    end
+    API->>DB: SELECT secret_y WHERE client_id = username
+    DB->>API: { user }
+    break authentication failed
+        API->>UI: 401 { error: access_denied }
+    end
+    Note over API: authorization_code = CSPRNG token
+    API->>API: 
+    Note over API: store{ code, client_id, resource_owner, redirect_uri, scope, expires_at }
+    API->>API: 
+    API->>UI: 200 { code, expires_in, scope }
+    end
+
+    rect rgb(220, 245, 235)
+    Note over UI,API: Token Exchange
+    UI->>API: POST /oauth/simple/token  { grant_type: authorization_code, code, client_id, redirect_uri }
+    break unsupported grant_type
+        API->>UI: 400 { error: unsupported_grant_type }
+    end
+    break missing code, client_id or redirect_uri
+        API->>UI: 400 { error: invalid_request }
+    end
+    break unknown client or redirect_uri mismatch
+        API->>UI: 400 { error: unauthorized_client }
+    end
+    break code invalid, expired or client mismatch
+        API->>UI: 400 { error: invalid_grant }
+    end
+    Note over API: access_token = JWT( sub, scope, exp=now+3600s )
+    API->>API: 
+    Note over API: refresh_token = CSPRNG token, store with exp=now+86400s
+    API->>API: 
+    API->>DB: UPSERT AuthToken(user_id, access_token)
+    DB->>API: OK
+    API->>UI: 200 { access_token, token_type: Bearer, expires_in: 3600, refresh_token, scope }
+    UI->>U: Authenticated
+    end
+
+    rect rgb(220, 245, 235)
+    Note over UI,API: Token Refresh
+    UI->>API: POST /oauth/simple/token  { grant_type: refresh_token, refresh_token, client_id }
+    break refresh_token invalid, expired or client mismatch
+        API->>UI: 400 { error: invalid_grant }
+    end
+    Note over API: issue new access_token and refresh_token
+    API->>API: 
+    API->>UI: 200 { access_token, token_type: Bearer, expires_in: 3600, refresh_token, scope }
+    end

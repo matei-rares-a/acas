@@ -19,6 +19,8 @@ Covers all endpoints, headers, status codes, and OAuth2 flows for this server.
 
 ## 2. Response Headers (emitted on every response)
 
+> **Scope**: security and metadata headers are applied to the core ZKP paths (`/health`, `/parameters`, `/register`, `/login/*`, `/data`). OAuth endpoints (`/oauth/*`, `/authlib/*`) do not inherit them.
+
 | Header | Value |
 |---|---|
 | `Content-Type` | `application/json; charset=utf-8` |
@@ -73,20 +75,21 @@ Register a ZKP user. Client sends `client_id` and `secret_y = G^x mod P`.
 
 ### 5.4 `POST /login/commit`
 Step 1 of the ZKP login. Client sends commitment `t = G^r mod P`.
-- `200 OK` – `{ "challenge_c": "<int>", "session_id": "<token>" }`
+- `200 OK` – `{ "challenge_c": "<int>", "session_id": "<token>" }`. The challenge is **deterministic**: derived via `SHA-256(remote_addr | user-agent | session_id | client_id | t) mod Q`, binding the authentication attempt to the exact network connection.
 - `400 Bad Request` – missing `client_id` or `commitment_t`
 - `404 Not Found` – user not registered
-- `409 Conflict` – existing pending session for this client (start a new session)
+- `409 Conflict` – existing pending session for this `client_id`; second commit within 50 ms treated as a benign race (first writer wins); after 50 ms the old session is invalidated as a hijack attempt. Client should start a new session.
 - `422 Unprocessable Entity` – `commitment_t` is not a valid subgroup member
 
 ### 5.5 `POST /login/verify`
-Step 2 of the ZKP login. Requires `X-Auth-Session: <session_id>` header.
-- `200 OK` – proof valid → `{ "token": "<JWT>" }`
-- `401` – session expired (TTL exceeded between commit and verify)
-- `400 Bad Request` – missing `X-Auth-Session` header or invalid/missing `solution_s`
-- `401 Unauthorized` – proof verification failed
+Step 2 of the ZKP login. Requires `X-Auth-Session: <session_id>` header. The commit → verify window is **5 seconds** (SESSION_TTL).
+- `200 OK` – proof valid → `{ "token": "<JWT>" }`. JWT is HS256-signed and valid for **1 hour** (`expires_in: 3600`).
+- `400 Bad Request` – missing `X-Auth-Session` header
+- `401 Unauthorized` – session expired (TTL exceeded between commit and verify)
+- `401 Unauthorized` – session binding mismatch: remote address or User-Agent changed between commit and verify (relay / MitM detection)
+- `401 Unauthorized` – proof verification failed (`G^s ≠ t · y^c mod P`)
 - `404 Not Found` – session or user not found
-- `422 Unprocessable Entity` – `solution_s` out of valid range `[0, Q)`
+- `422 Unprocessable Entity` – `solution_s` is missing, `≤ 0`, or `≥ Q` (valid range: `0 < s < Q`)
 
 ### 5.6 `GET /data` · `POST /data` · `PUT /data`
 Read or write personal data. Requires valid Bearer JWT.
@@ -167,3 +170,17 @@ Authlib-backed PKCE implementation. Parameters must be **form-encoded** (`Conten
 | PKCE | RFC 7636 |
 | JWT | RFC 7519 |
 | Security headers | MDN HTTP headers reference |
+
+---
+
+## 8. Implementation Constants
+
+| Constant | Value | Notes |
+|---|---|---|
+| `SESSION_TTL` | 5 s | Commit → verify window; expired sessions return `401` |
+| `COMMIT_RACE_WINDOW_S` | 50 ms | Two commits within this window = benign race; after = hijack, old session invalidated |
+| JWT `exp` | `iat + 3600 s` | HS256, signed with server secret |
+| OAuth2 access token TTL | 3600 s | Custom PKCE, Simple, and Authlib implementations |
+| OAuth2 auth code TTL | 120 s | |
+| OAuth2 refresh token TTL | 86400 s | |
+| Group parameters | P = 2048-bit safe prime, Q = (P-1)/2, G = 4 | Validated: `pow(v, Q, P) == 1` |

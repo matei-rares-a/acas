@@ -1,0 +1,36 @@
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant App as Client App
+    participant S as Server
+
+    U->>App: Click Login
+
+    rect rgb(220, 235, 255)
+    Note over App,S: Commit
+    App->>S: GET /parameters
+    S->>App: 200 { P, G }
+    Note over App: R = random in [1, Q-1]
+    App->>App: 
+    Note over App: T = G^R mod P
+    App->>App: 
+    App->>S: POST /login/commit  { T, R }
+    Note over S: C = H( R, T, session_id, ... ) mod Q
+    S->>S: 
+    Note over S: store { T, R, C, session_id }
+    S->>S: 
+    S->>U: 200  render login form  { C, Q, session_id }
+    end
+
+    rect rgb(244, 242, 245)
+    Note over U,S: Verify
+    U->>U: Enter password
+    Note over U: X = derive(password, client_id) mod Q
+    U->>U: 
+    Note over U: S_val = (R + C * X) mod Q
+    U->>U: 
+    U->>S: POST /login/verify  { solution_s: S_val }<br/>X-Auth-Session: session_id
+    Note over S: G^s == T * y^c  (mod P)
+    S->>S: 
+    S->>App: 200 { JWT }
+    end

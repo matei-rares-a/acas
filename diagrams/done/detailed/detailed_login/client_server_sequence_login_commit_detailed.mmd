@@ -1,0 +1,79 @@
+sequenceDiagram
+  autonumber
+    actor U as User
+    participant UI as Client App
+    participant API as Server
+    participant DB as Database
+
+    rect rgb(244, 242, 245)
+    U->>UI: Enter client_id, password
+
+    Note over U,DB: Commit
+    UI->>API: GET /parameters
+    API->>UI: 200 { P, G }
+    Note over UI: x = derive(password, client_id) mod Q
+    
+    Note over UI: r = random in [1, Q-1]
+    
+    Note over UI: t = G^r mod P
+    UI->>UI: 
+    UI->>API: POST /login/commit <br> { client_id: client_id, commitment: t }
+    break missing client_id or commitment_t
+        API->>UI: 400 { reason: missing parameters }
+    end
+    break t not in subgroup
+        API->>UI: 422 { reason: invalid commitment }
+    end
+    API->>DB: SELECT User WHERE client_id=?
+    DB->>API: { user object }
+    break user not found
+        API->>UI: 404 { reason: user not registered }
+    end
+    Note over API: session_id = CSPRNG 
+    Note over API: binding = Hash( TCP_peer_addr | User-Agent | session_id | client_id | t )
+    Note over API: c = int(binding) mod Q
+    Note over API: store in sessions{ t, c, binding, peer_addr, timestamp }
+    API->>API: 
+    API->>UI: 200 { session_id: session_id, challenge: c }
+   
+   
+    Note over U,DB: Verify
+    Note over UI: s = (r + c * x) mod Q
+    UI->>UI: 
+    UI->>API: POST /login/verify  { solution: s }<br/><br/> X-Auth-Session: session_id 
+    break session_id not found
+        API->>UI: 404 { reason: invalid session_id }
+    end
+    break session time expired  
+        Note over API: DELETE sessions[session_id]
+        API->>UI: 401 { reason: session expired }
+    end
+    break s out of range [1, Q)
+        Note over API: DELETE sessions[session_id]
+        
+        API->>UI: 422 { reason: invalid solution }
+    end
+    Note over API: binding = H( TCP_peer_addr | User-Agent | session_id | client_id | t )
+    API->>API: 
+    break binding mismatch
+        Note over API: DELETE sessions[session_id]
+        API->>UI: 401 { reason: session binding mismatch }
+    end
+    API->>DB: SELECT y WHERE session.client_id=?
+    DB->>API: { secret: y }
+    Note over API: Check  G^s == T * y^c  (mod P)
+    API->>API: 
+    alt proof valid
+        API->>DB: INSERT AuthToken(JWT, client_id, issued_at)
+        DB->>API: OK
+        Note over API: DELETE sessions[session_id]
+        API->>API: 
+        API->>UI: 200 { token: JWT } 
+        UI->>U: Authenticated - JWT received
+    else proof invalid
+        Note over API: DELETE sessions[session_id]
+        API->>API: 
+        API->>UI: 401 { reason: verification failed }
+        UI->>U: Error - unauthenticated
+    end
+    end

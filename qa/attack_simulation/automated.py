@@ -50,7 +50,7 @@ def test_stolen_public_key_cannot_authenticate(client):
     # Attacker reads secret_y directly from the database
     with server.app.app_context():
         user = server.User.query.filter_by(client_id=client_id).first()
-        stolen_y = int(user.secret_y)
+        stolen_y = int.from_bytes(user.secret_y, 'big')
 
     # Attacker computes solution_s using stolen y instead of private x
     # s = r + c * y mod Q  (wrong: y is public, not the private exponent)
@@ -78,7 +78,7 @@ def test_challenge_and_session_id_uniqueness_over_10000_commits(client):
     x, _ = derive_password_x("entropy-password")
     y = pow(server.G, x, server.P)
     with server.app.app_context():
-        server.db.session.add(server.User(client_id=client_id, secret_y=str(y)))
+        server.db.session.add(server.User(client_id=client_id, secret_y=y.to_bytes(256, 'big')))
         server.db.session.commit()
 
     challenges = []

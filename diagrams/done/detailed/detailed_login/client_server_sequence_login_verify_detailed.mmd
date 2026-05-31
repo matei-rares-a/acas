@@ -1,0 +1,50 @@
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant UI as Client App
+    participant API as Server
+    participant DB as Database
+
+    rect rgb(244, 242, 245)
+    API->>UI: 200 { session_id: session_id, challenge: c }
+
+    Note over UI,API: Verify
+    Note over UI: s = (r + c * x) mod Q
+    UI->>UI: 
+    UI->>API: POST /login/verify  { solution: s }<br/><br/> X-Auth-Session: session_id 
+    break session_id not found
+        API->>UI: 404 { reason: invalid session_id }
+    end
+    break session time expired  
+        Note over API: DELETE sessions[session_id]
+        API->>UI: 401 { reason: session expired }
+    end
+    break s out of range [1, Q)
+        Note over API: DELETE sessions[session_id]
+        
+        API->>UI: 422 { reason: invalid solution }
+    end
+    Note over API: binding = H( TCP_peer_addr | User-Agent | session_id | client_id | t )
+    API->>API: 
+    break binding mismatch
+        Note over API: DELETE sessions[session_id]
+        API->>UI: 401 { reason: session binding mismatch }
+    end
+    API->>DB: SELECT y WHERE session.client_id=?
+    DB->>API: { secret: y }
+    Note over API: Check  G^s == T * y^c  (mod P)
+    API->>API: 
+    alt proof valid
+        API->>DB: INSERT AuthToken(JWT, client_id, issued_at)
+        DB->>API: OK
+        Note over API: DELETE sessions[session_id]
+        API->>API: 
+        API->>UI: 200 { token: JWT } 
+        UI->>U: Authenticated - JWT received
+    else proof invalid
+        Note over API: DELETE sessions[session_id]
+        API->>API: 
+        API->>UI: 401 { reason: verification failed }
+        UI->>U: Error - unauthenticated
+    end
+    end

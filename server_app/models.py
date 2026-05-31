@@ -4,7 +4,7 @@ from extensions import db
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     client_id = db.Column(db.String(255), unique=True, nullable=False)
-    secret_y = db.Column(db.String(255), nullable=False)
+    secret_y = db.Column(db.LargeBinary(256), nullable=False)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
 
 

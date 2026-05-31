@@ -60,16 +60,21 @@ def audit_traffic_content(output_md: str = str(_GENERATED / "audit_traffic_conte
 
     classic_example_body = {"client_id": client_id, "password": password}
 
-    # OAuth2 PKCE bodies (static representation of what travels over the wire)
+    # OAuth2 PKCE bodies (what travels over the wire in the GET+POST browser flow)
     code_verifier = secrets_module.token_urlsafe(48)
     code_challenge = pkce_challenge(code_verifier)
-    pkce_authorize_body = {
+    pkce_authorize_get_qs = {
         "response_type": "code",
         "client_id": OAUTH_PKCE_CLIENT_ID,
-        "username": client_id,
-        "password": password,
+        "redirect_uri": "<redirect_uri>",
+        "scope": "openid profile",
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
+    }
+    pkce_authorize_post_body = {
+        "auth_request_id": "<opaque-one-time-token>",
+        "username": client_id,
+        "password": "<hidden-by-browser-form>",
     }
     pkce_token_body = {
         "grant_type": "authorization_code",
@@ -79,11 +84,16 @@ def audit_traffic_content(output_md: str = str(_GENERATED / "audit_traffic_conte
     }
 
     # OAuth2 Simple bodies
-    simple_authorize_body = {
+    simple_authorize_get_qs = {
         "response_type": "code",
         "client_id": OAUTH_SIMPLE_CLIENT_ID,
+        "redirect_uri": "<redirect_uri>",
+        "scope": "openid profile",
+    }
+    simple_authorize_post_body = {
+        "auth_request_id": "<opaque-one-time-token>",
         "username": client_id,
-        "password": password,
+        "password": "<hidden-by-browser-form>",
     }
     simple_token_body = {
         "grant_type": "authorization_code",
@@ -129,11 +139,17 @@ def audit_traffic_content(output_md: str = str(_GENERATED / "audit_traffic_conte
         "```",
         "Nota: parola este trimisa in clar catre server.",
         "",
-        "## POST /oauth/pkce/authorize (OAuth2 PKCE Step 1)",
-        "```json",
-        _truncate(pkce_authorize_body),
+        "## GET /oauth/pkce/authorize (OAuth2 PKCE Step 1a - browser initiates)",
         "```",
-        "Nota: parola este trimisa catre authorization server (acelasi domeniu), nu catre client.",
+        str(pkce_authorize_get_qs),
+        "```",
+        "Nota: browser-ul (client app) trimite parametrii OAuth in query string; parola nu apare.",
+        "",
+        "## POST /oauth/pkce/authorize (OAuth2 PKCE Step 1b - user submits credentials)",
+        "```",
+        str(pkce_authorize_post_body),
+        "```",
+        "Nota: parola este trimisa direct catre Authorization Server (nu trece prin client app).",
         "",
         "## POST /oauth/pkce/token (OAuth2 PKCE Step 2 - code exchange)",
         "```json",
@@ -141,11 +157,17 @@ def audit_traffic_content(output_md: str = str(_GENERATED / "audit_traffic_conte
         "```",
         "Nota: code_verifier este un secret de scurta durata, parola nu mai apare in aceasta cerere.",
         "",
-        "## POST /oauth/simple/authorize (OAuth2 Simple Step 1)",
-        "```json",
-        _truncate(simple_authorize_body),
+        "## GET /oauth/simple/authorize (OAuth2 Simple Step 1a - browser initiates)",
         "```",
-        "Nota: parola este trimisa catre authorization server, fara PKCE.",
+        str(simple_authorize_get_qs),
+        "```",
+        "Nota: browser-ul trimite parametrii OAuth in query string, fara PKCE.",
+        "",
+        "## POST /oauth/simple/authorize (OAuth2 Simple Step 1b - user submits credentials)",
+        "```",
+        str(simple_authorize_post_body),
+        "```",
+        "Nota: parola este trimisa direct catre Authorization Server.",
         "",
         "## POST /oauth/simple/token (OAuth2 Simple Step 2)",
         "```json",
@@ -230,43 +252,38 @@ def generate_charts(latency_data: dict | None = None, output_dir: str = str(_GEN
             t1 = time.perf_counter_ns()
             verify_ms.append((t1 - t0) / 1e6)
 
-            # OAuth2 PKCE: authorize + token
+            # OAuth2 PKCE: GET authorize + POST authorize (stop at code received)
             code_verifier = secrets_module.token_urlsafe(48)
             challenge = pkce_challenge(code_verifier)
             t0 = time.perf_counter_ns()
-            ar = client.post("/oauth/pkce/authorize", json={
+            get_r = client.get("/oauth/pkce/authorize", query_string={
                 "response_type": "code", "client_id": OAUTH_PKCE_CLIENT_ID,
-                "redirect_uri": OAUTH_REDIRECT_URI, "username": client_id,
-                "password": password, "scope": "openid profile",
+                "redirect_uri": OAUTH_REDIRECT_URI, "scope": "openid profile",
                 "code_challenge": challenge, "code_challenge_method": "S256",
-                "response_mode": "json",
             })
-            if ar.status_code == 200:
-                client.post("/oauth/pkce/token", json={
-                    "grant_type": "authorization_code",
-                    "client_id": OAUTH_PKCE_CLIENT_ID,
-                    "redirect_uri": OAUTH_REDIRECT_URI,
-                    "code": ar.get_json()["code"],
-                    "code_verifier": code_verifier,
-                })
+            import re as _re2
+            from urllib.parse import urlparse as _up2, parse_qs as _pqs2
+            ar_match = _re2.search(r'name="auth_request_id"\s+value="([^"]+)"',
+                                   get_r.data.decode("utf-8") if get_r.status_code == 200 else "")
+            ar_id = ar_match.group(1) if ar_match else ""
+            client.post("/oauth/pkce/authorize",
+                        data={"auth_request_id": ar_id, "username": client_id, "password": password},
+                        follow_redirects=False)
             t1 = time.perf_counter_ns()
             pkce_ms.append((t1 - t0) / 1e6)
 
-            # OAuth2 Simple: authorize + token
+            # OAuth2 Simple: GET authorize + POST authorize (stop at code received)
             t0 = time.perf_counter_ns()
-            ar = client.post("/oauth/simple/authorize", json={
+            get_r = client.get("/oauth/simple/authorize", query_string={
                 "response_type": "code", "client_id": OAUTH_SIMPLE_CLIENT_ID,
-                "redirect_uri": OAUTH_REDIRECT_URI, "username": client_id,
-                "password": password, "scope": "openid profile",
-                "response_mode": "json",
+                "redirect_uri": OAUTH_REDIRECT_URI, "scope": "openid profile",
             })
-            if ar.status_code == 200:
-                client.post("/oauth/simple/token", json={
-                    "grant_type": "authorization_code",
-                    "client_id": OAUTH_SIMPLE_CLIENT_ID,
-                    "redirect_uri": OAUTH_REDIRECT_URI,
-                    "code": ar.get_json()["code"],
-                })
+            ar_match = _re2.search(r'name="auth_request_id"\s+value="([^"]+)"',
+                                   get_r.data.decode("utf-8") if get_r.status_code == 200 else "")
+            ar_id = ar_match.group(1) if ar_match else ""
+            client.post("/oauth/simple/authorize",
+                        data={"auth_request_id": ar_id, "username": client_id, "password": password},
+                        follow_redirects=False)
             t1 = time.perf_counter_ns()
             simple_ms.append((t1 - t0) / 1e6)
 
@@ -563,7 +580,7 @@ def run_memory_footprint_benchmark(
         with server.app.app_context():
             x, _ = derive_password_x(password)
             y = pow(server.G, x, server.P)
-            server.db.session.add(server.User(client_id=client_id, secret_y=str(y)))
+            server.db.session.add(server.User(client_id=client_id, secret_y=y.to_bytes(256, 'big')))
             server.db.session.commit()
 
         for batch in batches:
@@ -677,7 +694,7 @@ def run_server_internals_benchmark(
             y = pow(G, x, P)
             existing = server.User.query.filter_by(client_id=sample_client_id).first()
             if not existing:
-                server.db.session.add(server.User(client_id=sample_client_id, secret_y=str(y)))
+                server.db.session.add(server.User(client_id=sample_client_id, secret_y=y.to_bytes(256, 'big')))
                 server.db.session.commit()
 
         # GET /parameters
@@ -770,6 +787,166 @@ def run_server_internals_benchmark(
     print(f"Saved: {out}")
 
 
+def _print_locust_stats_table(
+    stats_csv: str = str(_GENERATED / "locust_stats.csv"),
+) -> None:
+    """Parse locust_stats.csv and print the final summary table to stdout."""
+    stats_path = Path(stats_csv)
+    if not stats_path.exists():
+        print(f"[locust table] {stats_csv} not found; skipping.")
+        return
+
+    rows = []
+    with stats_path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            rows.append(row)
+
+    if not rows:
+        print("[locust table] stats CSV is empty.")
+        return
+
+    # Columns to display and their header labels
+    cols = [
+        ("Method",          "Type"),
+        ("Name",            "Name"),
+        ("Request Count",   "# reqs"),
+        ("Failure Count",   "# fails"),
+        ("Average Response Time", "Avg"),
+        ("Min Response Time",     "Min"),
+        ("Max Response Time",     "Max"),
+        ("Median Response Time",  "Med"),
+        ("Requests/s",      "req/s"),
+        ("Failures/s",      "failures/s"),
+    ]
+
+    csv_keys  = [c[0] for c in cols]
+    disp_keys = [c[1] for c in cols]
+
+    widths = [len(h) for h in disp_keys]
+    for row in rows:
+        for i, key in enumerate(csv_keys):
+            val = row.get(key, "")
+            widths[i] = max(widths[i], len(val))
+
+    sep = "-+-".join("-" * w for w in widths)
+    hdr = " | ".join(h.ljust(widths[i]) for i, h in enumerate(disp_keys))
+
+    print("\n=== Locust final stats ===")
+    print(hdr)
+    print(sep)
+    for row in rows:
+        line = " | ".join(
+            row.get(key, "").ljust(widths[i])
+            for i, key in enumerate(csv_keys)
+        )
+        print(line)
+    print(sep)
+
+
+def _save_locust_stats_chart(
+    stats_csv: str = str(_GENERATED / "locust_stats.csv"),
+    output_png: str = str(_GENERATED / "charts" / "locust_protocol_comparison.png"),
+) -> None:
+    """Generate a bar chart comparing avg/p95 latency per protocol from locust_stats.csv."""
+    stats_path = Path(stats_csv)
+    if not stats_path.exists():
+        print(f"[locust chart] {stats_csv} not found; skipping.")
+        return
+
+    rows = []
+    with stats_path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            rows.append(row)
+
+    # Focus on the 4 login/login-equivalent event rows (custom + HTTP endpoint rows)
+    _PROTOCOL_NAMES = {
+        "full_zkp_login":        ("ZKP\n(commit+verify)", "#1565C0"),
+        "oauth_pkce_login":      ("OAuth2\nPKCE",         "#2E7D32"),
+        "oauth_simple_login":    ("OAuth2\nSimple",       "#E65100"),
+        "full_authlib_pkce_login": ("Authlib\nPKCE",      "#6A1B9A"),
+    }
+
+    selected = []
+    for row in rows:
+        name = row.get("Name", "").strip()
+        if name in _PROTOCOL_NAMES:
+            label, color = _PROTOCOL_NAMES[name]
+            try:
+                avg  = float(row.get("Average Response Time", 0))
+                p95  = float(row.get("95%", 0))
+                mn   = float(row.get("Min Response Time", 0))
+                mx   = float(row.get("Max Response Time", 0))
+                rps  = float(row.get("Requests/s", 0))
+            except ValueError:
+                continue
+            selected.append((label, color, avg, p95, mn, mx, rps))
+
+    if not selected:
+        print("[locust chart] no protocol login rows found in CSV; skipping chart.")
+        return
+
+    labels = [r[0] for r in selected]
+    colors = [r[1] for r in selected]
+    avgs   = [r[2] for r in selected]
+    p95s   = [r[3] for r in selected]
+    mins_  = [r[4] for r in selected]
+    maxs   = [r[5] for r in selected]
+
+    x = list(range(len(labels)))
+    bar_w = 0.35
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    fig.patch.set_facecolor("#FFFFFF")
+
+    # --- left: latency bars (avg + p95) ---
+    ax1.set_facecolor("#F9F9F9")
+    bars_avg = ax1.bar([i - bar_w / 2 for i in x], avgs, width=bar_w,
+                       color=colors, alpha=0.85, label="Avg", edgecolor="white")
+    bars_p95 = ax1.bar([i + bar_w / 2 for i in x], p95s, width=bar_w,
+                       color=colors, alpha=0.45, label="p95", edgecolor="white", hatch="///")
+
+    # error whiskers: min–max range over the avg bar
+    for i, (mn, mx, avg) in enumerate(zip(mins_, maxs, avgs)):
+        ax1.errorbar(i - bar_w / 2, avg, yerr=[[avg - mn], [mx - avg]],
+                     fmt="none", color="#333333", capsize=4, linewidth=1.2)
+
+    for bar, val in zip(bars_avg, avgs):
+        ax1.text(bar.get_x() + bar.get_width() / 2, val + 0.5,
+                 f"{val:.1f}", ha="center", va="bottom", fontsize=8, fontweight="bold")
+    for bar, val in zip(bars_p95, p95s):
+        ax1.text(bar.get_x() + bar.get_width() / 2, val + 0.5,
+                 f"{val:.1f}", ha="center", va="bottom", fontsize=8, color="#555555")
+
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(labels, fontsize=10)
+    ax1.set_ylabel("Latency (ms)", fontsize=11)
+    ax1.set_title("Login latency under load\n(solid=avg, hatched=p95, whiskers=min/max)", fontsize=11)
+    ax1.legend(fontsize=9)
+    ax1.grid(axis="y", linestyle="--", alpha=0.5, color="#CCCCCC")
+    ax1.spines["top"].set_visible(False)
+    ax1.spines["right"].set_visible(False)
+
+    # --- right: requests/s ---
+    ax2.set_facecolor("#F9F9F9")
+    rps_vals = [r[6] for r in selected]
+    bars_rps = ax2.bar(x, rps_vals, color=colors, alpha=0.85, edgecolor="white")
+    for bar, val in zip(bars_rps, rps_vals):
+        ax2.text(bar.get_x() + bar.get_width() / 2, val + 0.1,
+                 f"{val:.2f}", ha="center", va="bottom", fontsize=9, fontweight="bold")
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(labels, fontsize=10)
+    ax2.set_ylabel("Requests / second", fontsize=11)
+    ax2.set_title("Throughput under load\n(req/s per protocol)", fontsize=11)
+    ax2.grid(axis="y", linestyle="--", alpha=0.5, color="#CCCCCC")
+    ax2.spines["top"].set_visible(False)
+    ax2.spines["right"].set_visible(False)
+
+    Path(output_png).parent.mkdir(parents=True, exist_ok=True)
+    _save_fig(fig, output_png)
+
+
 # ---------------------------------------------------------------------------
 # Pipeline helpers - server lifecycle
 # ---------------------------------------------------------------------------
@@ -787,13 +964,40 @@ def _run(label: str, args: list, check: bool = True) -> int:
     return r.returncode
 
 
-def _start_server() -> subprocess.Popen:
+# All servers use file-based SQLite for a fair comparison (same I/O conditions).
+def _start_server(port: int) -> subprocess.Popen:
+    db_dir = _PROJECT_ROOT / "server_app" / "db"
+    db_dir.mkdir(parents=True, exist_ok=True)
+    db_uri = f"sqlite:///{db_dir / f'auth_{port}.db'}"
+    env = {**__import__('os').environ, "ACAS_DB_URI": db_uri}
     bootstrap = (
         "import sys; sys.path.insert(0, 'server_app'); "
         "import server; "
-        "server.app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)"
+        f"server.app.run(host='127.0.0.1', port={port}, debug=False, use_reloader=False)"
     )
-    return subprocess.Popen([_PYTHON, "-c", bootstrap], cwd=_PROJECT_ROOT)
+    return subprocess.Popen([_PYTHON, "-c", bootstrap], cwd=_PROJECT_ROOT, env=env)
+
+
+_LOCUST_PORTS = {
+    "ZKP":    5000,
+    "PKCE":   5001,
+    "Simple": 5002,
+    "Authlib": 5003,
+}
+
+
+def _start_all_servers() -> list:
+    """Start one Flask process per protocol on its dedicated port. Returns list of Popen."""
+    procs = []
+    for label, port in _LOCUST_PORTS.items():
+        print(f"  [start] {label} server on port {port}")
+        procs.append(_start_server(port))
+    return procs
+
+
+def _stop_all_servers(procs: list) -> None:
+    for proc in procs:
+        _stop_server(proc)
 
 
 def _stop_server(proc: subprocess.Popen) -> None:
@@ -807,7 +1011,6 @@ def _stop_server(proc: subprocess.Popen) -> None:
 
 def _wait_for_health(url: str = "http://127.0.0.1:5000/health", timeout: int = 25) -> bool:
     import urllib.request
-    import urllib.error
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
@@ -817,6 +1020,31 @@ def _wait_for_health(url: str = "http://127.0.0.1:5000/health", timeout: int = 2
         except Exception:
             pass
         time.sleep(0.5)
+    return False
+
+
+def _wait_for_all_servers(timeout: int = 40) -> bool:
+    """Wait until all 4 server health endpoints respond."""
+    import urllib.request
+    all_up = {port: False for port in _LOCUST_PORTS.values()}
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        for port in list(all_up):
+            if all_up[port]:
+                continue
+            try:
+                url = f"http://127.0.0.1:{port}/health"
+                with urllib.request.urlopen(url, timeout=1) as r:
+                    if r.status == 200:
+                        all_up[port] = True
+                        print(f"  [up] port {port}")
+            except Exception:
+                pass
+        if all(all_up.values()):
+            return True
+        time.sleep(0.5)
+    missing = [p for p, up in all_up.items() if not up]
+    print(f"  [timeout] servers not ready on ports: {missing}")
     return False
 
 
@@ -860,7 +1088,6 @@ if __name__ == "__main__":
         # e.g.  python probes.py --run-all 100 60s
         locust_users   = int(sys.argv[2]) if len(sys.argv) > 2 else 100
         locust_runtime = sys.argv[3]      if len(sys.argv) > 3 else "60s"
-        monitor_secs   = int(locust_runtime.rstrip("s")) if locust_runtime.endswith("s") else int(locust_runtime)
 
         # -- Phase 1: no live server required --------------------------------
         print("\n=== Phase 1: offline measurements ===")
@@ -871,44 +1098,44 @@ if __name__ == "__main__":
         run_server_internals_benchmark()
 
         # -- Phase 2: live server required -----------------------------------
-        print("\n=== Phase 2: live-server measurements ===")
-        server_proc = _start_server()
+        print("\n=== Phase 2: live-server measurements (4 dedicated servers) ===")
+        # Remove stale Locust CSV files so Locust can create them fresh
+        for _stale in _GENERATED.glob("locust*.csv"):
+            try:
+                _stale.unlink()
+            except OSError as _e:
+                print(f"  [warn] could not delete {_stale}: {_e}")
+        server_procs = []
         try:
-            print("[*] Waiting 5 s for server to start ...")
-            time.sleep(5)
-            if not _wait_for_health(timeout=20):
-                raise RuntimeError("Server did not respond on http://127.0.0.1:5000/health")
+            server_procs = _start_all_servers()
+            print("[*] Waiting for all 4 servers to become healthy ...")
+            if not _wait_for_all_servers(timeout=40):
+                raise RuntimeError("One or more servers did not respond in time")
 
-            # Start resource monitor in background (separate process)
-            monitor_proc = subprocess.Popen(
-                [_PYTHON, str(Path(__file__).resolve()),
-                 "--monitor", str(server_proc.pid), str(monitor_secs)],
-                cwd=_PROJECT_ROOT,
-            )
-
-            # Run Locust load test (blocks until done)
+            # Run Locust -- no --host; each HttpUser class has its own host
+            # --csv writes locust_stats.csv / locust_failures.csv etc.
             _run(
                 f"Locust load test ({locust_users} users, {locust_runtime})",
                 [
                     "locust",
                     "-f", "qa/measurement/locustfile.py",
-                    "--host=http://localhost:5000",
                     f"--users={locust_users}",
                     "--spawn-rate=10",
                     "--headless",
                     f"--run-time={locust_runtime}",
                     "--html", "qa/measurement/generated/locust_report.html",
+                    "--csv",  "qa/measurement/generated/locust",
                 ],
                 check=False,
             )
-
-            monitor_proc.wait()  # ensure monitor finishes writing CSV
         finally:
-            _stop_server(server_proc)
+            _stop_all_servers(server_procs)
 
         # -- Phase 3: post-processing (CSVs now available) --------------------
         print("\n=== Phase 3: comparison charts ===")
         generate_comparison_charts()
+        _print_locust_stats_table()
+        _save_locust_stats_chart()
         print("\nDone. All measurements complete.")
 
     else:

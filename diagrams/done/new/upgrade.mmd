@@ -1,0 +1,50 @@
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant App as Client App
+    participant S as Server
+
+    U->>App: Click Login
+
+    rect rgb(220, 235, 255)
+    Note over App,S: Commit
+    App->>S: GET /parameters
+    S->>App: 200 { P, G }
+    Note over App: R = random in [1, Q-1]
+    App->>App: 
+    Note over App: T = G^R mod P
+    App->>App: 
+    App->>S: POST /login/commit  { client_id, commitment_t: T }
+    Note over S: session_id = CSPRNG token
+    S->>S: 
+    Note over S: binding = H( peer_addr | UA | session_id | client_id | T )
+    S->>S: 
+    Note over S: C = int(binding) mod Q
+    S->>S: 
+    Note over S: store { T, C, binding, session_id }
+    S->>S: 
+    S->>App: 200 { session_id, redirect_url: /login/verify-page?session_id=session_id }
+    Note over App: display R to user on screen
+    App->>App: 
+    end
+
+    rect rgb(255, 245, 220)
+    Note over U,App: Out-of-band handoff  (R travels via user, not network)
+    App->>U: show R on screen
+    U->>U: copy R
+    App->>S: redirect browser to redirect_url with session_id
+    end
+
+    rect rgb(244, 242, 245)
+    Note over U,S: Verify  (server-rendered page)
+    S->>U: render form  where C and Q hardcoded in page
+    U->>U: Enter client_id, password, and R
+    Note over U: X = derive(password, client_id) mod Q
+    U->>U: 
+    Note over U: S_val = (R + C * X) mod Q  — computed in browser JS
+    U->>U: 
+    U->>S: POST /login/verify  { client_id, solution_s: S_val }<br/>X-Auth-Session: session_id
+    Note over S: G^s == T * y^c  (mod P)
+    S->>S: 
+    S->>App: 200 { JWT }
+    end

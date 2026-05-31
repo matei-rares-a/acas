@@ -46,7 +46,9 @@ SUPPORTED_AUTH_SCHEMES = {"bearer", "token", "jwt", "dpop"}
 app = Flask(__name__)
 _db_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'db')
 os.makedirs(_db_path, exist_ok=True)
-app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(_db_path, 'auth.db')}"
+_default_db_uri = f"sqlite:///{os.path.join(_db_path, 'auth.db')}"
+_db_uri = os.environ.get('ACAS_DB_URI', _default_db_uri)
+app.config['SQLALCHEMY_DATABASE_URI'] = _db_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 CORS(app, resources={r"/*": {"origins": "*"}})
 db.init_app(app)
@@ -307,7 +309,7 @@ def register_user_in_db(client_id: str, secret_y: int) -> bool:
     user = User.query.filter_by(client_id=client_id).first()
     if user:
         return False
-    db.session.add(User(client_id=client_id, secret_y=str(secret_y)))
+    db.session.add(User(client_id=client_id, secret_y=secret_y.to_bytes(256, 'big')))
     db.session.commit()
     return True
 
@@ -413,7 +415,7 @@ def verifyAPI():
         del sessions[session_id]
         return jsonify({'reason': 'user not found'}), 404
 
-    y, t, c = int(user.secret_y), sess['t'], sess['c']
+    y, t, c = int.from_bytes(user.secret_y, 'big'), sess['t'], sess['c']
     if pow(G, s, P) == (t * pow(y, c, P)) % P:
         token_str = _issue_jwt(client_id)
         _save_token(user.id, token_str)

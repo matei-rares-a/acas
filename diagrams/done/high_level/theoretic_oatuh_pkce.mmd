@@ -1,0 +1,28 @@
+sequenceDiagram
+    autonumber
+    actor User
+    participant Client as Client App (SPA/Mobile)
+    participant Auth as Authorization Server
+
+    Note over Client: Generate "code_verifier" (random string)<br/>Generate "code_challenge" (SHA-256 hash of verifier)
+
+    %% Request 1
+    rect rgb(230, 240, 255)
+    Client->>Auth: GET /authorize<br/>(client_id, code_challenge, code_challenge_method=S256)
+    end
+    
+    %% Request 2
+    rect rgb(255, 240, 230)
+    Auth->>User: Display Login Page
+    User->>Auth: POST /login<br/>(Submit username & password)
+    Auth-->>Client: Redirect to redirect_uri<br/>with Authorization Code (code)
+    end
+    
+    %% Request 3
+    rect rgb(230, 255, 230)
+    Client->>Auth: POST /token<br/>(client_id, code, code_verifier)
+    
+    Note over Auth: 1. Validate authorization code<br/>2. Hash the "code_verifier"<br/>3. Compare result to saved "code_challenge"
+    
+    Auth-->>Client: 200 OK<br/>Returns JWT (Access Token / ID Token)
+    end

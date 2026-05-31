@@ -28,9 +28,9 @@ class TestPositiveCases(BaseTestSuite):
         with server.app.app_context():
             user = server.User.query.filter_by(client_id=client_id).first()
             assert user is not None
-            assert user.secret_y == str(secret_y)
+            assert user.secret_y == secret_y.to_bytes(256, 'big')
             assert not hasattr(user, "password")
-            serialized = f"{user.client_id}|{user.secret_y}"
+            serialized = f"{user.client_id}|{user.secret_y.hex()}"
             assert raw_password not in serialized
 
 
@@ -55,7 +55,7 @@ class TestPositiveCases(BaseTestSuite):
         with server.app.app_context():
             user = server.User.query.filter_by(client_id=client_id).first()
             assert user is not None
-            serialized = f"{user.client_id}|{user.secret_y}"
+            serialized = f"{user.client_id}|{user.secret_y.hex()}"
             assert sha256_hex not in serialized
             assert sha512_hex not in serialized
             assert md5_hex    not in serialized
@@ -74,7 +74,7 @@ class TestPositiveCases(BaseTestSuite):
         secret_y = pow(server.G, password_x, server.P)
 
         with server.app.app_context():
-            server.db.session.add(server.User(client_id=client_id, secret_y=str(secret_y)))
+            server.db.session.add(server.User(client_id=client_id, secret_y=secret_y.to_bytes(256, 'big')))
             server.db.session.commit()
 
         rand_r = secrets_module.randbelow(server.P - 2) + 1
@@ -166,8 +166,8 @@ class TestPositiveCases(BaseTestSuite):
         y_bob = pow(server.G, x_bob, server.P)
 
         with server.app.app_context():
-            server.db.session.add(server.User(client_id="parallel_alice", secret_y=str(y_alice)))
-            server.db.session.add(server.User(client_id="parallel_bob", secret_y=str(y_bob)))
+            server.db.session.add(server.User(client_id="parallel_alice", secret_y=y_alice.to_bytes(256, 'big')))
+            server.db.session.add(server.User(client_id="parallel_bob", secret_y=y_bob.to_bytes(256, 'big')))
             server.db.session.commit()
 
         # Both commit -- two sessions coexist simultaneously

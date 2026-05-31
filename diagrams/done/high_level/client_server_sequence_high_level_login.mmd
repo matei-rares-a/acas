@@ -1,0 +1,33 @@
+sequenceDiagram
+    autonumber
+    participant C as Client App
+    participant S as Auth Server
+
+    C->>S: GET /parameters
+    S->>C: 200 { P, G }
+
+    rect rgb(220, 255, 220)
+    Note over C,S: Commit
+    Note over C: x = derive(password, client_id) mod Q
+    C->>C: 
+    Note over C: r = random in [1, Q-1]
+    C->>C: 
+    Note over C: t = G^r mod P
+    C->>C: 
+    C->>S: POST /login/commit  { client_id, commitment_t: t }
+    Note over S: binding = H( peer_addr | UA | session_id | client_id | t )
+    S->>S: 
+    Note over S: c = int(binding) mod Q
+    S->>S: 
+    S->>C: 200 { session_id, challenge_c: c }
+    end
+
+    rect rgb(244, 242, 245)
+    Note over C,S: Verify
+    Note over C: s = (r + c * x) mod Q
+    C->>C: 
+    C->>S: POST /login/verify  { solution_s: s }<br/>X-Auth-Session: session_id
+    Note over S: G^s == t * y^c  (mod P)
+    S->>S: 
+    S->>C: 200 { JWT }
+    end

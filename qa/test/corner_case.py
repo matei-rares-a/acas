@@ -77,7 +77,7 @@ class TestCornerCases(BaseTestSuite):
         x, _ = derive_password_x("race-pass")
         y = pow(server.G, x, server.P)
         with server.app.app_context():
-            server.db.session.add(server.User(client_id=client_id, secret_y=str(y)))
+            server.db.session.add(server.User(client_id=client_id, secret_y=y.to_bytes(256, 'big')))
             server.db.session.commit()
 
         def do_commit(_):

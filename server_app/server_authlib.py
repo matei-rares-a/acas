@@ -296,8 +296,6 @@ def authlib_register():
 
     if not client_id or not password:
         return jsonify({"error": "missing client_id or password"}), 400
-    if not _User.query.filter_by(client_id=client_id).first():
-        return jsonify({"error": "user not in ZKP store"}), 400
 
     _AUTHLIB_PASSWORDS[client_id] = _hash_password(password)
     return jsonify({"status": "Authlib user registered"}), 201

@@ -27,6 +27,6 @@ def setup_isolated_test_user(client_id: str, password: str):
         server.db.session.remove()
         server.db.drop_all()
         server.db.create_all()
-        server.db.session.add(server.User(client_id=client_id, secret_y=str(y)))
+        server.db.session.add(server.User(client_id=client_id, secret_y=y.to_bytes(256, 'big')))
         server.db.session.commit()
     return x, server.app.test_client()

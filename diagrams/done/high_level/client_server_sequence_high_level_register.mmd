@@ -1,0 +1,16 @@
+﻿sequenceDiagram
+    autonumber
+    participant C as Client App
+    participant S as Server
+
+    rect rgb(255, 240, 220)
+    Note over C,S: Registration
+    C->>S: GET /parameters
+    S->>C: 200 { P, G }
+    Note over C: x = derive(password, client_id) mod Q
+    C->>C: 
+    Note over C: y = G^x mod P
+    C->>C: 
+    C->>S: POST /register  { client_id, secret_y: y }
+    S->>C: 201 { status: Registered }
+    end
