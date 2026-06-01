@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OAuth PKCE - Login</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="register-container">
+        <!-- Form Section -->
+        <div class="register-form-section">
+            <div class="container">
+                <div class="header">
+                    <h1>OAuth PKCE Login</h1>
+                    <p>Authenticate with Authorization Code + PKCE</p>
+                </div>
+
+                <div class="content">
+                    <div id="alert"></div>
+
+                    <div id="login-form">
+                        <div class="form-group">
+                            <label for="username">Client ID</label>
+                            <input type="text" id="username" placeholder="Enter your client ID">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="password">Password</label>
+                            <input type="password" id="password" placeholder="Enter your password">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="server-url">Server URL</label>
+                            <input type="text" id="server-url" placeholder="http://localhost:5000" value="http://localhost:5000">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="redirect-uri">Redirect URI</label>
+                            <input type="text" id="redirect-uri"
+                                placeholder="http://localhost:8000/oauth-callback.html"
+                                value="http://localhost:8000/oauth-callback.html">
+                            <small style="color:#888;font-size:11px;margin-top:4px;display:block;">
+                                Must be registered on the server. Serve the client app from the same origin (e.g. <code>python -m http.server 8000</code> in client_app/).
+                            </small>
+                        </div>
+
+                        <button class="btn btn-primary" id="login-btn" onclick="oauthLogin()">
+                            Login
+                        </button>
+
+                        <div class="links">
+                            <a href="oauth-register.html">Don't have an account? Register here</a>
+                        </div>
+                    </div>
+
+                    <div id="auth-status" class="status-box" style="display: none;">
+                        <h3>PKCE Flow Progress:</h3>
+                        <div id="auth-status-content"></div>
+                    </div>
+
+                    <div id="auth-success" class="auth-success" style="display: none;">
+                        <h2>Authentication Successful!</h2>
+                        <p>You have been authenticated via OAuth 2.0 Authorization Code + PKCE.</p>
+                        <div class="token-display" id="token-display"></div>
+                        <button class="btn btn-primary" onclick="resetForm()">Login Again</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Network Monitor Section -->
+        <div class="network-monitor-section">
+            <div class="network-monitor">
+                <div class="monitor-header">
+                    <h2>Network Monitor</h2>
+                    <button class="monitor-btn" onclick="clearNetworkMonitor()">Clear</button>
+                </div>
+                <div class="monitor-content" id="network-log">
+                    <div class="log-item log-info">Monitor ready. Requests/responses will appear here.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/auth.js"></script>
+    <script src="js/network-monitor.js"></script>
+    <script src="js/oauth-pkce.js"></script>
+</body>
+</html>

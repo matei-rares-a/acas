@@ -15,10 +15,7 @@
         <div class="content">
             <h2>Welcome! Please login to continue.</h2>
 
-            <div>
-                <button type="button" onclick="window.location.href='login.html'" class="btn btn-primary">ZK login</button>
-                <button type="button" class="btn btn-secondary">google login</button>
-            </div>
+            
 
             <div style="border: 1px solid #ccc; padding: 20px; margin-top: 20px; border-radius: 5px;">
                 <div class="form-group">
@@ -30,15 +27,19 @@
                     <input type="password" id="password" placeholder="Enter your password">
                 </div>
                 <button class="btn btn-secondary">login</button>
+
+                <div>
+                <button type="button" onclick="window.location.href='login.html'" class="btn btn-primary">ZK Login</button>
+                <button type="button" onclick="window.location.href='oauth-login.html'" class="btn btn-secondary">OAuth PKCE Login</button>
+            </div>
             </div>
 
             <div>
                   <div class="links">
                     <p >Don't have an account?</a>
                 </div>
-                <button type="button" onclick="window.location.href='register.html'" class="btn btn-primary">zk Register</button>
-                <button type="button" class="btn btn-secondary">google register</button>
-                <button type="button" class="btn btn-secondary">register</button>
+                <button type="button" onclick="window.location.href='register.html'" class="btn btn-primary">ZK Register</button>
+                <button type="button" onclick="window.location.href='oauth-register.html'" class="btn btn-secondary">OAuth PKCE Register</button>
             </div>
         </div>
     </div>

@@ -18,7 +18,11 @@ OAUTH_REFRESH_TOKEN_TTL_SECONDS = 86400
 PKCE_CLIENT_ID   = "acas-pkce-client"
 SIMPLE_CLIENT_ID = "acas-simple-client"
 
-REDIRECT_URIS  = {"https://client.example/callback", "http://localhost:8000/callback"}
+REDIRECT_URIS  = {
+    "https://client.example/callback",
+    "http://localhost:8000/callback",
+    "http://localhost:8000/oauth-callback.html",
+}
 ALLOWED_SCOPES = {"openid", "profile", "read:data", "write:data"}
 
 
@@ -265,6 +269,13 @@ def pkce_authorize():
     query = {"code": authorization_code}
     if pending["state"]:
         query["state"] = pending["state"]
+
+    # API clients (Accept: application/json) receive the code directly in JSON
+    # instead of a browser redirect -- keeps the fetch-based demo flow working.
+    accept = request.headers.get("Accept", "")
+    if "application/json" in accept:
+        return jsonify({"code": authorization_code, "state": pending.get("state"), "redirect_uri": pending["redirect_uri"]}), 200
+
     return redirect(f"{pending['redirect_uri']}?{urlencode(query)}", code=302)
 
 
