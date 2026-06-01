@@ -246,65 +246,55 @@ Securitatea și robustețea sistemului sunt asigurate prin respectarea unor cons
 •	Transparență și Lipsa Anonimizării Identității: Sistemul permite auditarea traficului si evaluarea comparativa a protocoalelor. Identificatorul client_id este transmis in clar in fazele de inregistrare si angajament. Protocolul protejeaza exclusiv secretul de autentificare, nu si metadatele de identitate.
 
 I.4. 	Arhitectura protocol
-Sistemul este organizat pe trei niveluri funcționale: prezentare, aplicație și date. Această separare permite delimitarea clară a responsabilităților fiecărui strat și decuplarea logicii de securitate de restul componentelor. Comunicarea dintre niveluri se realizează prin cereri HTTP asincrone, iar baza criptografică a întregului sistem este problema logaritmului discret pe grupuri finite, implementată prin schema de identificare Schnorr.
+Sistemul este organizat pe trei niveluri funcționale: prezentare, aplicație și date. Această separare permite delimitarea clară a responsabilităților fiecărui strat și decuplarea logicii de securitate de restul componentelor. Comunicarea dintre niveluri se realizează prin cereri HTTP asincrone, iar baza criptografică a întregului sistem este problema logaritmului discret pe grupuri finite, implementată prin schema de identificare Schnorr. Succesiunea etapelor prin care clientul și serverul interacționează pe parcursul înregistrării și autentificării a fost descrisă in secțiunea I.3.2, iar detalierea acestora la nivel de implementare, insotită de diagramele de secvență corespunzătoare, se regăsește in secțiunea II.1.
 I.4.1. 	Nivelul de prezentare 
 Nivelul de prezentare se ocupă de interacțiunea cu utilizatorul, afișarea datelor și execuția calculelor locale. Construit cu tehnologii web standard, acest nivel ghidează utilizatorul prin trei etape: afișarea ecranului introductiv, generarea perechii de chei criptografice și transmiterea valorii publice in cadrul înregistrării, respectiv execuția protocolului cu cunoștințe zero in cadrul autentificării. Tot la acest nivel este integrat un monitor de rețea in timp real, care permite utilizatorului să inspecteze traficul HTTP.
 I.4.2. 	Nivelul de aplicație
 Nivelul de aplicație conține logica de procesare și gestionează punctele de acces HTTP. Acest strat, scris in Python cu ajutorul micro-framework-ului Flask, verifică dacă valorile criptografice primite aparțin subgrupului Schnorr, administrează fluxurile de autorizare și păstrează starea temporară a sesiunilor intre etapele protocolului, folosind un sistem de stocare volatil. După o verificare reușită, serverul emite un jeton de acces JWT, compus din antet, sarcină utilă și semnătură criptografică. Un aspect important al acestui nivel este legarea de canal (Session Binding): serverul nu verifică dovezile izolat, ci le leagă de contextul HTTP curent, care include adresa de rețea, antetul User-Agent, identificatorul de sesiune și identitatea clientului, prevenind astfel atacurile de interceptare și retransmisie (relay și session hijacking).
 I.4.3. 	Nivel de date
 Nivelul de date asigură stocarea informației printr-o bază de date relațională, accesată prin abstractizări ORM. Baza de date păstrează trei categorii de informații: identitatea publică a utilizatorului, referințele jetoanelor emise și datele personale protejate. Aspectul cel mai relevant al acestui nivel este modul in care sunt tratate credențialele: serverul nu stochează parola in clar, nici sub formă de hash și nici scalarul privat asociat. Singura valoare criptografică păstrată pentru verificare este cheia publică.
-I.4.4. 	Fluxul protocolului
-Comunicarea asincronă Client-Server se desfășoară printr-o succesiune strictă de pași matematici, ale căror etape se mapează direct peste conceptul cadru de autorizare delegată OAuth 2.0:
-1)	Etapa de Configurare (Setup - Precondiție): Se stabilesc parametrii publici ai grupului (de dimensiuni mari, sigure), iar clientul își derivă local secretul.
-2)	Etapa 0 - Înregistrarea: Clientul transmite către server exclusiv cheia publică generată, alături de un identificator, pentru a fi asociate în baza de date.
-3)	Etapa 1 - Angajamentul (Commitment): Clientul alege un număr aleatoriu efemer, calculează un angajament criptografic și îl transmite serverului. Mapare OAuth: Această etapă reprezintă inițierea cererii de acces (Grant Initiation).
-4)	Etapa 2 - Provocarea (Challenge): Serverul memorează temporar angajamentul și generează un număr aleatoriu unic pe care îl transmite clientului. Acest pas previne atacurile de tip Replay. Mapare OAuth: Provocarea funcționează ca un nonce de sesiune.
-5)	Etapa 3 - Soluția (Proof): Clientul calculează o dovadă matematică folosind secretul său, angajamentul inițial și provocarea primită, trimițând rezultatul spre verificare. Mapare OAuth: Aceasta îndeplinește rolul de autentificare a clientului (Client Authentication).
-6)	Etapa 4 - Verificarea (Verification & Token Issue): Serverul validează egalitatea matematică a dovezii în raport cu cheia publică stocată. Dacă egalitatea se confirmă, serverul are garanția identității utilizatorului și emite jetonul de acces JWT. Mapare OAuth: Emiterea jetonului reprezintă decizia finală de autorizare (Access Grant).
 
-Capitolul II. 	Implementare si functionalitat
-În acest capitol, este descris în amănunt modul de interacțiune al diferitelor tipuri de utilizatori cu interfața grafică a aplicației, precum și modul în care aceasta este implementată. Sunt prezentate diverse scenarii de utilizare, explicându-se cum fiecare tip de utilizator navighează prin interfață, efectuează acțiuni specifice și utilizează funcțiile oferite de aplicație. În ceea ce privește implementarea, capitolul conține secțiuni detaliate cu fragmente de cod explicate, ilustrând cum au fost realizate diferitele componente și funcționalități ale aplicației.
+Capitolul II. 	Implementare si functionalitate
+Acest capitol detaliază implementarea protocolului de autentificare descris in capitolul anterior. Sunt prezentate fluxurile de înregistrare, autentificare și consum al jetonului JWT prin diagrame de secvență, formalizarea matematică a schemei Schnorr și fragmentele de cod relevante.
 
-II.1. 	Modelarea fluxurilor operatioanle
+II.1. 	Modelarea fluxurilor operationale
 II.1.1. 	Inregistrare
-Diagrama 1: Fluxul de înregistrare
-Fluxul de înregistrare descrie modul în care un client derivă cheia privată x din credențialele locale (utilizând scrypt ca funcție de derivare a cheii), calculează cheia publică Schnorr y = G^x mod P și transmite exclusiv perechea (client_id, y) către server. Serverul validează apartenența lui y la subgrupul de ordin Q (verificând y^Q ≡ 1 mod P) și stochează asocierea client_id → y. Credențialele brute nu traversează niciodată canalul de comunicație. Diagrama completă este disponibilă în fișierul diagrams/diagram_registration_flow.mmd.
+Fluxul de inregistrare reprezintă prima interacțiune a unui utilizator nou cu platforma si constituie etapa de provizionare a identității criptografice in sistem. Procesul este inițiat din interfața grafică, unde utilizatorul introduce un identificator unic (client_id) si o parolă, fără ca aceasta din urmă să fie transmisă către server in niciun moment al fluxului.
 
+Aplicația client solicită de la server parametrii criptografici ai grupului Schnorr printr-o cerere GET /parameters, la care serverul răspunde cu valorile P si G (codul de stare HTTP 200). Pe baza acestora, clientul derivă local cheia privată x prin aplicarea funcției scrypt asupra parolei si a identificatorului, rezultatul fiind redus modular la ordinul subgrupului Q, apoi calculează cheia publică y = G^x mod P. Întreaga operație criptografică se desfășoară exclusiv in browserul utilizatorului, garantând proprietatea de cunoștințe zero a protocolului. După finalizarea calculelor, clientul transmite către server o cerere POST /register conținând exclusiv perechea (client_id, secret: y).
+
+*diagrama cs_register_detailed.mmd*
 Diagrama 1: Fluxul de inregistrare 
  
- 
+ La recepția cererii, serverul execută trei verificări succesive inainte de a persista datele. Mai intai, se validează completitudinea parametrilor, iar in cazul absenței campului client_id sau secret_y cererea este respinsă cu codul de stare HTTP 400. Ulterior, serverul verifică apartenența valorii publice la subgrupul de ordin Q prin evaluarea condițiilor 1 < y < P si y^Q ≡ 1 mod P, respingând cu codul HTTP 422 orice valoare criptografică neconformă care ar putea compromite securitatea verificărilor ulterioare. In final, se interogherază baza de date pentru a determina unicitatea identificatorului: dacă acesta nu există, se inserează inregistrarea si serverul returnează codul HTTP 201, iar dacă este deja asociat unui cont existent, cererea este respinsă cu codul HTTP 409, prevenind suprascrierea silențioasă a cheii publice.
 
-II.1.2. 	Autentificare
-Diagrama 2: Fluxul de Autentificare
-Fluxul de autentificare acoperă cei patru pași ai protocolului Schnorr: (1) clientul generează un nonce r și calculează angajamentul t = G^r mod P, pe care îl transmite împreună cu client_id; (2) serverul calculează provocarea c ca funcție hash deterministă a contextului sesiunii (adresă IP, User-Agent, session_id, client_id, t), realizând legarea de canal; (3) clientul calculează dovada s = (r + c·x) mod Q și o transmite cu identificatorul de sesiune în antet; (4) serverul verifică egalitatea G^s ≡ t · y^c (mod P) și, în caz de succes, emite un JWT semnat HS256. Diagrama completă este disponibilă în fișierul diagrams/diagram_login_flow.mmd.
+La finalizarea cu succes a procesului, interfața grafică afișează un mesaj de confirmare. Din acest moment, serverul stochează exclusiv cheia publică y asociată identificatorului, fără a deține vreo informație referitoare la parola sau la cheia privată a utilizatorului.
 
-  Diagrama 2: Fluxul de Autentificare (Sequence Diagram)   
- 
- 
+II.1.2. Autentificare
+
+Fluxul de autentificare implementează schema de identificare Schnorr in două etape distincte, fiecare corespunzând unei cereri HTTP separate: faza de angajament (commit) si faza de verificare (verify). Procesul este inițiat din interfața grafică, unde utilizatorul introduce identificatorul si parola, iar aplicația client derivă local cheia privată prin aceeași funcție scrypt utilizată la inregistrare.
+
+In faza de angajament, clientul solicită parametrii criptografici publici prin cererea GET /parameters, apoi generează un nonce aleatoriu utilizând generatorul criptografic nativ al browserului (window.crypto.getRandomValues) si calculează angajamentul criptografic efemer conform ecuației definite in secțiunea II.2.1. Aceste valori sunt transmise prin cererea POST /login/commit conținând identificatorul client_id si angajamentul commitment_t.
+
+La recepția cererii, serverul verifică prezența parametrilor obligatori, respingând cu codul HTTP 400 cererile incomplete. Ulterior, se validează apartenența angajamentului la subgrupul de ordin Q, cererile cu valori neconforme fiind respinse cu codul HTTP 422. Serverul interogează apoi baza de date pentru a confirma existența utilizatorului, returnând codul HTTP 404 in cazul unui identificator neinregistrat. Dacă toate verificările sunt satisfăcute, serverul generează un identificator unic de sesiune (session_id) prin intermediul unui generator criptografic de numere pseudoaleatoare (CSPRNG), calculează valoarea de legare a sesiunii (session binding) conform ecuației (2) din secțiunea II.2.1, apoi derivă provocarea pe baza acestei valori. Starea temporară a sesiunii, conținând angajamentul, provocarea, valoarea de legare, adresa de rețea si marca temporală, este persistată in memoria volatilă, iar serverul răspunde clientului cu perechea (session_id, challenge_c).
+
+cs_login_commit_detailed.mmd Diagrama 2: Fluxul de commit (Sequence Diagram)
+
+In faza de verificare, clientul calculează dovada matematică conform ecuației de răspuns definite in secțiunea II.2.1 si o transmite prin cererea POST /login/verify, incluzând valoarea solution_s in corpul JSON si identificatorul de sesiune in antetul X-Auth-Session.
+
+La recepția cererii, serverul execută o succesiune de verificări de securitate. Se validează existența sesiunii asociate identificatorului transmis, respingând cu codul HTTP 404 sesiunile inexistente. Se verifică dacă sesiunea nu a depășit intervalul de valabilitate (TTL de 5 secunde), sesiunile expirate fiind șterse si respinse cu codul HTTP 401. Se controlează dacă valoarea răspunsului se incadrează in intervalul valid admis matematic, respingând cu codul HTTP 422 soluțiile in afara domeniului. Serverul recalculează apoi valoarea de legare a sesiunii pe baza contextului HTTP curent si o compară cu cea stocată la momentul angajamentului, respingând cu codul HTTP 401 orice neconcordanță, mecanism care previne atacurile de interceptare si retransmisie (relay si session hijacking). După parcurgerea tuturor verificărilor preliminare, serverul citește cheia publică a utilizatorului din baza de date si evaluează egalitatea Schnorr conform ecuației (1) din secțiunea II.2.1. Dacă dovada este validă, serverul inserează referința jetonului in baza de date, șterge imediat sesiunea temporară si returnează clientului jetonul JWT semnat HS256 cu codul HTTP 200. In cazul unei dovezi invalide, sesiunea este de asemenea ștearsă, iar serverul returnează codul HTTP 401.
+
+cs_login_verify_detailed.mmd Diagrama 3: Fluxul de verificare (Sequence Diagram)
+
+In implementarea curentă, o a doua tentativă de angajament pentru același utilizator, apărută după o fereastră de 50 ms, este tratată ca potențială tentativă de preluare abuzivă a sesiunii si determină invalidarea sesiunii existente. Acest comportament este acoperit de testele automate, insă reprezintă si un compromis de ergonomie care este discutat in secțiunea dedicată limitărilor.
 
 II.1.3. 	Consumul tokenului
-Diagrama 3: Consumul Tokenului (Post-Autentificare)
-Mașina de stări a clientului descrie ciclul de viață complet: de la starea inițială Idle, prin derivarea cheii, angajament, provocare, verificare, până la starea Authenticated. Token-ul JWT obținut este utilizat ca Bearer Token pentru accesul la resursele protejate. La expirarea token-ului (după 3600 de secunde), clientul revine la starea Idle și reia protocolul. Diagrama completă este disponibilă în fișierul diagrams/diagram_auth_state_machine.mmd.
+După finalizarea autentificării, clientul utilizează jetonul JWT obținut ca Bearer Token in antetul Authorization al cererilor către resursele protejate. Serverul verifică semnătura HMAC-SHA256 si validitatea campurilor standard (exp, iss, aud), permițând accesul cu codul HTTP 200 sau respingând cererea cu codul HTTP 401 in cazul unui jeton invalid ori expirat. Fluxul ZKP implementat nu include un mecanism de reinnoire a jetonului, astfel incât la expirarea intervalului de valabilitate clientul trebuie să reia integral protocolul de autentificare.
 
-  Diagrama 3: Consumul Tokenului (Post-Autentificare)   
- \
-
-II.1.4. 	Comparatie intre protocoale ZKP si OAuth 2.0 todo
-
-sfdsf
-Diagramă care să arate unde se încadrează Schnorr în fluxul OAuth 2.0 (înlocuind client_secret cu ZKP Proof). 
- Etapa 	  Metoda HTTP 	Parametri Cheie 	Rol în OAuth 
-Commitment 	POST /login/commit 	client_id, t = g^r 	Inițiere Grant 
-Challenge 	Response 	c (random challenge) 	Nonce de sesiune 
-Proof 	POST /login/verify 	s = r + cx 	Client Authentication 
-Token Issue 	Response 	access_token (JWT) 	Access Grant 
-  
-
-
-
-
-II.2. 	Formalizarea protocolului
-II.2.1. 	Parametri și model matematic 
+*cs_zkp_token.mmd*
+  Diagrama 4: Consumul Tokenului (Post-Autentificare)   
+ 
+II.2. 	Parametri și model matematic 
 Arhitectura implementată se fundamentează pe utilizarea unui prim sigur (safe prime – engl.) P, garantând astfel un număr prim Q = (P - 1) / 2. Prin stabilirea generatorului G = 4, operațiunile matematice se desfășoară exclusiv în subgrupul de ordin Q asociat lui Z_P*. Componentele esențiale ale schemei sunt definite după cum urmează:
 
 Cheia privată: x
@@ -333,30 +323,13 @@ SID: identificatorul unic și temporar al sesiunii
 CID: identificatorul asociat clientului
 t: angajamentul criptografic recepționat anterior
 
-II.2.2. 	Faza de autenficiar
-Faza de autentificare este împărțită în două cereri HTTP.
-Pasul 1, commit:
-1.	Clientul alege r printr-un generator criptografic de numere pseudoaleatoare.
-2.	Calculează t = G^r mod P.
-3.	Trimite POST /login/commit cu client_id și commitment_t.
-4.	Serverul verifică faptul că utilizatorul există, că t aparține subgrupului și că nu există o sesiune activă incompatibilă pentru același utilizator.
-5.	Serverul generează session_id, calculează valoarea de legare a sesiunii și derivă provocarea challenge_c.
-6.	Serverul răspunde cu provocarea challenge_c și session_id.
-Pasul 2, verify:
-1.	Clientul calculează s = (r + c x) mod Q.
-2.	Trimite POST /login/verify, incluzând solution_s în corpul JSON și X-Auth-Session: session_id în antet.
-3.	Serverul verifică existența sesiunii, expirarea ei, intervalul valid pentru s și coerența valorii de legare a sesiunii.
-4.	Serverul citește cheia publică y a utilizatorului din baza de date.
-5.	Verifică egalitatea Schnorr.
-6.	Dacă dovada este validă, emite JWT-ul și șterge imediat sesiunea temporară.
-În implementarea curentă, sesiunea de autentificare are un TTL de 5 secunde, iar o a doua încercare de commit pentru același utilizator, apărută după o fereastră de 50 ms, este tratată ca potențială tentativă de preluare abuzivă a sesiunii și duce la invalidarea sesiunii existente. Acest comportament este util experimental și este acoperit de testele automate, însă reprezintă și un compromis de ergonomie care va fi discutat în capitolul de limitări.
 
 II.3. 	Structura și serializarea mesajelor în protocolul HTTP
 
 
 Pentru a asigura interoperabilitatea și o comunicare deterministă între client (client – engl.) și server (server – engl.), protocolul definește formal schema de date, antetele necesare și formatul mesajelor transmise [37].
 
-A.	Antete și Convenții REST
+II.3.1.	Antete și Convenții REST
 
 Interfața expusă este de tip REST JSON (Representational State Transfer – engl.), necesitând utilizarea tipului de conținut „application/json”. Pe lângă antetele standard de autorizare, implementarea emite o serie de antete suplimentare pentru trasabilitate și securitate, precum „Request-ID”, „API-Version”, „X-Response-Time”, „Server-Timing”, „X-Content-Type-Options”, „X-Frame-Options”, „Content-Security-Policy” și „Referrer-Policy” [38]. În cazul răspunsurilor neautorizate de tip 401, este inclus și antetul „WWW-Authenticate”. Punctele terminale (endpoints – engl.) principale ale arhitecturii sunt definite după cum urmează:
 
@@ -367,7 +340,7 @@ Interfața expusă este de tip REST JSON (Representational State Transfer – en
 /login/verify (POST): Verificarea dovezii matematice și emiterea jetonului.
 /data (GET, POST, PUT): Accesarea resurselor protejate exclusiv prin jeton.
 /oauth/pkce/și /oauth/simple/(POST): Fluxuri de autorizare comparativă (Authorization Code – engl.) [3].
-B.	Structura Sarcinii Utile (JSON Payload)
+II.3.2.	Structura Sarcinii Utile (JSON Payload)
 
 Valorile numerice masive, rezultate din calculele Schnorr, sunt serializate sub formă de șiruri de caractere (strings – engl.) reprezentând întregi zecimali, metodă implementată pentru a garanta precizia procesării la nivelul clientului web [4]. Formatul mesajelor pe parcursul etapelor de validare se structurează astfel:
 
@@ -384,7 +357,7 @@ Drept răspuns, entitatea verificatoare emite o provocare matematică și un ide
 
 În cazul unei validări cu succes, serverul eliberează un jeton web (JSON Web Token – engl.):
 { "token": "jwt-string" }
-C.	Semantica și Definirea Formală în Notație ABNF
+II.3.3.	Semantica și Definirea Formală în Notație ABNF
 
 Fiecare variabilă implicată îndeplinește un rol fundamental în mitigarea vulnerabilităților de rețea. Provocarea generată de server invalidează atacurile de reluare (replay attacks – engl.) impunând o demonstrație temporală unică, în timp ce angajamentul asociază criptografic sesiunea de un element aleatoriu nedezvăluit. Pentru asigurarea standardizării formale, sintaxa se definește prin notația ABNF (Augmented Backus-Naur Form – engl.) [39]:
 
@@ -405,31 +378,31 @@ session-header = "X-Auth-Session:" SP session-id
 
 Din punct de vedere conceptual, se observă că protocolul limitează transferul de date la identități publice și parametri de sesiune, excluzând în totalitate expunerea cheii private [6].
 
-D.	Gestionarea Stării și Securitatea la Nivel HTTP
+II.3.4.	Gestionarea Stării și Securitatea la Nivel HTTP
 
 Protocolul matematic impune retenția unei stări temporare (stateful – engl.) între momentul inițierii angajamentului și faza verificării. Pentru sistemele distribuite, este necesară externalizarea acestei stări către o memorie volatilă centralizată [7]. Permisiunile pre-solicitare sunt gestionate riguros prin strategii de partajare a resurselor între origini (Cross-Origin Resource Sharing – engl.). Odată finalizată autorizarea, se recomandă evitarea stocării jetonului în spații locale expuse vulnerabilităților de injecție a scripturilor (Cross-Site Scripting – engl.), fiind indicată încapsularea acestuia în cookie-uri protejate prin directivele „HttpOnly” și „Secure” [40]..”
 
 II.4. 	Detalii de implementare
-A.	Server Flask
+II.4.1.	Server Flask
 
 Arhitectura de server bazată pe micro-framework-ul Flask (micro-framework – engl.) constituie nucleul logic de procesare, având rolul de a gestiona starea, de a efectua validări stricte și de a emite jetoane web (JSON Web Token – engl.) [41]. Implementarea operațională evidențiază următoarele elemente cheie:
 
 1. Verificarea apartenenței la subgrup: Prin funcția „is_subgroup_member” se evaluează condiția matematică value^Q mod P = 1, respingându-se valorile triviale pentru eliminarea riscurilor asociate atacurilor de tip subgrup mic (small subgroup attack – engl.) [2].
 2. Gestiunea sesiunilor concurente: Structura specializată „_SessionStore” integrează un index invers de tipul identificator de utilizator (client-id – engl.) către identificator de sesiune (session-id – engl.), facilitând detecția și blocarea tentativelor de angajament concurente pentru același utilizator.
 3. Legarea contextului de rețea și eliberarea jetonului: Prin intermediul funcției „_compute_session_binding” se corelează sesiunea cu datele de transport, urmând ca rutina „_issue_jwt” să genereze un jeton valid pentru o durată de o oră. Punctul terminal (endpoint – engl.) „/data” condiționează accesul la resurse de validarea prealabilă a semnăturii și a expirării jetonului, în timp ce antetele defensive de tip control cache (Cache-Control – engl.) [42] previn stocarea datelor în nodurile intermediare
-B.	Arhitectura Clientului Web
+II.4.2.	Arhitectura Clientului Web
 Nivelul de prezentare execută în mod activ calculele criptografice direct în mediul de rulare al browserului (browser – engl.), fluxul fiind implementat în modulul „login.js” [4]:
 
 1. Succesiunea etapelor de logare: Procesul inițiază prin preluarea parametrilor P și G, urmată de derivarea locală a scalarului privat x. Ulterior, se generează un parametru aleatoriu r prin interfața nativă „window.crypto.getRandomValues” [43], calculându-se angajamentul (commitment – engl.) t.
 2. Finalizarea autentificării și monitorizarea: Transmiterea angajamentului este urmată de recepționarea unei provocări (challenge – engl.) și a unui identificator de sesiune, elemente necesare calculării răspunsului final s. Pentru facilitarea auditării, un monitor integrat interceptează apelurile de preluare (fetch – engl.), afișând structura completă a antetelor și a sarcinilor utile (payloads – engl.) [5].
-C.	Fluxuri OAuth2 Comparativ
+II.4.3.	Fluxuri OAuth2 Comparativ
 
 În scop analitic, sistemul integrează trei variante distincte ale cadrului de autorizare OAuth2, implementate în modulele „server_oauth.py” și „server_authlib.py” [6]:
 
 1. Configurații disponibile: Se remarcă o implementare personalizată cu cheie de probă (Proof Key for Code Exchange – PKCE – engl.), o variantă simplificată lipsită de PKCE și o integrare bazată pe biblioteca nativă Authlib.
 2. Obiective experimentale: Validarea utilizatorilor se bazează pe parole rezumate prin algoritmul SHA-256. Aceste fluxuri permit evaluarea comparativă directă între modelul tradițional – unde credențialele tranzitează rețeaua spre punctul terminal de autorizare – și modelul ZKP, care vehiculează exclusiv valori matematice efemere [7].
 
-D.	Considerente Criptografice și Derivarea Secretului 
+II.4.4.	Considerente Criptografice și Derivarea Secretului 
 Documentația evidențiază o demarcație clară între specificațiile teoretice de securitate și adaptările necesare fazei de prototip [8]:
 1. Modelul ideal de derivare: Conceptual, derivarea secretului privat x din parola utilizatorului necesită utilizarea unei funcții cu rezistență sporită la atacuri de dicționar, precum scrypt (scrypt – engl.) [44], aspect documentat în scriptul „calculations.py” prin aplicarea unui salt (salt – engl.) aleatoriu.
 2. Implementarea demonstrativă și optimizări: Din motive de portabilitate, modulul browser „auth.js” utilizează un hash SHA-256 aplicat asupra concatenării identificatorului cu parola, incluzând un mecanism de rezervă (fallback – engl.) cu parametri reduși (P = 2089, G = 4) în caz de indisponibilitate a serverului. Pentru alinierea la standardele de producție, se impune stocarea securizată a elementelor de salt pe client și eliminarea parametrilor criptografici slabi [9].

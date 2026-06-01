@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from extensions import db
-from models import User, AuthToken, PersoData
+from models import User, AuthToken, PersoData, OAuthCredential
 from server_oauth import init_oauth, clear_oauth_state
 from server_authlib import init_authlib, clear_authlib_state
 

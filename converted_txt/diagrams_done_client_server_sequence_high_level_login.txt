@@ -1,7 +1,7 @@
 sequenceDiagram
     autonumber
     participant C as Client_App/Extension
-    participant S as Server
+    participant S as  AuthServer
 
     C->>S: GET /parameters
     S-->>C: 200 { P, G }

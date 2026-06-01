@@ -20,7 +20,7 @@ flowchart TD
     P -- "401 Binding Mismatch" --> R401b["❌ Request came from a different\nnetwork path (relay / MitM detected)"]
     P -- "400 Integrity Failed" --> R400["❌ Challenge integrity check failed\n(session tamper detected)"]
     P -- "✓ Proof valid" --> Q["Receive JWT token\n{ token }"]
-    P -- "✗ Proof invalid — 401" --> R["❌ Verification failed\n(wrong password or tampered proof)"]
+    P -- "✗ Proof invalid - 401" --> R["❌ Verification failed\n(wrong password or tampered proof)"]
     Q --> S["✅ Authenticated\nStore token, display success"]
     I & J & K & H400 & R300 & R422 & R401b & R400 & R --> T["Show error message\nReturn to login form"]
     S & T --> Z([End])

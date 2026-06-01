@@ -3,12 +3,12 @@
  * Full authorization code flow with PKCE extension.
  *
  * Flow:
- *  1. Client generates code_verifier (random secret)
- *  2. Client computes code_challenge = BASE64URL(SHA-256(code_verifier))
- *  3. GET /oauth/pkce/authorize?...&code_challenge=...  → server stores request, returns HTML form
- *  4. POST /oauth/pkce/authorize (form: auth_request_id + credentials) → 302 to redirect_uri?code=...
- *  5. Extract authorization code from redirect URL
- *  6. POST /oauth/pkce/token with code + code_verifier → access_token
+ *  1. Client generates code_verifier + code_challenge, saves to sessionStorage
+ *  2. Browser redirects to GET /oauth/pkce/authorize?...&code_challenge=...
+ *  3. Server shows its own login form (user enters credentials there)
+ *  4. Server validates credentials → 302 to redirect_uri?code=...&state=...
+ *  5. oauth-callback.html reads code from URL, gets code_verifier from sessionStorage
+ *  6. POST /oauth/pkce/token {code, code_verifier} → access_token
  */
 
 const PKCE_CLIENT_ID = 'acas-pkce-client';
@@ -77,11 +77,11 @@ function showStatus(message) {
 function resetForm() {
     document.getElementById('login-form').style.display        = 'block';
     document.getElementById('auth-success').style.display      = 'none';
-    document.getElementById('auth-status').style.display       = 'none';
+    const statusDiv     = document.getElementById('auth-status');
+    const statusContent = document.getElementById('auth-status-content');
+    if (statusDiv)     statusDiv.style.display   = 'none';
+    if (statusContent) statusContent.innerHTML   = '';
     hideAlert();
-    document.getElementById('auth-status-content').innerHTML   = '';
-    document.getElementById('username').value                   = '';
-    document.getElementById('password').value                   = '';
 }
 
 // ---------------------------------------------------------------------------
@@ -140,17 +140,15 @@ async function oauthRegister() {
 }
 
 // ---------------------------------------------------------------------------
-// Login - full PKCE authorization code flow
+// Login - full PKCE authorization code flow (real browser redirect)
 // ---------------------------------------------------------------------------
 
 async function oauthLogin() {
-    const username    = document.getElementById('username').value.trim();
-    const password    = document.getElementById('password').value;
     const serverUrl   = document.getElementById('server-url').value.trim();
     const redirectUri = document.getElementById('redirect-uri').value.trim();
 
-    if (!username || !password) {
-        showAlert('Please enter username and password', 'error');
+    if (!serverUrl) {
+        showAlert('Please enter the server URL', 'error');
         return;
     }
     if (!redirectUri) {
@@ -161,13 +159,15 @@ async function oauthLogin() {
     try {
         const btn = document.getElementById('login-btn');
         btn.disabled  = true;
-        btn.innerHTML = '<span class="spinner"></span>Authenticating...';
+        btn.innerHTML = '<span class="spinner"></span>Preparing...';
 
-        document.getElementById('auth-status-content').innerHTML = '';
-        document.getElementById('auth-status').style.display = 'block';
+        const _sc = document.getElementById('auth-status-content');
+        const _sd = document.getElementById('auth-status');
+        if (_sc) _sc.innerHTML = '';
+        if (_sd) _sd.style.display = 'block';
 
         // ------------------------------------------------------------------
-        // Step 1: Generate PKCE parameters
+        // Step 1: Generate PKCE parameters client-side
         // ------------------------------------------------------------------
         showStatus('Step 1: Generating PKCE parameters...');
         const codeVerifier  = generateCodeVerifier();
@@ -178,131 +178,47 @@ async function oauthLogin() {
         showStatus(`&nbsp;&nbsp;state          = ${state}`);
 
         // ------------------------------------------------------------------
-        // Step 2: GET /authorize - server validates params, returns login form
+        // Step 2: Encode code_verifier INSIDE the state payload.
+        // This makes the flow work regardless of origin (sessionStorage is
+        // per-origin, so cross-origin redirects would lose it).
+        // The server passes state back unchanged in the 302 redirect;
+        // the callback decodes it to recover both the CSRF nonce and cv.
         // ------------------------------------------------------------------
-        showStatus('Step 2: GET /oauth/pkce/authorize — fetching auth_request_id...');
+        const statePayload = base64UrlEncode(
+            new TextEncoder().encode(JSON.stringify({ n: state, cv: codeVerifier }))
+        );
+        showStatus('Step 2: Encoding PKCE session into state parameter...');
+        // Keep sessionStorage as an optional backup (same-origin case)
+        sessionStorage.setItem('oauth_code_verifier', codeVerifier);
+        sessionStorage.setItem('oauth_state',         state);
+        sessionStorage.setItem('oauth_server_url',    serverUrl);
+        sessionStorage.setItem('oauth_redirect_uri',  redirectUri);
+
+        // ------------------------------------------------------------------
+        // Step 3: Build authorization URL and redirect browser to server
+        //         Server will show its own login form at /oauth/pkce/authorize
+        // ------------------------------------------------------------------
         const authorizeUrl = new URL(`${serverUrl}/oauth/pkce/authorize`);
         authorizeUrl.searchParams.set('response_type',         'code');
         authorizeUrl.searchParams.set('client_id',             PKCE_CLIENT_ID);
         authorizeUrl.searchParams.set('redirect_uri',          redirectUri);
-        authorizeUrl.searchParams.set('state',                 state);
+        authorizeUrl.searchParams.set('state',                 statePayload);
         authorizeUrl.searchParams.set('code_challenge',        codeChallenge);
         authorizeUrl.searchParams.set('code_challenge_method', 'S256');
         authorizeUrl.searchParams.set('scope',                 PKCE_SCOPE);
 
-        const getResp = await fetch(authorizeUrl.toString(), {
-            method: 'GET',
-            headers: { 'Accept': 'text/html,application/json' },
-            mode: 'cors',
-        });
+        showStatus(`Step 3: Redirecting browser to Authorization Server...`);
+        showStatus(`&nbsp;&nbsp;${authorizeUrl.toString().substring(0, 80)}...`);
 
-        if (!getResp.ok) {
-            let errBody = {};
-            try { errBody = await getResp.json(); } catch (_) { /* ignore */ }
-            throw new Error(errBody.error_description || `Authorize GET failed: ${getResp.status}`);
-        }
+        // Small delay so user can see the status before the page navigates away
+        await new Promise(resolve => setTimeout(resolve, 800));
 
-        const html = await getResp.text();
+        window.location.href = authorizeUrl.toString();
 
-        // Parse auth_request_id from hidden input in server-rendered form
-        const match = html.match(/name="auth_request_id"\s+value="([^"]+)"/);
-        if (!match) {
-            throw new Error('Could not parse auth_request_id from server response');
-        }
-        const authRequestId = match[1];
-        showStatus(`&nbsp;&nbsp;auth_request_id = ${authRequestId.substring(0, 12)}...`);
-
-        // ------------------------------------------------------------------
-        // Step 3: POST /authorize with credentials — server validates and
-        //         returns JSON with the authorization code (API mode).
-        //         Standard browser flow would return 302 redirect instead.
-        // ------------------------------------------------------------------
-        showStatus('Step 3: POST /oauth/pkce/authorize — submitting credentials...');
-
-        const formBody = new URLSearchParams({
-            auth_request_id: authRequestId,
-            username,
-            password,
-        });
-
-        const postResp = await fetch(`${serverUrl}/oauth/pkce/authorize`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Accept': 'application/json',
-            },
-            body: formBody.toString(),
-            mode: 'cors',
-        });
-
-        const postResult = await postResp.json();
-
-        if (!postResp.ok) {
-            throw new Error(postResult.error_description || postResult.error || `Authorization failed: ${postResp.status}`);
-        }
-
-        const code          = postResult.code;
-        const returnedState = postResult.state;
-
-        if (!code) {
-            throw new Error('No authorization code in response');
-        }
-
-        showStatus(`&nbsp;&nbsp;authorization_code = ${code.substring(0, 12)}...`);
-
-        // ------------------------------------------------------------------
-        // Step 4: Validate state (CSRF protection)
-        // ------------------------------------------------------------------
-        showStatus('Step 4: Validating state parameter (CSRF check)...');
-        if (returnedState !== state) {
-            throw new Error(`State mismatch! Expected "${state}" but got "${returnedState}" — possible CSRF attack`);
-        }
-        showStatus('&nbsp;&nbsp;State valid.');
-
-        // ------------------------------------------------------------------
-        // Step 5: Exchange code + code_verifier for access_token
-        // ------------------------------------------------------------------
-        showStatus('Step 5: POST /oauth/pkce/token — exchanging code for token...');
-        showStatus(`&nbsp;&nbsp;Sending code_verifier = ${codeVerifier.substring(0, 20)}...`);
-        showStatus('&nbsp;&nbsp;Server recomputes SHA-256(code_verifier) and matches code_challenge');
-
-        const tokenResp = await fetch(`${serverUrl}/oauth/pkce/token`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json; charset=utf-8',
-                'Accept':       'application/json',
-            },
-            body: JSON.stringify({
-                grant_type:    'authorization_code',
-                code,
-                client_id:     PKCE_CLIENT_ID,
-                redirect_uri:  redirectUri,
-                code_verifier: codeVerifier,
-            }),
-            mode: 'cors',
-        });
-
-        const tokenResult = await tokenResp.json();
-
-        if (!tokenResp.ok) {
-            throw new Error(tokenResult.error_description || tokenResult.error || 'Token exchange failed');
-        }
-
-        showStatus('Authentication successful!');
-
-        document.getElementById('login-form').style.display   = 'none';
-        document.getElementById('auth-success').style.display = 'block';
-        document.getElementById('token-display').textContent  = tokenResult.access_token;
-        showAlert('Authentication successful!', 'success');
-
-        btn.disabled  = false;
-        btn.innerHTML = 'Login';
     } catch (error) {
         showAlert(`Error: ${error.message}`, 'error');
         const btn = document.getElementById('login-btn');
         btn.disabled  = false;
-        btn.innerHTML = 'Login';
+        btn.innerHTML = 'Login with OAuth PKCE';
     }
 }
-
-handleEnterKey(oauthLogin);

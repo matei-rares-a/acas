@@ -298,7 +298,7 @@ https://sedicii.com/news/zero-knowledge-authentication/
 
 
 
-—-------------------------------------------------------------------
+-------------------------------------------------------------------
 
 
 https://blog.cloudflare.com/lattice-crypto-primer/ - protejarea unui secret impotriva quantum computing 

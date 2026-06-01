@@ -2,14 +2,14 @@ sequenceDiagram
     autonumber
     actor U as User
     participant UI as Client App
-    participant API as Server
+    participant API as Auth Server
     participant DB as Database
 
     U->>UI: Enter client_id, password
 
-    rect rgb(220, 235, 255)
-    Note over UI,API: OAuth PKCE Registration
-    UI->>API: POST /oauth/pkce/register  { client_id, password }
+    rect rgb(220, 245, 235)
+    Note over UI,API: OAuth Simple Registration
+    UI->>API: POST /oauth/simple/register  { client_id, password }
     break missing client_id or password
         API->>UI: 400 { error: invalid_request }
     end
@@ -18,16 +18,12 @@ sequenceDiagram
     end
     Note over API: store SHA-256(password) for client_id
     API->>API: 
-    API->>UI: 201 { status: OAuth pkce user registered }
+    API->>UI: 201 { status: OAuth simple user registered }
     end
 
-    rect rgb(220, 235, 255)
-    Note over UI,API: Authorization Code + PKCE
-    Note over UI: code_verifier = CSPRNG (random string)
-    UI->>UI: 
-    Note over UI: code_challenge = BASE64URL( SHA-256(code_verifier) )
-    UI->>UI: 
-    UI->>API: POST /oauth/pkce/authorize  { response_type: code, client_id, redirect_uri, username, password, code_challenge, code_challenge_method: S256, scope }
+    rect rgb(220, 245, 235)
+    Note over UI,API: Authorization Code (no PKCE)
+    UI->>API: POST /oauth/simple/authorize  { response_type: code, client_id, redirect_uri, username, password, scope }
     break unsupported response_type
         API->>UI: 400 { error: unsupported_response_type }
     end
@@ -37,12 +33,6 @@ sequenceDiagram
     break unknown client or redirect_uri not registered
         API->>UI: 400 { error: unauthorized_client }
     end
-    break missing code_challenge
-        API->>UI: 400 { error: invalid_request }
-    end
-    break code_challenge_method != S256
-        API->>UI: 400 { error: invalid_request }
-    end
     API->>DB: SELECT secret_y WHERE client_id = username
     DB->>API: { user }
     break authentication failed
@@ -50,14 +40,14 @@ sequenceDiagram
     end
     Note over API: authorization_code = CSPRNG token
     API->>API: 
-    Note over API: store{ code, client_id, resource_owner, redirect_uri, scope, code_challenge, expires_at }
+    Note over API: store{ code, client_id, resource_owner, redirect_uri, scope, expires_at }
     API->>API: 
     API->>UI: 200 { code, expires_in, scope }
     end
 
-    rect rgb(220, 235, 255)
+    rect rgb(220, 245, 235)
     Note over UI,API: Token Exchange
-    UI->>API: POST /oauth/pkce/token  { grant_type: authorization_code, code, client_id, redirect_uri, code_verifier }
+    UI->>API: POST /oauth/simple/token  { grant_type: authorization_code, code, client_id, redirect_uri }
     break unsupported grant_type
         API->>UI: 400 { error: unsupported_grant_type }
     end
@@ -70,12 +60,6 @@ sequenceDiagram
     break code invalid, expired or client mismatch
         API->>UI: 400 { error: invalid_grant }
     end
-    break missing code_verifier
-        API->>UI: 400 { error: invalid_request }
-    end
-    break SHA-256(code_verifier) != stored code_challenge
-        API->>UI: 400 { error: invalid_grant }
-    end
     Note over API: access_token = JWT( sub, scope, exp=now+3600s )
     API->>API: 
     Note over API: refresh_token = CSPRNG token, store with exp=now+86400s
@@ -86,9 +70,9 @@ sequenceDiagram
     UI->>U: Authenticated
     end
 
-    rect rgb(220, 235, 255)
+    rect rgb(220, 245, 235)
     Note over UI,API: Token Refresh
-    UI->>API: POST /oauth/pkce/token  { grant_type: refresh_token, refresh_token, client_id }
+    UI->>API: POST /oauth/simple/token  { grant_type: refresh_token, refresh_token, client_id }
     break refresh_token invalid, expired or client mismatch
         API->>UI: 400 { error: invalid_grant }
     end

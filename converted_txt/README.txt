@@ -5,12 +5,12 @@ OAuth-style API key authentication using the ZKP (zero-knowledge proof) protocol
 
 ## Project Structure
 
-- `server_app/` — Flask authentication server: routes, models, OAuth2 handlers, SQLite database.
-- `client_app/` — HTML/JavaScript browser client: registration, login, shared ZKP helpers, and a real-time network monitor panel.
-- `qa/` — All QA work: functional tests, benchmarks, load tests, measurement probes, and manual security audits. See [`qa/QA.md`](qa/QA.md).
-- `diagrams/` — Architecture and protocol diagrams (Mermaid source files).
-- `calculations.py` — Reference parameter-generation notes and calculations.
-- `requirements.txt` — Python dependencies.
+- `server_app/` - Flask authentication server: routes, models, OAuth2 handlers, SQLite database.
+- `client_app/` - HTML/JavaScript browser client: registration, login, shared ZKP helpers, and a real-time network monitor panel.
+- `qa/` - All QA work: functional tests, benchmarks, load tests, measurement probes, and manual security audits. See [`qa/QA.md`](qa/QA.md).
+- `diagrams/` - Architecture and protocol diagrams (Mermaid source files).
+- `calculations.py` - Reference parameter-generation notes and calculations.
+- `requirements.txt` - Python dependencies.
 
 ## Run the System
 

@@ -1,0 +1,36 @@
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant C as Client App
+    participant S as Auth Server
+    participant DB as Database
+
+
+
+    rect rgb(244, 242, 245)
+    Note over C,S: Token Consumption - Protected Resource Access
+    U->>C: Request protected data
+    C->>S: GET /data<br/>Authorization: Bearer JWT
+    Note over S: Decode JWT header + payload (base64)<br/>Verify HMAC-SHA256 signature with SECRET<br/>Check exp, iss, aud claims
+    S->>S: 
+    alt Token valid
+        S->>DB: SELECT perso_data WHERE user_id = sub(JWT)
+        DB-->>S: { message }
+        S-->>C: 200 { data: message }
+        C-->>U: Display protected data
+    else Token invalid or expired
+        S-->>C: 401 { reason: invalid or expired token }
+        C-->>U: Error - re-authentication required
+    end
+    end
+
+    rect rgb(255, 240, 220)
+    Note over C,S: Token Expiry and Re-authentication
+    Note over C: JWT has no refresh mechanism in ZKP flow<br/>Token expires after TTL
+    C->>C: 
+    C->>S: GET /data<br/>Authorization: Bearer JWT (expired)
+    S-->>C: 401 { reason: token expired }
+    Note over C: Client must restart full ZKP login<br/>(commit -> verify) to obtain a new token
+    C->>C: 
+    C-->>U: Session ended - login again
+    end

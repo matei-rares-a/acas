@@ -13,7 +13,7 @@
             <div class="container">
                 <div class="header">
                     <h1>OAuth PKCE Login</h1>
-                    <p>Authenticate with Authorization Code + PKCE</p>
+                    <p>Authorization Code Flow + PKCE (RFC 7636)</p>
                 </div>
 
                 <div class="content">
@@ -21,32 +21,22 @@
 
                     <div id="login-form">
                         <div class="form-group">
-                            <label for="username">Client ID</label>
-                            <input type="text" id="username" placeholder="Enter your client ID">
-                        </div>
-
-                        <div class="form-group">
-                            <label for="password">Password</label>
-                            <input type="password" id="password" placeholder="Enter your password">
-                        </div>
-
-                        <div class="form-group">
-                            <label for="server-url">Server URL</label>
+                            <label for="server-url">Authorization Server URL</label>
                             <input type="text" id="server-url" placeholder="http://localhost:5000" value="http://localhost:5000">
                         </div>
 
                         <div class="form-group">
                             <label for="redirect-uri">Redirect URI</label>
                             <input type="text" id="redirect-uri"
-                                placeholder="http://localhost:8000/oauth-callback.html"
-                                value="http://localhost:8000/oauth-callback.html">
+                                placeholder="http://localhost:5000/oauth-callback.html"
+                                value="http://localhost:5000/oauth-callback.html">
                             <small style="color:#888;font-size:11px;margin-top:4px;display:block;">
-                                Must be registered on the server. Serve the client app from the same origin (e.g. <code>python -m http.server 8000</code> in client_app/).
+                                Served directly by the auth server on port 5000.
                             </small>
                         </div>
 
                         <button class="btn btn-primary" id="login-btn" onclick="oauthLogin()">
-                            Login
+                            Login with OAuth PKCE
                         </button>
 
                         <div class="links">
@@ -54,17 +44,12 @@
                         </div>
                     </div>
 
+                    <!--
                     <div id="auth-status" class="status-box" style="display: none;">
                         <h3>PKCE Flow Progress:</h3>
                         <div id="auth-status-content"></div>
                     </div>
-
-                    <div id="auth-success" class="auth-success" style="display: none;">
-                        <h2>Authentication Successful!</h2>
-                        <p>You have been authenticated via OAuth 2.0 Authorization Code + PKCE.</p>
-                        <div class="token-display" id="token-display"></div>
-                        <button class="btn btn-primary" onclick="resetForm()">Login Again</button>
-                    </div>
+                    -->
                 </div>
             </div>
         </div>

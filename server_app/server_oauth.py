@@ -1,11 +1,12 @@
 import base64
 import hashlib
+import os
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
-from flask import Blueprint, jsonify, make_response, redirect, request
+from flask import Blueprint, jsonify, make_response, redirect, request, send_from_directory
 
 
 # ---------------------------------------------------------------------------
@@ -22,6 +23,7 @@ REDIRECT_URIS  = {
     "https://client.example/callback",
     "http://localhost:8000/callback",
     "http://localhost:8000/oauth-callback.html",
+    "http://localhost:5000/oauth-callback.html",
 }
 ALLOWED_SCOPES = {"openid", "profile", "read:data", "write:data"}
 
@@ -55,24 +57,43 @@ def clear_oauth_state():
 Note: these are set at startup and treated as read-only after that,
 so no lock is needed.
 '''
-_db = _User = _AuthToken = _secret = None
+_db = _User = _AuthToken = _OAuthCredential = _secret = None
 
 # Two blueprints -- one per implementation -- give each its own visible URL prefix.
-pkce_bp   = Blueprint('oauth_pkce',   __name__, url_prefix='/oauth/pkce')
-simple_bp = Blueprint('oauth_simple', __name__, url_prefix='/oauth/simple')
+pkce_bp    = Blueprint('oauth_pkce',   __name__, url_prefix='/oauth/pkce')
+simple_bp  = Blueprint('oauth_simple', __name__, url_prefix='/oauth/simple')
 # Backward-compat aliases: /oauth/register|authorize|token -> pkce
-compat_bp = Blueprint('oauth_compat', __name__, url_prefix='/oauth')
+compat_bp  = Blueprint('oauth_compat', __name__, url_prefix='/oauth')
+# Serves client_app/ static files so callback lands on the same port 5000.
+client_bp  = Blueprint('client_app',  __name__)
+
+_CLIENT_APP_DIR = os.path.normpath(
+    os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'client_app')
+)
+
+
+@client_bp.route('/')
+@client_bp.route('/<path:filename>')
+def serve_client(filename='index.html'):
+    '''Serve client_app static files from the same port as the auth server.
+    API blueprints are registered before this one, so /oauth/*, /login,
+    /register, etc. are matched first and never fall through here.
+    '''
+    return send_from_directory(_CLIENT_APP_DIR, filename)
 
 
 def init_oauth(app, db, User, AuthToken, secret):
     '''Register all OAuth blueprints on the Flask app.
     Called once from server.py after the app and DB are ready.
     '''
-    global _db, _User, _AuthToken, _secret
-    _db, _User, _AuthToken, _secret = db, User, AuthToken, secret
+    global _db, _User, _AuthToken, _OAuthCredential, _secret
+    from models import OAuthCredential
+    _db, _User, _AuthToken, _OAuthCredential, _secret = db, User, AuthToken, OAuthCredential, secret
     app.register_blueprint(pkce_bp)
     app.register_blueprint(simple_bp)
     app.register_blueprint(compat_bp)
+    # client_bp last so all API routes always take priority over the catch-all
+    app.register_blueprint(client_bp)
 
 
 # ---------------------------------------------------------------------------
@@ -161,12 +182,27 @@ def _html_login_form(action_url, auth_request_id, error=None):
         '<!doctype html><html><head><meta charset="utf-8"><title>Login</title></head>'
         '<body style="font-family:sans-serif;max-width:320px;margin:60px auto">'
         f'<h2>Login</h2>{error_html}'
-        f'<form method="post" action="{action_url}">'
+        '<p style="font-size:11px;color:#888;border:1px solid #ddd;padding:6px;border-radius:4px">'
+        '&#9432; Authorization Server login &mdash; credentials are submitted directly to the server, '
+        'never to the client application.</p>'
+        f'<form id="login-form" method="post" action="{action_url}">'
         f'<input type="hidden" name="auth_request_id" value="{auth_request_id}">'
-        '<label>Username<br><input type="text" name="username" autofocus style="width:100%"></label><br><br>'
-        '<label>Password<br><input type="password" name="password" style="width:100%"></label><br><br>'
+        '<label>Username<br><input type="text" id="f-user" name="username" autofocus style="width:100%"></label><br><br>'
+        '<label>Password<br><input type="password" id="f-pass" name="password" style="width:100%"></label><br><br>'
         '<button type="submit" style="width:100%">Login</button>'
-        '</form></body></html>'
+        '</form>'
+        # Save credentials to localStorage (same-origin, cross-tab) so the
+        # callback page can reconstruct the POST entry in its network monitor.
+        # ⚠️  Demo/educational only; never do this in production.
+        '<script>'
+        'document.getElementById("login-form").addEventListener("submit", function() {'
+        '  try {'
+        '    localStorage.setItem("_demo_oauth_user", document.getElementById("f-user").value);'
+        '    localStorage.setItem("_demo_oauth_pass", document.getElementById("f-pass").value);'
+        '  } catch(e) {}'
+        '});'
+        '</script>'
+        '</body></html>'
     )
 
 
@@ -186,7 +222,12 @@ def pkce_register():
     if not client_id or not password:
         return _oauth_error("invalid_request", "missing client_id or password", 400)
 
-    OAUTH_PASSWORD_HASHES["pkce"][client_id] = _hash_password(password)
+    existing = _OAuthCredential.query.filter_by(impl='pkce', client_id=client_id).first()
+    if existing:
+        existing.pw_hash = _hash_password(password)
+    else:
+        _db.session.add(_OAuthCredential(impl='pkce', client_id=client_id, pw_hash=_hash_password(password)))
+    _db.session.commit()
     return jsonify({"status": "OAuth pkce user registered"}), 201
 
 
@@ -252,7 +293,8 @@ def pkce_authorize():
     if not pending or pending["expires_at"] < time.time():
         return _oauth_error("invalid_request", "authorization request not found or expired", 400)
 
-    stored_hash = OAUTH_PASSWORD_HASHES["pkce"].get(username)
+    record = _OAuthCredential.query.filter_by(impl='pkce', client_id=username).first()
+    stored_hash = record.pw_hash if record else None
     if stored_hash is None or not secrets.compare_digest(stored_hash, _hash_password(password)):
         return _oauth_error("access_denied", "resource owner authentication failed", 401)
 
@@ -363,7 +405,12 @@ def simple_register():
     if not client_id or not password:
         return _oauth_error("invalid_request", "missing client_id or password", 400)
 
-    OAUTH_PASSWORD_HASHES["simple"][client_id] = _hash_password(password)
+    existing = _OAuthCredential.query.filter_by(impl='simple', client_id=client_id).first()
+    if existing:
+        existing.pw_hash = _hash_password(password)
+    else:
+        _db.session.add(_OAuthCredential(impl='simple', client_id=client_id, pw_hash=_hash_password(password)))
+    _db.session.commit()
     return jsonify({"status": "OAuth simple user registered"}), 201
 
 
@@ -418,7 +465,8 @@ def simple_authorize():
     if not pending or pending["expires_at"] < time.time():
         return _oauth_error("invalid_request", "authorization request not found or expired", 400)
 
-    stored_hash = OAUTH_PASSWORD_HASHES["simple"].get(username)
+    record = _OAuthCredential.query.filter_by(impl='simple', client_id=username).first()
+    stored_hash = record.pw_hash if record else None
     if stored_hash is None or not secrets.compare_digest(stored_hash, _hash_password(password)):
         return _oauth_error("access_denied", "resource owner authentication failed", 401)
 

@@ -9,7 +9,7 @@ urllib3>=2.6.3
 authlib
 sympy
 gevent
-# optional — required by main_probes.py --charts, comparision.py, generates.py
+# optional - required by main_probes.py --charts, comparision.py, generates.py
 matplotlib
 pandas
 psutil

@@ -686,7 +686,7 @@ Bibliografie
 	***, SalAlchemy library, https://www.sqlalchemy.org/, ultima accesare: 26/06/2024.
 	***, PyJWT, https://pyjwt.readthedocs.io/en/stable/, ultima accesare: 26/06/2024.
 	***, RFC 7519, https://datatracker.ietf.org/doc/html/rfc7519, ultima accesare: 26/06/2024.
-	Paul P., Aithal P. S., Saavedra R., Ghosh Surajit, Blockchain Technology and Its Types—A Short Review (December 26, 2021). International Journal of Applied Science and Engineering (IJASE), 9(2), 189-200. (2021). ISSN: 2321-0745. , Available at SSRN: https://ssrn.com/abstract=4050933.
+	Paul P., Aithal P. S., Saavedra R., Ghosh Surajit, Blockchain Technology and Its Types A Short Review (December 26, 2021). International Journal of Applied Science and Engineering (IJASE), 9(2), 189-200. (2021). ISSN: 2321-0745. , Available at SSRN: https://ssrn.com/abstract=4050933.
 	***, Three-tier Architecture, https://www.ibm.com/topics/three-tierarchitecture, ultima                         accesare: 26/06/2024.
 	Alexandru Achip, Programare orientată pe servicii – note de laborator, ***, ultima                                      accesare: 26/06/2024.
 	***, Spring Framework, https://spring.io/projects/spring-framework, ultima accesare: 26/06/2024.

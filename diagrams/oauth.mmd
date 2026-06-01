@@ -4,16 +4,16 @@ sequenceDiagram
     participant B as Browser / Client App
     participant S as Authorization Server
 
-    Note over B,S: ⚠ Deviation from RFC 6749: no GET /authorize redirect —<br/>credentials are submitted directly by the browser in the same POST request.
+    Note over B,S: ⚠ Deviation from RFC 6749: no GET /authorize redirect -<br/>credentials are submitted directly by the browser in the same POST request.
 
     rect rgb(220, 240, 255)
-    Note over B,S: Registration (custom pre-step — one-time)
+    Note over B,S: Registration (custom pre-step - one-time)
     B->>S: POST /oauth/simple/register { client_id, password }
     S-->>B: 201 { status: registered }
     end
 
     rect rgb(220, 255, 220)
-    Note over U,S: Authorization Code Grant — no PKCE  (RFC 6749 §4.1)
+    Note over U,S: Authorization Code Grant - no PKCE  (RFC 6749 §4.1)
     U->>B: Click login
     B-->>U: Show login form
     U->>B: Enter { username, password }

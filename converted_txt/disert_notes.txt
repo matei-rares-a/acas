@@ -1,6 +1,6 @@
 Protocol & Cryptography
 Group parameters must be validated by the client, not just the server.
-GET /parameters returns P and G with no signature or pinning. A MitM can substitute weak parameters (P=23, G=4) and the client accepts them silently — exactly what test_mitm_weak_parameter_injection demonstrates. In production, pin the expected P and G fingerprint in the client binary and reject any deviation.
+GET /parameters returns P and G with no signature or pinning. A MitM can substitute weak parameters (P=23, G=4) and the client accepts them silently - exactly what test_mitm_weak_parameter_injection demonstrates. In production, pin the expected P and G fingerprint in the client binary and reject any deviation.
 
 G = 4 is a demo constant.
 It works mathematically (4 = 2² generates a subgroup of order Q in this group) but it is not a standardized, audited generator. Production should use a NIST or RFC-standardized group (e.g. RFC 3526 Group 14/15/16, or a standard elliptic curve like P-256).
@@ -12,7 +12,7 @@ This check detects in-memory session tampering. It costs one SHA-256 call per ve
 s <= 0 now correctly rejects s=0, but the diagram still says [[1, Q). Update the diagram to (0, Q) or s > 0 and s < Q to be unambiguous.
 
 scrypt parameters n=2**11, r=8, p=1 are below current recommendations.
-OWASP 2023 recommends at least n=2**17 (131072) for interactive logins when memory is available, or n=2**14 minimum. The current setting is fast — good for the demo, bad for hardening against offline dictionary attacks on a stolen database.
+OWASP 2023 recommends at least n=2**17 (131072) for interactive logins when memory is available, or n=2**14 minimum. The current setting is fast - good for the demo, bad for hardening against offline dictionary attacks on a stolen database.
 
 Salt must be stored, not ephemeral.
 calculations.py generates a fresh salt on every run (salt = secrets.token_bytes(16)) with a comment "todo: save salt on local at sign up". In production, the salt is generated once at registration, stored in secure platform storage (Keychain / Credential Manager / TPM), and retrieved at every login. If the salt is lost, the user cannot log in.
@@ -26,10 +26,10 @@ Hardcoded SECRET must be replaced.
 In production: load from environment variable or a secrets manager (Vault, AWS Secrets Manager, Azure Key Vault). Rotate on compromise.
 
 JWT signing must switch from HS256 to RS256/ES256.
-HS256 uses the same secret for signing and verification. Any service that needs to verify tokens also holds the signing key — a compromise of any verifier compromises the issuer. RS256/ES256 separates the private signing key (issuer only) from the public verification key (any verifier).
+HS256 uses the same secret for signing and verification. Any service that needs to verify tokens also holds the signing key - a compromise of any verifier compromises the issuer. RS256/ES256 separates the private signing key (issuer only) from the public verification key (any verifier).
 
 All constants (P, Q, G, SESSION_TTL, COMMIT_RACE_WINDOW_S) must be externalized.
-They are marked with # Note: constants and settings should be in env files — follow through. Hardcoded crypto parameters in source code make parameter rotation a code deployment.
+They are marked with # Note: constants and settings should be in env files - follow through. Hardcoded crypto parameters in source code make parameter rotation a code deployment.
 
 Session & State Management
 In-memory _SessionStore is single-process only.
@@ -42,19 +42,19 @@ The race window heuristic (50 ms) is fragile.
 Two legitimate requests (browser retry on network error) can trigger the hijack path and invalidate both. A proper solution is to use the session binding to allow the original requestor to re-commit, or to implement explicit session cancellation.
 
 No token revocation mechanism.
-_save_token does an upsert — issuing a new JWT simply overwrites the old one in the DB, but the old JWT remains cryptographically valid until its exp. Production needs a token blocklist or short-lived tokens with refresh tokens.
+_save_token does an upsert - issuing a new JWT simply overwrites the old one in the DB, but the old JWT remains cryptographically valid until its exp. Production needs a token blocklist or short-lived tokens with refresh tokens.
 
 Network & Transport
 HTTPS is optional and depends on file existence.
 
-In production, HTTPS must be mandatory and enforced at the infrastructure level (reverse proxy, load balancer). The Strict-Transport-Security header is only set if the request is already HTTPS — it provides no protection on the first plain HTTP request.
+In production, HTTPS must be mandatory and enforced at the infrastructure level (reverse proxy, load balancer). The Strict-Transport-Security header is only set if the request is already HTTPS - it provides no protection on the first plain HTTP request.
 
 CORS is wide open.
 
 This allows any origin to make credentialed requests. In production, restrict to the exact client origin(s) and disable the wildcard.
 
 Session binding uses request.remote_addr directly.
-This is correct for a directly-exposed server (the comment explains why). Behind a reverse proxy (nginx, AWS ALB), remote_addr is always the proxy IP — every session would bind to the same address, breaking the relay detection entirely. In production behind a proxy: validate and whitelist X-Forwarded-For, or use the TLS channel binding (RFC 5929 tls-unique) instead of IP.
+This is correct for a directly-exposed server (the comment explains why). Behind a reverse proxy (nginx, AWS ALB), remote_addr is always the proxy IP - every session would bind to the same address, breaking the relay detection entirely. In production behind a proxy: validate and whitelist X-Forwarded-For, or use the TLS channel binding (RFC 5929 tls-unique) instead of IP.
 
 Database & Persistence
 SQLite is not suitable for production.
@@ -80,4 +80,4 @@ Failed authentication attempts, binding mismatches, and session invalidations ar
 It accepts arbitrary PUT/POST message content with no schema validation and stores it directly. In production, validate, sanitize, and size-limit all user-supplied data before persistence.
 
 JWT client_id claim is trusted without re-validating the user still exists in the DB.
-/data does query the DB to confirm the user exists, which is correct. Keep this pattern — never trust JWT payload claims alone for authorization decisions.
+/data does query the DB to confirm the user exists, which is correct. Keep this pattern - never trust JWT payload claims alone for authorization decisions.

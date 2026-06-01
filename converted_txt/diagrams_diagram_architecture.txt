@@ -1,5 +1,5 @@
 graph TB
-    subgraph Browser["Browser — Client Application"]
+    subgraph Browser["Browser - Client Application"]
         subgraph Pages["HTML Pages"]
             INDEX["index.html\nLanding"]
             REG["register.html\nRegistration"]
@@ -13,7 +13,7 @@ graph TB
         end
     end
 
-    subgraph FlaskServer["Flask Server — Python"]
+    subgraph FlaskServer["Flask Server - Python"]
         subgraph ZKPRoutes["ZKP Auth Routes  (server.py)"]
             R1["GET  /health"]
             R2["GET  /parameters"]

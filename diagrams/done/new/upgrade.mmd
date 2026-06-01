@@ -2,7 +2,7 @@ sequenceDiagram
     autonumber
     actor U as User
     participant App as Client App
-    participant S as Server
+    participant S as  AuthServer
 
     U->>App: Click Login
 
@@ -41,7 +41,7 @@ sequenceDiagram
     U->>U: Enter client_id, password, and R
     Note over U: X = derive(password, client_id) mod Q
     U->>U: 
-    Note over U: S_val = (R + C * X) mod Q  — computed in browser JS
+    Note over U: S_val = (R + C * X) mod Q  - computed in browser JS
     U->>U: 
     U->>S: POST /login/verify  { client_id, solution_s: S_val }<br/>X-Auth-Session: session_id
     Note over S: G^s == T * y^c  (mod P)

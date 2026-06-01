@@ -182,11 +182,11 @@ Arhitectura funcționează într-un mod descentralizat din perspectiva validări
 
 Validarea sistemului a fost realizată printr-o strategie de testare pe mai multe niveluri, care acoperă corectitudinea funcțională, robustețea la intrări neașteptate, securitatea criptografică, integrarea cu fluxurile OAuth2 și performanța sub sarcină. Suita de testare automatizată, implementată cu framework-ul pytest, este organizată în cinci categorii distincte, fiecare adresând o dimensiune specifică a calității sistemului:
 
-1. Cazuri pozitive (pos_case.py) — validează fluxurile nominale ale protocolului.
-2. Cazuri negative (neg_case.py) — verifică respingerea corectă a cererilor neautorizate și a atacurilor cunoscute.
-3. Cazuri limită (corner_case.py) — testează comportamentul la frontierele matematice ale grupului Schnorr și la intrări malformate.
-4. Teste de securitate (security_case.py) — evaluează rezistența față de vectori criptografici de atac specifici schemei Schnorr.
-5. Teste OAuth2 (oauth_case.py) — validează fluxurile de autorizare delegată (PKCE, Simple, Authlib).
+1. Cazuri pozitive (pos_case.py) - validează fluxurile nominale ale protocolului.
+2. Cazuri negative (neg_case.py) - verifică respingerea corectă a cererilor neautorizate și a atacurilor cunoscute.
+3. Cazuri limită (corner_case.py) - testează comportamentul la frontierele matematice ale grupului Schnorr și la intrări malformate.
+4. Teste de securitate (security_case.py) - evaluează rezistența față de vectori criptografici de atac specifici schemei Schnorr.
+5. Teste OAuth2 (oauth_case.py) - validează fluxurile de autorizare delegată (PKCE, Simple, Authlib).
 
 Testele rulează împotriva unui client Flask de test fără server HTTP activ, garantând izolarea și reproductibilitatea. Starea bazei de date și sesiunile în memorie sunt reinițializate înaintea fiecărei suite, eliminând dependențele de ordine între teste.
 
@@ -299,7 +299,7 @@ Protocolul ZKP prezintă un debit consistent de aproximativ 170 RPS, relativ sta
 
 Auditul de trafic a comparat conținutul mesajelor HTTP transmise în cadrul fiecărui protocol, cu scopul de a valida proprietatea zero-knowledge la nivelul canalului de comunicație:
 
-- Protocolul ZKP (POST /login/commit, POST /login/verify): mesajele conțin exclusiv valori numerice efemere — angajamentul t (~617 cifre zecimale) și dovada s (~308 cifre). Parola sau orice derivat al acesteia nu apare în niciun mesaj.
+- Protocolul ZKP (POST /login/commit, POST /login/verify): mesajele conțin exclusiv valori numerice efemere - angajamentul t (~617 cifre zecimale) și dovada s (~308 cifre). Parola sau orice derivat al acesteia nu apare în niciun mesaj.
 
 - Autentificarea clasică (POST /classic/login): parola este transmisă în clar în corpul cererii, vizibilă oricărui adversar care interceptează traficul neprotejat.
 
@@ -316,7 +316,7 @@ Testul simulează scenariul în care adversarul obține accesul complet la baza 
 
 7.7.2. Unicitatea Provocărilor (Validarea Entropiei RNG)
 
-Pe 10.000 de cereri de commit consecutive, s-a verificat absența coliziunilor atât în valorile challenge_c, cât și în identificatorii de sesiune session_id generați. Toate valorile challenge_c s-au încadrat în intervalul [1, P−2]. Testul validează calitatea sursei de entropie criptografice (CSPRNG — secrets.randbelow) utilizate în implementare.
+Pe 10.000 de cereri de commit consecutive, s-a verificat absența coliziunilor atât în valorile challenge_c, cât și în identificatorii de sesiune session_id generați. Toate valorile challenge_c s-au încadrat în intervalul [1, P−2]. Testul validează calitatea sursei de entropie criptografice (CSPRNG - secrets.randbelow) utilizate în implementare.
 
 7.7.3. Atac de Injectare a Parametrilor Slabi (MitM)
 

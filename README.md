@@ -5,12 +5,12 @@ OAuth-style API key authentication using the ZKP (zero-knowledge proof) protocol
 
 ## Project Structure
 
-- `server_app/` — Flask authentication server: routes, models, OAuth2 handlers, SQLite database.
-- `client_app/` — HTML/JavaScript browser client: registration, login, shared ZKP helpers, and a real-time network monitor panel.
-- `qa/` — All QA work: functional tests, benchmarks, load tests, measurement probes, and manual security audits. See [`qa/QA.md`](qa/QA.md).
-- `diagrams/` — Architecture and protocol diagrams (Mermaid source files).
-- `calculations.py` — Reference parameter-generation notes and calculations.
-- `requirements.txt` — Python dependencies.
+- `server_app/` - Flask authentication server: routes, models, OAuth2 handlers, SQLite database.
+- `client_app/` - HTML/JavaScript browser client: registration, login, shared ZKP helpers, and a real-time network monitor panel.
+- `qa/` - All QA work: functional tests, benchmarks, load tests, measurement probes, and manual security audits. See [`qa/QA.md`](qa/QA.md).
+- `diagrams/` - Architecture and protocol diagrams (Mermaid source files).
+- `calculations.py` - Reference parameter-generation notes and calculations.
+- `requirements.txt` - Python dependencies.
 
 ## Run the System
 
@@ -58,7 +58,7 @@ Navigate to `http://localhost:8000` and use Register/Login.
 - Commit → verify window: **SESSION_TTL = 5 seconds**. Expired sessions are rejected with `401`.
 - Concurrent-commit detection: a second commit for the same `client_id` within **50 ms** is treated as a benign race (first writer wins); after 50 ms the old session is invalidated as a hijack attempt. Both paths return `409`.
 - JWT access tokens are **HS256-signed**, valid for **1 hour** (`exp = iat + 3600s`).
-- **KDF note**: the browser client derives `x` via `SHA-256(client_id:password)`; `qa_utils.py` uses `scrypt` (n=2048, r=8, p=1). These are intentionally different—the client-side approach is documented as a simplification.
+- **KDF note**: the browser client derives `x` via `SHA-256(client_id:password)`; `qa_utils.py` uses `scrypt` (n=2048, r=8, p=1). These are intentionally different-the client-side approach is documented as a simplification.
 - HTTP is used by default (development); HTTPS should be enforced in production.
 - Request/response activity can be observed in the in-app network monitor.
 
