@@ -70,6 +70,8 @@ Pentru a remedia limitările de scalabilitate și persistență, infrastructura 
 
 ----------------------
 
+***, Nostr Community Group: HTTP Schnorr Authentication Draft, https://nostrcg.github.io/http-schnorr-auth, ultima accesare: 30/05/2026. -
+----------------------
  + diagrame de comparatie intre protocoale ZKP si OAuth 2.0
 
 II.1.4. 	Comparatie intre protocoale ZKP si OAuth 2.0 todo
