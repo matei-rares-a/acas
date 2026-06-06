@@ -1,4 +1,0 @@
-batch,shallow_bytes,deep_bytes,tracemalloc_current_kb,tracemalloc_peak_kb,active_entries
-100,200,1186,86,202,1
-500,200,1190,65,218,1
-1000,200,1190,101,211,1

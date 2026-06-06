@@ -539,91 +539,6 @@ def generate_comparison_charts(
 
 
 # ---------------------------------------------------------------------------
-# Probe 7 - Session memory footprint under commit flood
-# ---------------------------------------------------------------------------
-
-def run_memory_footprint_benchmark(
-    batches: tuple = (100, 500, 1000),
-    output_csv: str = str(_GENERATED / "memory_footprint_results.csv"),
-) -> None:
-    """
-    Send commits in increasing batch sizes and measure the server sessions dict
-    memory footprint (shallow, deep, tracemalloc) after each batch.
-    Saves memory_footprint_results.csv.
-    """
-    import sys as _sys
-    import tracemalloc
-
-    def _deep_sizeof(obj, seen=None):
-        if seen is None:
-            seen = set()
-        oid = id(obj)
-        if oid in seen:
-            return 0
-        seen.add(oid)
-        size = _sys.getsizeof(obj)
-        if isinstance(obj, dict):
-            size += sum(_deep_sizeof(k, seen) + _deep_sizeof(v, seen) for k, v in obj.items())
-        elif isinstance(obj, (list, tuple, set, frozenset)):
-            size += sum(_deep_sizeof(i, seen) for i in obj)
-        return size
-
-    password = "flood-probe-pass"
-    client_id = "flood_probe_user"
-    rows = []
-
-    with server.app.test_client() as c:
-        with server.app.app_context():
-            x, _ = derive_password_x(password)
-            y = pow(server.G, x, server.P)
-            server.db.session.add(server.User(client_id=client_id, secret_y=y.to_bytes(256, 'big')))
-            server.db.session.commit()
-
-        for batch in batches:
-            server.sessions.clear()
-            tracemalloc.start()
-
-            for _ in range(batch):
-                rand_r = secrets_module.randbelow(server.P - 2) + 1
-                t = pow(server.G, rand_r, server.P)
-                c.post("/login/commit", json={"client_id": client_id, "commitment_t": t})
-
-            current_mem, peak_mem = tracemalloc.get_traced_memory()
-            tracemalloc.stop()
-
-            deep_size = _deep_sizeof(server.sessions)
-            row = {
-                "batch": batch,
-                "shallow_bytes": _sys.getsizeof(server.sessions),
-                "deep_bytes": deep_size,
-                "tracemalloc_current_kb": current_mem // 1024,
-                "tracemalloc_peak_kb": peak_mem // 1024,
-                "active_entries": len(server.sessions),
-            }
-            rows.append(row)
-            print(
-                f"After {batch:>5} commits: "
-                f"shallow={row['shallow_bytes']} B, "
-                f"deep={row['deep_bytes']} B, "
-                f"tracemalloc current={row['tracemalloc_current_kb']} KB "
-                f"peak={row['tracemalloc_peak_kb']} KB, "
-                f"active entries={row['active_entries']}"
-            )
-
-    out = Path(output_csv)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    with out.open("w", newline="") as f:
-        writer = csv.DictWriter(
-            f,
-            fieldnames=["batch", "shallow_bytes", "deep_bytes",
-                        "tracemalloc_current_kb", "tracemalloc_peak_kb", "active_entries"],
-        )
-        writer.writeheader()
-        writer.writerows(rows)
-    print(f"Saved: {out}")
-
-
-# ---------------------------------------------------------------------------
 # Probe 8 - Server internals: unmeasured crypto functions + protected endpoints
 # ---------------------------------------------------------------------------
 
@@ -1076,7 +991,6 @@ if __name__ == "__main__":
         audit_traffic_content()
         generate_charts()
         generate_comparison_charts()
-        run_memory_footprint_benchmark()
         run_server_internals_benchmark()
 
     elif cmd == "--run-all":
@@ -1090,7 +1004,6 @@ if __name__ == "__main__":
         _run("benchmark.py (latency + throughput CSVs)",[_PYTHON, "qa/measurement/benchmark.py"])
         audit_traffic_content()
         generate_charts()
-        run_memory_footprint_benchmark()
         run_server_internals_benchmark()
 
         # -- Phase 2: live server required -----------------------------------
