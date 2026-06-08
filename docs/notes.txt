@@ -1,0 +1,47 @@
+Concluzia originală conține doar 3 referințe: [50], [51] și [52]. Iată varianta rescrisă cu referințele păstrate:
+
+Concluzii (varianta rescrisă pentru disertație)
+Lucrarea a urmărit proiectarea, implementarea și evaluarea unui sistem de autentificare care combină schema de identificare Schnorr cu un model de autorizare bazat pe jetoane de acces în format JWT, inspirat conceptual din ecosistemul OAuth 2.0. Rezultatul este un prototip funcțional care demonstrează fezabilitatea autentificării web în absența transmiterii parolei către server, redefinind modelul de încredere: serverul nu mai deține și nu mai protejează un secret partajat, ci validează exclusiv relații matematice asimetrice pe baza cheii publice stocate.
+
+Din punct de vedere funcțional, sistemul acoperă integral ciclul de înregistrare, autentificare, emitere a jetonului de acces și consum al resurselor protejate, completat de măsuri de întărire precum validarea apartenenței la subgrup, legarea sesiunii de contextul HTTP, invalidarea sesiunii după consum și validarea riguroasă a tuturor intrărilor. Suita de testare automatizată și simulările de atac au confirmat consistența funcțională și experimentală a implementării. Ancorarea transcrisului criptografic de contextul specific al rețelei neutralizează atacurile de tip replay și relay, iar integrarea jetoanelor de acces post-autentificare asigură compatibilitatea cu standardele arhitecturale ale interfețelor API moderne. Fluxurile comparative OAuth 2.0 dezvoltate suplimentar au oferit o bază de referință obiectivă pentru evaluarea compromisului dintre securitate și performanță.
+
+Rezultatele experimentale evidențiază compromisul fundamental al soluției: costul computațional suplimentar, generat de exponențierile modulare pe un grup criptografic de dimensiuni mari, constituie contrapartea necesară pentru protejarea credențialelor în tranzit. Testele de sarcină au demonstrat că, într-un mediu cu încărcare realistă, diferențele strict criptografice sunt atenuate de costurile aferente infrastructurii, confirmând viabilitatea operațională a protocolului. Prin stocarea exclusivă a cheii publice la nivelul serverului, compromiterea stratului de persistență nu permite unui adversar generarea de dovezi valide în absența scalarului privat. Simulările de escaladare a forței brute au confirmat nefezabilitatea computațională a recuperării cheii private pentru dimensiunile parametrilor efectivi ai sistemului.
+
+În ciuda acestor rezultate, sistemul prezintă limitări structurale care circumscriu domeniul său de aplicabilitate. Latența superioară a fluxului ZKP față de schemele clasice, cerința menținerii unei stări temporare între etapele protocolului, transmiterea identificatorului de client în clar, precum și dependența post-autentificare de un singur artefact de acces reprezintă constrângeri inerente ale prototipului. La nivelul implementării, derivarea simplificată a cheii private în mediul browser, mecanismul de rezervă către parametri de dimensiuni reduse și absența semnării digitale a parametrilor publici distribuiți subliniază caracterul experimental al aplicației. Parametrii utilizați în prezenta iterație, precum generatorul G = 4 și funcția de derivare a cheilor scrypt cu un factor de cost n = 2^11, sunt adecvați exclusiv unui prototip de cercetare, iar pentru o viitoare tranziție către un mediu de producție se impune adoptarea unui generator standardizat (conform specificației RFC 3526) și utilizarea unor parametri scrypt aliniați la recomandările curente de securitate OWASP (n ≥ 2^14).
+
+Pentru maturizarea sistemului se propun mai multe direcții strategice. Standardizarea derivării secretului prin algoritmi robuști (scrypt cu parametri OWASP sau Argon2), eliminarea mecanismelor de rezervă pentru parametri slabi și implementarea fixării amprentelor criptografice constituie priorități imediate. Pe plan matematic, tranziția către o schemă Schnorr pe curbe eliptice sau explorarea protocoalelor alternative de tip SRP [50], PAKE [51] ori J-PAKE [52] ar eficientiza costurile computaționale. Infrastructura necesită externalizarea stocării sesiunilor către soluții de tip in-memory data store și migrarea stratului de date relațional către platforme robuste. Din perspectiva gestionării jetoanelor, se preconizează trecerea de la semnături simetrice (HS256) către algoritmi asimetrici (RS256 sau ES256), decuplând procesele de emitere de cele de verificare. Consolidarea perimetrului de securitate presupune integrarea mecanismelor de limitare a ratei de acces, jurnalizarea structurată a evenimentelor de securitate, liste de revocare a jetoanelor și restricționarea comunicării exclusiv prin protocolul HTTPS. Pe termen lung, încorporarea jetoanelor de tip proof-of-possession va elimina riscurile modelului bazat pe bearer token.
+
+Prin urmare, concluzia principală a lucrării este că autentificarea bazată pe dovezi cu cunoștințe zero poate fi integrată eficient într-o arhitectură web modernă și poate reduce semnificativ expunerea credențialelor la interceptare, cu condiția ca implementarea să fie completată printr-o întărire riguroasă a distribuției parametrilor, a derivării secretelor și a infrastructurii operaționale.
+
+Date și cifre pentru prezentare (slide-uri / notițe orale)
+Performanță
+Latență medie flux ZKP complet: 3,97 ms
+Debit ZKP: 178 - 264 RPS
+Comparativ OAuth 2.0 clasic: fluxul ZKP este de 5x - 7x mai lent
+Cauza principală: exponențierile modulare pe grupul criptografic de 2048 biți
+Test de sarcină (Locust)
+50 utilizatori concurenți, durată 30 secunde
+23 137 cereri procesate
+0 erori
+Concluzie: diferențele criptografice sunt atenuate de costurile de infrastructură în condiții reale
+Validare funcțională
+Suita principală: 56 teste, toate promovate
+Simulări suplimentare: compromiterea bazei de date, evaluarea entropiei CSPRNG, injectare parametri slabi, escaladare forță brută
+Reziliența la forță brută (logaritmul discret)
+Dimensiune	Iterații	Timp
+8 biți (P=167)	26	1,8 s
+24 biți	2 891 456	3,2 s
+32 biți	744 702 253	282,7 s
+64 biți	1 444 529 212 (întrerupt la 600 s)	> 600 s
+128 / 1024 biți	nefezabil	-
+Spațiu de căutare parametri efectivi: ~2^511 candidați
+Unicitate CSPRNG
+10 000 provocări și identificatori de sesiune generați
+0 coliziuni detectate
+Provocări validate în intervalul [1, P-2]
+Probabilitate ghicire session_id: 1/2^256 per tentativă
+500 tentative cu ID-uri aleatorii: toate respinse (HTTP 404)
+Atac MitM simulat (parametri slabi)
+Parametri injectați: P=23, Q=11, G=4 (grup de 11 elemente vs. ~2^1023)
+Client neprotejat: cheia privată recuperabilă prin forță brută (max P-2 pași)
+Server cu parametri originali: respinge cheia neconformă cu HTTP 422
