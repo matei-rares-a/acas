@@ -28,7 +28,7 @@ PROTOCOL_G = 4
 PASSWORD = "my_secure_password"
 
 #timeout in seconds.
-TIMEOUT_PER_STAGE_S = 600
+TIMEOUT_PER_STAGE_S = 1200
 
 
 

@@ -28,7 +28,7 @@ G = 4
 
 # Python's jwt gives warning if secret is shorter than 32
 SECRET      = 'dev-only-server-secret-at-least-32-bytes-long'
-SESSION_TTL = 5        # seconds -- commit -> verify window
+SESSION_TTL = 10        # seconds -- commit -> verify window
 # Second commit within 50 ms = race, first writer wins.
 # Second commit after 50 ms = hijack attempt, both sessions invalidated.
 COMMIT_RACE_WINDOW_S = 0.050   # 50 ms: two commits within this window = race
@@ -226,10 +226,22 @@ def extract_access_token() -> str | None:
     return None
 
 
+def _parse_x_forwarded_for(header: str) -> str | None:
+    """Return the first address from X-Forwarded-For or None if the header is missing."""
+    if not header:
+        return None
+    first_addr = header.split(",", 1)[0].strip()
+    return first_addr or None
+
+
 def _get_peer() -> tuple[str, str]:
-    """Return (remote_addr, user_agent) for the current request."""
+    """Return (remote_addr, user_agent) tuple for the current request."""
+    remote_addr = _parse_x_forwarded_for(request.headers.get('X-Forwarded-For', ''))
+    if not remote_addr:
+        remote_addr = request.remote_addr or "127.0.0.1"
+
     return (
-        request.remote_addr or "127.0.0.1",
+        remote_addr,
         request.headers.get("User-Agent", "").strip().lower(),
     )
 
