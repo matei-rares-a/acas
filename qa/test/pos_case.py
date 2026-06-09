@@ -5,7 +5,12 @@ import secrets as secrets_module
 import jwt
 import pytest
 
-from qa_utils import server, derive_password_x, BaseTestSuite
+from qa_utils import server, derive_password_x, BaseTestSuite, ec_scalar_mult, EC_ORDER, EC_GENERATOR
+
+
+def _ec_encoded(Y: tuple) -> bytes:
+    """Encode EC point Y as 64 bytes (32-byte x || 32-byte y)."""
+    return Y[0].to_bytes(32, 'big') + Y[1].to_bytes(32, 'big')
 
 class TestPositiveCases(BaseTestSuite):
 
@@ -15,11 +20,11 @@ class TestPositiveCases(BaseTestSuite):
         client_id = "test_user"
         raw_password = "my-secure-password-12345"
         password_x,_ = derive_password_x(raw_password)
-        secret_y = pow(server.G, password_x, server.P)
+        Y = ec_scalar_mult(password_x, EC_GENERATOR)
 
         response = client.post(
             "/register",
-            json={"client_id": client_id, "secret_y": secret_y},
+            json={"client_id": client_id, "secret_y_x": str(Y[0]), "secret_y_y": str(Y[1])},
         )
 
         assert response.status_code == 201
@@ -28,7 +33,7 @@ class TestPositiveCases(BaseTestSuite):
         with server.app.app_context():
             user = server.User.query.filter_by(client_id=client_id).first()
             assert user is not None
-            assert user.secret_y == secret_y.to_bytes(256, 'big')
+            assert user.secret_y == _ec_encoded(Y)
             assert not hasattr(user, "password")
             serialized = f"{user.client_id}|{user.secret_y.hex()}"
             assert raw_password not in serialized
@@ -40,11 +45,11 @@ class TestPositiveCases(BaseTestSuite):
         client_id = "test_user_hash"
         raw_password = "my-secure-password-12345"
         password_x, _ = derive_password_x(raw_password)
-        secret_y = pow(server.G, password_x, server.P)
+        Y = ec_scalar_mult(password_x, EC_GENERATOR)
 
         response = client.post(
             "/register",
-            json={"client_id": client_id, "secret_y": secret_y},
+            json={"client_id": client_id, "secret_y_x": str(Y[0]), "secret_y_y": str(Y[1])},
         )
         assert response.status_code == 201
 
@@ -71,18 +76,18 @@ class TestPositiveCases(BaseTestSuite):
         raw_password = "test-password-secure"
 
         password_x,_ = derive_password_x(raw_password)
-        secret_y = pow(server.G, password_x, server.P)
+        Y = ec_scalar_mult(password_x, EC_GENERATOR)
 
         with server.app.app_context():
-            server.db.session.add(server.User(client_id=client_id, secret_y=secret_y.to_bytes(256, 'big')))
+            server.db.session.add(server.User(client_id=client_id, secret_y=_ec_encoded(Y)))
             server.db.session.commit()
 
-        rand_r = secrets_module.randbelow(server.P - 2) + 1
-        commitment_t = pow(server.G, rand_r, server.P)
+        rand_r = secrets_module.randbelow(EC_ORDER - 1) + 1
+        T = ec_scalar_mult(rand_r, EC_GENERATOR)
 
         commit_response = client.post(
             "/login/commit",
-            json={"client_id": client_id, "commitment_t": commitment_t},
+            json={"client_id": client_id, "commitment_t_x": str(T[0]), "commitment_t_y": str(T[1])},
         )
 
         assert commit_response.status_code == 200
@@ -93,7 +98,7 @@ class TestPositiveCases(BaseTestSuite):
         challenge_c = int(commit_payload["challenge_c"])
         session_id = commit_payload["session_id"]
 
-        solution_s = (rand_r + challenge_c * password_x) % server.Q
+        solution_s = (rand_r + challenge_c * password_x) % EC_ORDER
 
         verify_response = client.post(
             "/login/verify",
@@ -115,11 +120,11 @@ class TestPositiveCases(BaseTestSuite):
         raw_password = "data-endpoint-password"
 
         password_x, _ = derive_password_x(raw_password)
-        secret_y = pow(server.G, password_x, server.P)
+        Y = ec_scalar_mult(password_x, EC_GENERATOR)
 
         register_response = client.post(
             "/register",
-            json={"client_id": client_id, "secret_y": secret_y},
+            json={"client_id": client_id, "secret_y_x": str(Y[0]), "secret_y_y": str(Y[1])},
         )
         assert register_response.status_code == 201
 
@@ -161,27 +166,27 @@ class TestPositiveCases(BaseTestSuite):
         """Alice and Bob both commit so their sessions coexist, Alice verify with her correct s and get token, Bob verify with his correct s and get token, both receive 200."""
         # Register both users
         x_alice, _ = derive_password_x("alice-parallel-pass")
-        y_alice = pow(server.G, x_alice, server.P)
+        Y_alice = ec_scalar_mult(x_alice, EC_GENERATOR)
         x_bob, _ = derive_password_x("bob-parallel-pass")
-        y_bob = pow(server.G, x_bob, server.P)
+        Y_bob = ec_scalar_mult(x_bob, EC_GENERATOR)
 
         with server.app.app_context():
-            server.db.session.add(server.User(client_id="parallel_alice", secret_y=y_alice.to_bytes(256, 'big')))
-            server.db.session.add(server.User(client_id="parallel_bob", secret_y=y_bob.to_bytes(256, 'big')))
+            server.db.session.add(server.User(client_id="parallel_alice", secret_y=_ec_encoded(Y_alice)))
+            server.db.session.add(server.User(client_id="parallel_bob",   secret_y=_ec_encoded(Y_bob)))
             server.db.session.commit()
 
         # Both commit -- two sessions coexist simultaneously
-        r_alice = secrets_module.randbelow(server.P - 2) + 1
-        t_alice = pow(server.G, r_alice, server.P)
-        resp_alice = client.post("/login/commit", json={"client_id": "parallel_alice", "commitment_t": t_alice})
+        r_alice = secrets_module.randbelow(EC_ORDER - 1) + 1
+        T_alice = ec_scalar_mult(r_alice, EC_GENERATOR)
+        resp_alice = client.post("/login/commit", json={"client_id": "parallel_alice", "commitment_t_x": str(T_alice[0]), "commitment_t_y": str(T_alice[1])})
         assert resp_alice.status_code == 200
         alice_payload = resp_alice.get_json()
         c_alice = int(alice_payload["challenge_c"])
         sid_alice = alice_payload["session_id"]
 
-        r_bob = secrets_module.randbelow(server.P - 2) + 1
-        t_bob = pow(server.G, r_bob, server.P)
-        resp_bob = client.post("/login/commit", json={"client_id": "parallel_bob", "commitment_t": t_bob})
+        r_bob = secrets_module.randbelow(EC_ORDER - 1) + 1
+        T_bob = ec_scalar_mult(r_bob, EC_GENERATOR)
+        resp_bob = client.post("/login/commit", json={"client_id": "parallel_bob", "commitment_t_x": str(T_bob[0]), "commitment_t_y": str(T_bob[1])})
         assert resp_bob.status_code == 200
         bob_payload = resp_bob.get_json()
         c_bob = int(bob_payload["challenge_c"])
@@ -192,7 +197,7 @@ class TestPositiveCases(BaseTestSuite):
         assert sid_bob in server.sessions
 
         # Alice verifies with her correct solution
-        s_alice = (r_alice + c_alice * x_alice) % server.Q
+        s_alice = (r_alice + c_alice * x_alice) % EC_ORDER
         verify_alice = client.post(
             "/login/verify",
             headers={"X-Auth-Session": sid_alice},
@@ -202,7 +207,7 @@ class TestPositiveCases(BaseTestSuite):
         assert "token" in verify_alice.get_json()
 
         # Bob verifies with his correct solution (session still intact)
-        s_bob = (r_bob + c_bob * x_bob) % server.Q
+        s_bob = (r_bob + c_bob * x_bob) % EC_ORDER
         verify_bob = client.post(
             "/login/verify",
             headers={"X-Auth-Session": sid_bob},

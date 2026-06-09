@@ -21,39 +21,52 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SERVER_APP_PATH = PROJECT_ROOT / "server_app"
 SERVER_MODULE_PATH = SERVER_APP_PATH / "server.py"
-if str(SERVER_APP_PATH) not in sys.path:
-    sys.path.insert(0, str(SERVER_APP_PATH))
+for _p in (SERVER_APP_PATH,):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 spec = importlib.util.spec_from_file_location("server", SERVER_MODULE_PATH)
 server = importlib.util.module_from_spec(spec)
 assert spec and spec.loader
 spec.loader.exec_module(server)
 
+# EC helpers — re-export from server module to avoid circular imports with ec_compare
+EC_ORDER    = server.EC_ORDER
+EC_GENERATOR = server.EC_GENERATOR
+
+
+def ec_scalar_mult(k, point):
+    return server._ec_scalar_mult(k, point)
+
+
+def ec_point_add(p1, p2):
+    return server._ec_point_add(p1, p2)
+
 
 def derive_password_x(password_string: str, salt: bytes = secrets_module.token_bytes(16)) -> int:
     """Derive private scalar x from a password using scrypt KDF."""
     hashed = hashlib.scrypt(password_string.encode(), salt=salt, n=2**11, r=8, p=1)
-    return int.from_bytes(hashed, "big") % server.Q, salt
+    return int.from_bytes(hashed, "big") % EC_ORDER or 1, salt
 
 
 def register_user(client, client_id: str, password: str):
-    """Register a new user and return (x, y)."""
+    """Register a new user and return (x, Y) where Y is the EC public key point."""
     x, _ = derive_password_x(password)
-    y = pow(server.G, x, server.P)
-    resp = client.post("/register", json={"client_id": client_id, "secret_y": y})
+    Y = ec_scalar_mult(x, EC_GENERATOR)
+    resp = client.post("/register", json={"client_id": client_id, "secret_y_x": str(Y[0]), "secret_y_y": str(Y[1])})
     assert resp.status_code in (200, 201)
-    return x, y
+    return x, Y
 
 
 def start_commit(client, client_id: str, rand_r=None, t_override=None):
     """Post /login/commit and return (rand_r, challenge_c, session_id).
 
-    t_override: use a specific commitment value instead of G^rand_r mod P.
+    t_override: use a specific EC point (x, y) tuple instead of r*G.
     """
     if rand_r is None:
-        rand_r = secrets_module.randbelow(server.P - 2) + 1
-    commitment_t = t_override if t_override is not None else pow(server.G, rand_r, server.P)
+        rand_r = secrets_module.randbelow(EC_ORDER - 1) + 1
+    T = t_override if t_override is not None else ec_scalar_mult(rand_r, EC_GENERATOR)
     resp = client.post(
-        "/login/commit", json={"client_id": client_id, "commitment_t": commitment_t}
+        "/login/commit", json={"client_id": client_id, "commitment_t_x": str(T[0]), "commitment_t_y": str(T[1])}
     )
     assert resp.status_code == 200
     payload = resp.get_json()

@@ -36,24 +36,19 @@ async function authenticate() {
         statusContent.innerHTML = '';
         document.getElementById('auth-status').style.display = 'block';
 
-        // Step 0: Fetch parameters from server
-        showStatus('Fetching parameters from server...');
-        await fetchParameters(serverUrl);
-        showStatus(`Parameters received: P=${P}, G=${G}`);
-
-        // Step 1: Derive password_x
+        // Step 0: Derive password_x (no server round-trip needed)
         const password_x = await derivePasswordX(password, username);
-        showStatus(`Derived password x=${password_x}`);
+        showStatus(`Derived password scalar x`);
 
-        // Step 2: Generate random r
-        const r = randomInRange(1n, Q - 1n);
-        showStatus(`Generated secure random r=${r}`);
+        // Step 1: Generate random r
+        const r = randomInRange(1n, EC_ORDER - 1n);
+        showStatus(`Generated secure random r`);
 
-        // Step 3: Compute commitment t = g^r mod p
-        const t = modPow(G, r, P);
-        showStatus(`Computed commitment t=${t}`);
+        // Step 2: Compute commitment T = r * G (EC point)
+        const T = ecScalarMult(r, EC_GENERATOR);
+        showStatus(`Computed EC commitment T`);
 
-        // Step 4: Send commitment to server
+        // Step 3: Send commitment to server
         showStatus('Sending commitment to server...');
         const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const commitResponse = await fetch(`${serverUrl}/login/commit`, {
@@ -65,7 +60,7 @@ async function authenticate() {
                 'API-Version': 'S1.0',
                 'Request-ID': requestId,
             },
-            body: JSON.stringify({client_id: username, commitment_t: t.toString()}),
+            body: JSON.stringify({client_id: username, commitment_t_x: T.x.toString(), commitment_t_y: T.y.toString()}),
             mode: 'cors'
         });
 
@@ -77,13 +72,13 @@ async function authenticate() {
         //await new Promise(resolve => setTimeout(resolve, 6000));
 
         const challenge_c = BigInt(commitResult.challenge_c);
-        showStatus(`Received challenge c=${challenge_c}`);
+        showStatus(`Received challenge c`);
 
-        // Step 5: Compute response s = r + c*x mod (p-1)
-        const solution_s = (r + challenge_c * password_x) % Q;
-        showStatus(`Computed response s=${solution_s}`);
+        // Step 4: Compute response s = r + c*x mod EC_ORDER
+        const solution_s = (r + challenge_c * password_x) % EC_ORDER;
+        showStatus(`Computed response s`);
 
-        // Step 6: Send response to server for verification
+        // Step 5: Send response to server for verification
         showStatus('Sending response to server...');
         const verifyResponse = await fetch(`${serverUrl}/login/verify`, {
             method: 'POST',

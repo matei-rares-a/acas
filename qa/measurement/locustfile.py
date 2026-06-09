@@ -29,6 +29,9 @@ from qa_utils import (
     OAUTH_REDIRECT_URI,
     AUTHLIB_CLIENT_ID,
     AUTHLIB_REDIRECT_URI,
+    ec_scalar_mult,
+    EC_ORDER,
+    EC_GENERATOR,
 )
 
 
@@ -54,17 +57,17 @@ class ZKPUser(HttpUser):
         self._client_id = f"locust_{secrets_module.token_hex(8)}"
         self._password  = f"password-locust_{secrets_module.token_hex(16)}"
         self._x, self._salt = derive_password_x(self._password)
-        self._y = pow(server.G, self._x, server.P)
-        self.client.post("/register", json={"client_id": self._client_id, "secret_y": self._y})
+        Y = ec_scalar_mult(self._x, EC_GENERATOR)
+        self.client.post("/register", json={"client_id": self._client_id, "secret_y_x": str(Y[0]), "secret_y_y": str(Y[1])})
 
     @task
     def zkp_login(self):
         start = _time.perf_counter()
-        rand_r     = secrets_module.randbelow(server.P - 2) + 1
-        commitment = pow(server.G, rand_r, server.P)
+        rand_r = secrets_module.randbelow(EC_ORDER - 1) + 1
+        T = ec_scalar_mult(rand_r, EC_GENERATOR)
         commit = self.client.post(
             "/login/commit",
-            json={"client_id": self._client_id, "commitment_t": commitment},
+            json={"client_id": self._client_id, "commitment_t_x": str(T[0]), "commitment_t_y": str(T[1])},
             name="/login/commit",
         )
         if commit.status_code != 200:
@@ -80,7 +83,7 @@ class ZKPUser(HttpUser):
         challenge_c = int(payload["challenge_c"])
         session_id  = payload["session_id"]
         x, _        = derive_password_x(self._password, self._salt)
-        s = (rand_r + challenge_c * x) % server.Q
+        s = (rand_r + challenge_c * x) % EC_ORDER
         verify = self.client.post(
             "/login/verify",
             headers={"X-Auth-Session": session_id},

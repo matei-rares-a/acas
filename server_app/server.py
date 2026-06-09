@@ -16,15 +16,52 @@ from datetime import datetime, timedelta, timezone
 import jwt
 
 # ---------------------------------------------------------------------------
-# Schnorr group parameters  (P = 2Q + 1 safe prime, G = 4)
+# Schnorr parameters  (secp256r1 / NIST P-256)
 # ---------------------------------------------------------------------------
 '''
 Note: constants and settings should be in env files
 Simplicity: hardcoded constants and settings
 '''
-P = 11731722534755988379582498904317031585514431212880510373180315650809605302410493595610739947214327053090791642864835392206070266585210162380812213540641579
-Q = (P - 1) // 2
-G = 4
+# secp256r1 curve constants
+_EC_P      = 0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF
+_EC_B      = 0x5AC635D8AA3A93E7B3EBBD55769886BC651D06B0CC53B0F63BCE3C3E27D2604B
+EC_ORDER   = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+_EC_GX     = 0x6B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296
+_EC_GY     = 0x4FE342E2FE1A7F9B8EE7EB4A7C0F9E162BCE33576B315ECECBB6406837BF51F5
+EC_GENERATOR = (_EC_GX, _EC_GY)
+
+
+def _ec_modinv(a: int, m: int) -> int:
+    return pow(a, -1, m)
+
+
+def _ec_point_add(P1, P2):
+    """Add two secp256r1 points. None represents the point at infinity."""
+    if P1 is None: return P2
+    if P2 is None: return P1
+    x1, y1 = P1; x2, y2 = P2
+    p = _EC_P
+    if x1 == x2:
+        if y1 != y2: return None
+        lam = (3 * x1 * x1 - 3) * _ec_modinv(2 * y1, p) % p
+    else:
+        lam = (y2 - y1) * _ec_modinv(x2 - x1, p) % p
+    x3 = (lam * lam - x1 - x2) % p
+    y3 = (lam * (x1 - x3) - y1) % p
+    return (x3, y3)
+
+
+def _ec_scalar_mult(k: int, point: tuple) -> tuple | None:
+    """Scalar multiplication k*point on secp256r1. Returns None for k=0."""
+    if k == 0: return None
+    result = None
+    addend = point
+    while k:
+        if k & 1:
+            result = _ec_point_add(result, addend)
+        addend = _ec_point_add(addend, addend)
+        k >>= 1
+    return result
 
 # Python's jwt gives warning if secret is shorter than 32
 SECRET      = 'dev-only-server-secret-at-least-32-bytes-long'
@@ -125,7 +162,7 @@ class _SessionStore(dict):
     {
         "<session_id>": {
             "client_id":  str,    # owner of the session
-            "t":          int,    # commitment G^r mod P sent by the prover
+            "t":          tuple,  # commitment T = r*G (EC point) sent by the prover
             "c":          int,    # challenge derived from (session_id, client_id, t, binding)
             "binding":    bytes,  # channel-binding digest -- stored, never sent to client
             "raw_addr":   str,    # direct TCP peer address at commit time (for logging)
@@ -166,7 +203,7 @@ sessions = _SessionStore()
 # ---------------------------------------------------------------------------
 
 def _compute_session_binding(raw_addr: str, user_agent: str, session_id: str,
-                             client_id: str, t: int) -> bytes:
+                             client_id: str, t: tuple) -> bytes:
     """Derive a 32-byte binding token from all authentication context:
     the direct TCP peer address, the User-Agent, the session ID, the
     client identity, and the commitment t.
@@ -175,22 +212,20 @@ def _compute_session_binding(raw_addr: str, user_agent: str, session_id: str,
     reflects the actual network connection endpoint -- a relayed request
     arrives from a different IP and will not match.
     """
-    data = f"{raw_addr}|{user_agent}|{session_id}|{client_id}|{t}".encode("utf-8")
+    tx, ty = t
+    data = f"{raw_addr}|{user_agent}|{session_id}|{client_id}|{tx}|{ty}".encode("utf-8")
     return hashlib.sha256(data).digest()
 
 
 def _compute_challenge(binding: bytes) -> int:
     """
-    c = int(binding) mod Q  -- challenge in Zq = [1, Q-1]
+    c = int(binding) mod EC_ORDER  -- challenge scalar in [1, EC_ORDER-1]
 
     The binding already commits to the peer address, User-Agent,
     session ID, client ID, and commitment t, so the challenge is
     fully determined by -- and bound to -- all of those inputs.
     """
-    # binding is 32 bytes (256-bit SHA-256), Q is ~1023-bit -- reduction is a no-op in practice
-    # but % Q documents intent (c lives in Zq) and is correct if the hash size ever grows.
-    # `or 1` guards the negligible probability of a zero hash.
-    return (int.from_bytes(binding, "big") % Q) or 1
+    return (int.from_bytes(binding, "big") % EC_ORDER) or 1
 
 
 
@@ -207,10 +242,26 @@ def validate_int_field(data: dict, key: str):
         return None
 
 
-def is_subgroup_member(value: int) -> bool:
-    """True iff value is a non-trivial element of the Schnorr subgroup of order Q."""
-    '''# Note: prevents Small Subgroup attack -- rejects y or t outside the subgroup of order Q with 422.'''
-    return 1 < value < P and pow(value, Q, P) == 1
+def is_valid_ec_point(x: int, y: int) -> bool:
+    """True iff (x, y) is a non-infinity point on secp256r1."""
+    if not (isinstance(x, int) and isinstance(y, int)):
+        return False
+    if not (0 <= x < _EC_P and 0 <= y < _EC_P):
+        return False
+    # curve equation: y² = x³ - 3x + b  (mod p)
+    lhs = (y * y) % _EC_P
+    rhs = (pow(x, 3, _EC_P) - 3 * x + _EC_B) % _EC_P
+    return lhs == rhs
+
+
+def validate_ec_point_fields(data: dict, x_key: str, y_key: str):
+    """Return (x, y) int tuple or None if any field is missing or non-integer."""
+    try:
+        x = int(data[x_key])
+        y = int(data[y_key])
+        return x, y
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def extract_access_token() -> str | None:
@@ -284,17 +335,17 @@ def healthAPI():
 
 @app.route('/parameters')
 def getParametersAPI():
-    resp = jsonify({'P': str(P), 'G': str(G)})
+    resp = jsonify({'curve': 'secp256r1', 'order': str(EC_ORDER)})
     resp.headers['Cache-Control'] = 'public, max-age=3600'
-    resp.headers['ETag'] = 'W/"v1.0-schnorr"'
+    resp.headers['ETag'] = 'W/"v1.0-schnorr-ec"'
     return resp
 
 
 @app.route('/register', methods=['POST'])
 def registerAPI():
     '''
-    User registration, client sends client_id and secret_y (y = g^x mod p) computed from password,
-    server saves it for later verification at login
+    User registration, client sends client_id and secret_y_x/secret_y_y (Y = x*G on secp256r1)
+    computed from password, server saves it for later verification at login
     '''
     '''
     Note: the server should have the relation of client_id - secret_y,
@@ -303,23 +354,25 @@ def registerAPI():
     '''
     data = request.get_json() or {}
     client_id = data.get('client_id')
-    secret = validate_int_field(data, 'secret_y')
-    if not client_id or secret is None:
+    point = validate_ec_point_fields(data, 'secret_y_x', 'secret_y_y')
+    if not client_id or point is None:
         return jsonify({'reason': 'missing parameters'}), 400
-    if not is_subgroup_member(secret):
+    if not is_valid_ec_point(*point):
         return jsonify({'reason': 'invalid public value'}), 422
-    is_new = register_user_in_db(client_id, secret)
+    is_new = register_user_in_db(client_id, point)
     if not is_new:
         return jsonify({'reason': 'already registered'}), 409
     return jsonify({'status': 'Registered'}), 201
 
 
-def register_user_in_db(client_id: str, secret_y: int) -> bool:
-    """Insert user credentials. Returns True if newly created, False if already exists."""
+def register_user_in_db(client_id: str, point: tuple) -> bool:
+    """Insert user credentials (EC point Y = x*G). Returns True if newly created, False if exists."""
     user = User.query.filter_by(client_id=client_id).first()
     if user:
         return False
-    db.session.add(User(client_id=client_id, secret_y=secret_y.to_bytes(256, 'big')))
+    x_coord, y_coord = point
+    encoded = x_coord.to_bytes(32, 'big') + y_coord.to_bytes(32, 'big')
+    db.session.add(User(client_id=client_id, secret_y=encoded))
     db.session.commit()
     return True
 
@@ -335,11 +388,11 @@ def commitAPI():
     '''
     data = request.get_json() or {}
     client_id = data.get('client_id')
-    t = validate_int_field(data, 'commitment_t')
+    t = validate_ec_point_fields(data, 'commitment_t_x', 'commitment_t_y')
 
     if not client_id or t is None:
         return jsonify({'reason': 'missing parameters'}), 400
-    if not is_subgroup_member(t):
+    if not is_valid_ec_point(*t):
         return jsonify({'reason': 'invalid commitment'}), 422
     if not User.query.filter_by(client_id=client_id).first():
         return jsonify({'reason': 'user not registered'}), 404
@@ -395,7 +448,7 @@ def verifyAPI():
     if sess['created_at'] < time.time() - SESSION_TTL:
         del sessions[session_id]
         return jsonify({'reason': 'session expired'}), 401
-    if s is None or s <= 0 or s >= Q:
+    if s is None or s <= 0 or s >= EC_ORDER:
         del sessions[session_id]
         return jsonify({'reason': 'invalid solution'}), 422
 
@@ -425,8 +478,11 @@ def verifyAPI():
         del sessions[session_id]
         return jsonify({'reason': 'user not found'}), 404
 
-    y, t, c = int.from_bytes(user.secret_y, 'big'), sess['t'], sess['c']
-    if pow(G, s, P) == (t * pow(y, c, P)) % P:
+    encoded = user.secret_y
+    Y = (int.from_bytes(encoded[:32], 'big'), int.from_bytes(encoded[32:], 'big'))
+    T, c = sess['t'], sess['c']
+    # Verify Schnorr proof: s*G == T + c*Y
+    if _ec_scalar_mult(s, EC_GENERATOR) == _ec_point_add(T, _ec_scalar_mult(c, Y)):
         token_str = _issue_jwt(client_id)
         _save_token(user.id, token_str)
         # Note: prevents Replay attack -- session deleted immediately after use

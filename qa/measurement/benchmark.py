@@ -19,6 +19,7 @@ from qa_utils import (
     OAUTH_PKCE_CLIENT_ID, OAUTH_SIMPLE_CLIENT_ID, OAUTH_REDIRECT_URI,
     AUTHLIB_CLIENT_ID, AUTHLIB_REDIRECT_URI,
     OAuthTestSuite,
+    ec_scalar_mult, ec_point_add, EC_ORDER, EC_GENERATOR,
 )
 
 _GENERATED = Path(__file__).resolve().parent / "generated"
@@ -133,8 +134,8 @@ def run_throughput_sweep(
     server.app.config["TESTING"] = True
     with server.app.test_client() as c:
         x, _ = derive_password_x(password)
-        y = pow(server.G, x, server.P)
-        c.post("/register",              json={"client_id": client_id_base, "secret_y": str(y)})
+        Y = ec_scalar_mult(x, EC_GENERATOR)
+        c.post("/register",              json={"client_id": client_id_base, "secret_y_x": str(Y[0]), "secret_y_y": str(Y[1])})
         c.post("/oauth/pkce/register",   json={"client_id": client_id_base, "password": password})
         c.post("/oauth/simple/register", json={"client_id": client_id_base, "password": password})
         c.post("/authlib/register",      json={"client_id": client_id_base, "password": password})
@@ -147,14 +148,14 @@ def run_throughput_sweep(
             t0 = time.perf_counter()
             zkp_ok = 0
             for _ in range(burst):
-                rand_r = secrets_module.randbelow(server.P - 2) + 1
-                t_val = pow(server.G, rand_r, server.P)
+                rand_r = secrets_module.randbelow(server.EC_ORDER - 1) + 1
+                T = ec_scalar_mult(rand_r, EC_GENERATOR)
                 resp = c.post("/login/commit",
-                              json={"client_id": client_id_base, "commitment_t": t_val})
+                              json={"client_id": client_id_base, "commitment_t_x": str(T[0]), "commitment_t_y": str(T[1])})
                 if resp.status_code != 200:
                     continue
                 payload = resp.get_json()
-                s = (rand_r + int(payload["challenge_c"]) * x) % server.Q
+                s = (rand_r + int(payload["challenge_c"]) * x) % server.EC_ORDER
                 c.post("/login/verify",
                        headers={"X-Auth-Session": payload["session_id"]},
                        json={"solution_s": s})
@@ -259,15 +260,15 @@ def gen_latency_table_zkp_fun_only(iterations: int = 100) -> str:
 
     for _ in range(iterations):
         server.sessions.clear()
-        rand_r = secrets_module.randbelow(server.P - 2) + 1
-        t = pow(server.G, rand_r, server.P)
+        rand_r = secrets_module.randbelow(server.EC_ORDER - 1) + 1
+        T = ec_scalar_mult(rand_r, EC_GENERATOR)
 
         rtt_start = time.perf_counter_ns()
 
         t0 = time.perf_counter_ns()
         commit_resp = client.post(
             "/login/commit",
-            json={"client_id": client_id, "commitment_t": t},
+            json={"client_id": client_id, "commitment_t_x": str(T[0]), "commitment_t_y": str(T[1])},
         )
         t1 = time.perf_counter_ns()
         commit_times.append((t1 - t0) / 1e6)
@@ -275,7 +276,7 @@ def gen_latency_table_zkp_fun_only(iterations: int = 100) -> str:
         payload = commit_resp.get_json()
         c = int(payload["challenge_c"])
         session_id = payload["session_id"]
-        s = (rand_r + c * x) % server.Q
+        s = (rand_r + c * x) % server.EC_ORDER
 
         t2 = time.perf_counter_ns()
         client.post(
@@ -343,20 +344,19 @@ def gen_latency_table_zkp_fun_only(iterations: int = 100) -> str:
 
 def _benchmark_latency(iterations=100):
     import hashlib
-    P, Q, G = server.P, server.Q, server.G
 
     def _derive():
         x, _ = derive_password_x("bench-password")
         return x
 
     def _commitment(x):
-        r = secrets_module.randbelow(P - 2) + 1
-        return r, pow(G, r, P)
+        r = secrets_module.randbelow(server.EC_ORDER - 1) + 1
+        return r, ec_scalar_mult(r, EC_GENERATOR)
 
-    def _verify_math(t, y, c, s):
-        left = pow(G, s, P)
-        right = (t * pow(y, c, P)) % P
-        return left == right
+    def _verify_math(T, Y, c, s):
+        lhs = ec_scalar_mult(s, EC_GENERATOR)
+        rhs = ec_point_add(T, ec_scalar_mult(c, Y))
+        return lhs == rhs
 
     def _oauth_pkce_hash():
         return pkce_challenge("bench-code-verifier")
@@ -376,9 +376,9 @@ def _benchmark_latency(iterations=100):
     # }
 
     x = _derive()
-    y = pow(G, x, P)
+    Y = ec_scalar_mult(x, EC_GENERATOR)
     commit_times = [timeit.timeit(lambda: _commitment(x), number=1) * 1000 for _ in range(iterations)]
-    results["commitment_t = g^r mod p (ms)"] = {
+    results["commitment_t = r*G EC (ms)"] = {
         "mean": statistics.mean(commit_times),
         "min": min(commit_times),
         "max": max(commit_times),
@@ -386,10 +386,10 @@ def _benchmark_latency(iterations=100):
         "stdev": statistics.stdev(commit_times),
     }
 
-    r, t = _commitment(x)
-    c = secrets_module.randbelow(Q - 1) + 1
-    s = (r + c * x) % Q
-    verify_times = [timeit.timeit(lambda: _verify_math(t, y, c, s), number=1) * 1000 for _ in range(iterations)]
+    r, T = _commitment(x)
+    c = secrets_module.randbelow(server.EC_ORDER - 1) + 1
+    s = (r + c * x) % server.EC_ORDER
+    verify_times = [timeit.timeit(lambda: _verify_math(T, Y, c, s), number=1) * 1000 for _ in range(iterations)]
     results["ZKP verify math (ms)"] = {
         "mean": statistics.mean(verify_times),
         "min": min(verify_times),
@@ -431,16 +431,15 @@ def _benchmark_e2e_flows(iterations=100):
     """Full end-to-end authentication latency including all client-side crypto."""
     import time as _time
 
-    P, Q, G = server.P, server.Q, server.G
     password = "bench-e2e-pass"
     client_id = "bench_e2e_user"
     results = {}
 
     with server.app.test_client() as c:
         x, _ = derive_password_x(password)
-        y = pow(G, x, P)
+        Y = ec_scalar_mult(x, EC_GENERATOR)
         with server.app.app_context():
-            server.db.session.add(server.User(client_id=client_id, secret_y=y.to_bytes(256, 'big')))
+            server.db.session.add(server.User(client_id=client_id, secret_y=Y[0].to_bytes(32,'big') + Y[1].to_bytes(32,'big')))
             server.db.session.commit()
         c.post("/oauth/pkce/register",   json={"client_id": client_id, "password": password})
         c.post("/oauth/simple/register", json={"client_id": client_id, "password": password})
@@ -451,13 +450,13 @@ def _benchmark_e2e_flows(iterations=100):
         x, _ = derive_password_x(password)
         for _ in range(iterations):
             t0 = _time.perf_counter()
-            rand_r = secrets_module.randbelow(P - 2) + 1
-            commitment_t = pow(G, rand_r, P)
-            commit_resp = c.post("/login/commit", json={"client_id": client_id, "commitment_t": commitment_t})
+            rand_r = secrets_module.randbelow(server.EC_ORDER - 1) + 1
+            T = ec_scalar_mult(rand_r, EC_GENERATOR)
+            commit_resp = c.post("/login/commit", json={"client_id": client_id, "commitment_t_x": str(T[0]), "commitment_t_y": str(T[1])})
             if commit_resp.status_code != 200:
                 continue
             payload = commit_resp.get_json()
-            s = (rand_r + int(payload["challenge_c"]) * x) % Q
+            s = (rand_r + int(payload["challenge_c"]) * x) % server.EC_ORDER
             c.post("/login/verify", headers={"X-Auth-Session": payload["session_id"]}, json={"solution_s": s})
             zkp_times.append((_time.perf_counter() - t0) * 1000)
 
@@ -561,7 +560,7 @@ class TestBenchmark(OAuthTestSuite):
         assert "Operation" in output
         assert "Mean (ms)" in output
         assert "StdDev" in output
-        assert "commitment_t = g^r mod p (ms)" in output
+        assert "commitment_t = r*G EC (ms)" in output
         assert all(v["mean"] >= 0 for v in data.values())
 
     def test_benchmark_e2e_protocol_comparison(self, capsys):

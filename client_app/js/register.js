@@ -13,15 +13,11 @@ async function register() {
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner"></span>Registering...';
 
-        // Fetch parameters from server
-        await fetchParameters(serverUrl);
-        console.log(`Parameters received for registration`);
-
         // Derive password_x from password
         const password_x = await derivePasswordX(password, client_id);
 
-        // Compute secret_y = g^x mod p
-        const secret_y = modPow(G, password_x, P);
+        // Compute EC public key Y = x * G
+        const Y = ecScalarMult(password_x, EC_GENERATOR);
         const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 
         // Send registration request directly to auth server
@@ -35,7 +31,7 @@ async function register() {
                 'Request-ID': requestId,
                 'Idempotency-Key': requestId
             },
-            body: JSON.stringify({client_id: client_id, secret_y: secret_y.toString()}),
+            body: JSON.stringify({client_id: client_id, secret_y_x: Y.x.toString(), secret_y_y: Y.y.toString()}),
             mode: 'cors'
         });
 

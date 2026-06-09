@@ -7,11 +7,15 @@ _QA_PATH = Path(__file__).resolve().parents[1]
 if str(_QA_PATH) not in sys.path:
     sys.path.insert(0, str(_QA_PATH))
 
-from qa_utils import server, derive_password_x
+from qa_utils import server, derive_password_x, ec_scalar_mult, EC_ORDER, EC_GENERATOR
 
 # Shared output directory -- all measurement scripts write here.
 GENERATED = Path(__file__).resolve().parent / "measurement" / "generated"
 GENERATED.mkdir(exist_ok=True)
+
+
+def _ec_encoded(Y: tuple) -> bytes:
+    return Y[0].to_bytes(32, 'big') + Y[1].to_bytes(32, 'big')
 
 
 def setup_isolated_test_user(client_id: str, password: str):
@@ -22,11 +26,11 @@ def setup_isolated_test_user(client_id: str, password: str):
     """
     server.app.config["TESTING"] = True
     x, _ = derive_password_x(password)
-    y = pow(server.G, x, server.P)
+    Y = ec_scalar_mult(x, EC_GENERATOR)
     with server.app.app_context():
         server.db.session.remove()
         server.db.drop_all()
         server.db.create_all()
-        server.db.session.add(server.User(client_id=client_id, secret_y=y.to_bytes(256, 'big')))
+        server.db.session.add(server.User(client_id=client_id, secret_y=_ec_encoded(Y)))
         server.db.session.commit()
     return x, server.app.test_client()

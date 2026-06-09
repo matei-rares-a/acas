@@ -3,16 +3,22 @@ import secrets as secrets_module
 
 import pytest
 
-from qa_utils import server, derive_password_x, BaseTestSuite
+from qa_utils import server, derive_password_x, BaseTestSuite, ec_scalar_mult, ec_point_add, EC_ORDER, EC_GENERATOR
+
+
+def _ec_encoded(Y: tuple) -> bytes:
+    return Y[0].to_bytes(32, 'big') + Y[1].to_bytes(32, 'big')
+
+
 def register_and_commit(client, client_id, password):
     x, _ = derive_password_x(password)
-    y = pow(server.G, x, server.P)
-    resp = client.post("/register", json={"client_id": client_id, "secret_y": y})
+    Y = ec_scalar_mult(x, EC_GENERATOR)
+    resp = client.post("/register", json={"client_id": client_id, "secret_y_x": str(Y[0]), "secret_y_y": str(Y[1])})
     assert resp.status_code in (200, 201)
-    rand_r = secrets_module.randbelow(server.P - 2) + 1
-    commitment_t = pow(server.G, rand_r, server.P)
+    rand_r = secrets_module.randbelow(EC_ORDER - 1) + 1
+    T = ec_scalar_mult(rand_r, EC_GENERATOR)
     commit_resp = client.post(
-        "/login/commit", json={"client_id": client_id, "commitment_t": commitment_t}
+        "/login/commit", json={"client_id": client_id, "commitment_t_x": str(T[0]), "commitment_t_y": str(T[1])}
     )
     assert commit_resp.status_code == 200
     payload = commit_resp.get_json()
@@ -20,7 +26,7 @@ def register_and_commit(client, client_id, password):
 
 class TestCornerCases(BaseTestSuite):
 
-    @pytest.mark.parametrize("bad_s", [-1, server.Q, server.Q + 1, server.P * 10])
+    @pytest.mark.parametrize("bad_s", [-1, server.EC_ORDER, server.EC_ORDER + 1, server.EC_ORDER * 10])
     def test_verify_rejects_out_of_range_solution_s(self, client, bad_s):
         '''Testarea limitelor matematice ale soluiei_s (S<0 sau S>=Q trebuie respinse)'''
         """Client send out-of-range solution, server reject and clear session."""
@@ -38,31 +44,32 @@ class TestCornerCases(BaseTestSuite):
         assert session_id not in server.sessions
 
 
-    @pytest.mark.parametrize("trivial_y", [0, 1, -1, server.P - 1])
-    def test_register_rejects_trivial_subgroup_values(self, client, trivial_y):
-        '''Testarea atacului trivial zero/one pe register (secret_y = 0, 1, -1, P-1)'''
-        """Client send trivial subgroup value on register, server block value."""
+    @pytest.mark.parametrize("xy_pair", [("0", "0"), ("1", "0"), ("-1", "0"), ("0", "-1")])
+    def test_register_rejects_trivial_subgroup_values(self, client, xy_pair):
+        '''Testarea atacului trivial zero/one pe register (secret_y nu este un punct valid pe curba)'''
+        """Client send invalid EC point on register, server block value."""
+        x_str, y_str = xy_pair
         response = client.post(
             "/register",
-            json={"client_id": f"trivial_y_{trivial_y}", "secret_y": trivial_y},
+            json={"client_id": f"trivial_y_{x_str}_{y_str}", "secret_y_x": x_str, "secret_y_y": y_str},
         )
         assert response.status_code == 422
         assert response.get_json() == {"reason": "invalid public value"}
 
 
-    @pytest.mark.parametrize("trivial_t", [0, 1, -1, server.P - 1])
-    def test_commit_rejects_trivial_subgroup_values_and_no_orphan_session(self, client, trivial_t):
-        '''Testarea atacului trivial zero/one pe commit (commitment_t = 0, 1, -1, P-1)'''
-        """Client send trivial commitment, server reject and leave no orphan session."""
+    @pytest.mark.parametrize("xy_pair", [("0", "0"), ("1", "0"), ("-1", "0"), ("0", "-1")])
+    def test_commit_rejects_trivial_subgroup_values_and_no_orphan_session(self, client, xy_pair):
+        '''Testarea atacului trivial zero/one pe commit (commitment_t nu este un punct valid)'''
+        """Client send invalid EC commitment, server reject and leave no orphan session."""
         x, _ = derive_password_x("trivial-pass")
-        y = pow(server.G, x, server.P)
-        client.post("/register", json={"client_id": "trivial_commit_user", "secret_y": y})
+        Y = ec_scalar_mult(x, EC_GENERATOR)
+        client.post("/register", json={"client_id": "trivial_commit_user", "secret_y_x": str(Y[0]), "secret_y_y": str(Y[1])})
 
         sessions_before = set(server.sessions.keys())
-
+        x_str, y_str = xy_pair
         response = client.post(
             "/login/commit",
-            json={"client_id": "trivial_commit_user", "commitment_t": trivial_t},
+            json={"client_id": "trivial_commit_user", "commitment_t_x": x_str, "commitment_t_y": y_str},
         )
 
         assert response.status_code == 422
@@ -75,20 +82,27 @@ class TestCornerCases(BaseTestSuite):
         """Many client commits hit together, server avoid crash by dropping sessions and keep 1 """
         client_id = "race_user"
         x, _ = derive_password_x("race-pass")
-        y = pow(server.G, x, server.P)
+        Y = ec_scalar_mult(x, EC_GENERATOR)
         with server.app.app_context():
-            server.db.session.add(server.User(client_id=client_id, secret_y=y.to_bytes(256, 'big')))
+            server.db.session.add(server.User(client_id=client_id, secret_y=_ec_encoded(Y)))
             server.db.session.commit()
 
-        def do_commit(_):
-            rand_r = secrets_module.randbelow(server.P - 2) + 1
-            t = pow(server.G, rand_r, server.P)
+        # Precompute all EC points before spawning threads so concurrent requests
+        # arrive within COMMIT_RACE_WINDOW_S of each other
+        n_workers = 10
+        commitments = [
+            (secrets_module.randbelow(EC_ORDER - 1) + 1,)
+            for _ in range(n_workers)
+        ]
+        ts = [ec_scalar_mult(r, EC_GENERATOR) for r, in commitments]
+
+        def do_commit(T):
             return client.post(
-                "/login/commit", json={"client_id": client_id, "commitment_t": t}
+                "/login/commit", json={"client_id": client_id, "commitment_t_x": str(T[0]), "commitment_t_y": str(T[1])}
             ).status_code
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
-            statuses = list(pool.map(do_commit, range(10)))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as pool:
+            statuses = list(pool.map(do_commit, ts))
 
         assert 500 not in statuses
         active = [s for s in server.sessions.values() if s["client_id"] == client_id]
@@ -112,12 +126,12 @@ class TestCornerCases(BaseTestSuite):
         '''Testare tip de data pentru commitment_t'''
         """Client send malformed commitment_t types, server return 400/422 and not crash."""
         x, _ = derive_password_x("type-commit-pass")
-        y = pow(server.G, x, server.P)
-        client.post("/register", json={"client_id": "type_confusion_commit_user", "secret_y": y})
+        Y = ec_scalar_mult(x, EC_GENERATOR)
+        client.post("/register", json={"client_id": "type_confusion_commit_user", "secret_y_x": str(Y[0]), "secret_y_y": str(Y[1])})
 
         response = client.post(
             "/login/commit",
-            json={"client_id": "type_confusion_commit_user", "commitment_t": bad_t_value},
+            json={"client_id": "type_confusion_commit_user", "commitment_t_x": bad_t_value, "commitment_t_y": bad_t_value},
         )
         assert response.status_code in (400, 422)
         assert response.status_code != 500
@@ -129,12 +143,12 @@ class TestCornerCases(BaseTestSuite):
         """Client send malformed solution types, server return error and not crash."""
         client_id = "type_confusion_user"
         x, _ = derive_password_x("type-pass")
-        y = pow(server.G, x, server.P)
-        client.post("/register", json={"client_id": client_id, "secret_y": y})
-        rand_r = secrets_module.randbelow(server.P - 2) + 1
-        t = pow(server.G, rand_r, server.P)
+        Y = ec_scalar_mult(x, EC_GENERATOR)
+        client.post("/register", json={"client_id": client_id, "secret_y_x": str(Y[0]), "secret_y_y": str(Y[1])})
+        rand_r = secrets_module.randbelow(EC_ORDER - 1) + 1
+        T = ec_scalar_mult(rand_r, EC_GENERATOR)
         commit_resp = client.post(
-            "/login/commit", json={"client_id": client_id, "commitment_t": t}
+            "/login/commit", json={"client_id": client_id, "commitment_t_x": str(T[0]), "commitment_t_y": str(T[1])}
         )
         session_id = commit_resp.get_json()["session_id"]
 
@@ -153,16 +167,16 @@ class TestCornerCases(BaseTestSuite):
         """Client send weird session headers, server handle safely and keep stable behavior."""
         client_id = "header_edge_user"
         x, _ = derive_password_x("header-pass")
-        y = pow(server.G, x, server.P)
-        client.post("/register", json={"client_id": client_id, "secret_y": y})
-        rand_r = secrets_module.randbelow(server.P - 2) + 1
-        t = pow(server.G, rand_r, server.P)
+        Y = ec_scalar_mult(x, EC_GENERATOR)
+        client.post("/register", json={"client_id": client_id, "secret_y_x": str(Y[0]), "secret_y_y": str(Y[1])})
+        rand_r = secrets_module.randbelow(EC_ORDER - 1) + 1
+        T = ec_scalar_mult(rand_r, EC_GENERATOR)
         commit_resp = client.post(
-            "/login/commit", json={"client_id": client_id, "commitment_t": t}
+            "/login/commit", json={"client_id": client_id, "commitment_t_x": str(T[0]), "commitment_t_y": str(T[1])}
         )
         assert commit_resp.status_code == 200
         challenge_c = int(commit_resp.get_json()["challenge_c"])
-        valid_s = (rand_r + challenge_c * x) % server.Q
+        valid_s = (rand_r + challenge_c * x) % EC_ORDER
 
         r1 = client.post("/login/verify", json={"solution_s": valid_s})
         assert r1.status_code == 400

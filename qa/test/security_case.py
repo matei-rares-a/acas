@@ -10,7 +10,7 @@ import secrets as secrets_module
 
 import pytest
 
-from qa_utils import server, derive_password_x, register_user, start_commit, BaseTestSuite
+from qa_utils import server, derive_password_x, register_user, start_commit, BaseTestSuite, ec_scalar_mult, ec_point_add, EC_ORDER, EC_GENERATOR
 
 
 
@@ -33,12 +33,12 @@ class TestSecurityCases(BaseTestSuite):
         t_real = server.sessions[session_id]["t"]  # server-side binding
 
         # Attacker builds a simulator transcript: pick s_forged, derive t_sim
-        s_forged = secrets_module.randbelow(server.Q - 1) + 1
-        y_neg_c = pow(y, server.Q - challenge_c, server.P)   # y^{-c} = y^{Q-c} mod P
-        t_sim = (pow(server.G, s_forged, server.P) * y_neg_c) % server.P
+        s_forged = secrets_module.randbelow(EC_ORDER - 1) + 1
+        y_neg_c = ec_scalar_mult(EC_ORDER - challenge_c, y)   # -(c*Y) = (n-c)*Y
+        t_sim = ec_point_add(ec_scalar_mult(s_forged, EC_GENERATOR), y_neg_c)
 
-        # t_sim is a valid subgroup member - the transcript (t_sim, c, s_forged) verifies
-        assert server.is_subgroup_member(t_sim), "t_sim must be a valid subgroup element"
+        # t_sim is a valid EC point - the transcript (t_sim, c, s_forged) verifies
+        assert server.is_valid_ec_point(*t_sim), "t_sim must be a valid EC point"
         # ...but it differs from the committed t_real
         assert t_sim != t_real, "t_sim must differ from t_real (binding broken otherwise)"
 
@@ -60,8 +60,8 @@ class TestSecurityCases(BaseTestSuite):
         x, y = register_user(client, client_id, "t-eq-y-legit-pass")
 
         _, challenge_c, session_id = start_commit(client, client_id, t_override=y)
-        # Correct response when t = y:  s = x * (1 + c) mod Q
-        correct_s = (x * (1 + challenge_c)) % server.Q
+        # Correct response when t = y:  s = x * (1 + c) mod EC_ORDER
+        correct_s = (x * (1 + challenge_c)) % EC_ORDER
 
         response = client.post(
             "/login/verify",
@@ -82,8 +82,8 @@ class TestSecurityCases(BaseTestSuite):
         client_id = "bare_nonce_user"
         register_user(client, client_id, "bare-nonce-pass")
 
-        # Keep rand_r < Q so it passes the range check as a solution
-        rand_r = secrets_module.randbelow(server.Q - 1) + 1
+        # Keep rand_r < EC_ORDER so it passes the range check as a solution
+        rand_r = secrets_module.randbelow(EC_ORDER - 1) + 1
         _, _, session_id = start_commit(client, client_id, rand_r=rand_r)
 
         response = client.post(
@@ -104,23 +104,23 @@ class TestSecurityCases(BaseTestSuite):
 
         # --- s + 1 ---
         rand_r1, c1, sid1 = start_commit(client, client_id)
-        correct_s1 = (rand_r1 + c1 * x) % server.Q
+        correct_s1 = (rand_r1 + c1 * x) % EC_ORDER
 
         r1 = client.post(
             "/login/verify",
             headers={"X-Auth-Session": sid1},
-            json={"solution_s": (correct_s1 + 1) % server.Q},
+            json={"solution_s": (correct_s1 + 1) % EC_ORDER},
         )
         assert r1.status_code == 401
 
         # --- s - 1 (new session; previous session was consumed by the failed verify) ---
         rand_r2, c2, sid2 = start_commit(client, client_id)
-        correct_s2 = (rand_r2 + c2 * x) % server.Q
+        correct_s2 = (rand_r2 + c2 * x) % EC_ORDER
 
         r2 = client.post(
             "/login/verify",
             headers={"X-Auth-Session": sid2},
-            json={"solution_s": (correct_s2 - 1) % server.Q},
+            json={"solution_s": (correct_s2 - 1) % EC_ORDER},
         )
         assert r2.status_code == 401
 
@@ -155,7 +155,7 @@ class TestSecurityCases(BaseTestSuite):
 
         # --- First session: legitimate login ---
         rand_r1, c1, sid1 = start_commit(client, client_id)
-        s1 = (rand_r1 + c1 * x) % server.Q
+        s1 = (rand_r1 + c1 * x) % EC_ORDER
 
         first_verify = client.post(
             "/login/verify",
@@ -213,7 +213,7 @@ class TestSecurityCases(BaseTestSuite):
         # Both users commit; two independent sessions coexist in the dict
         rand_r_alice, c_alice, sid_alice = start_commit(client, "isolation_alice")
         _,_,sid_bob   = start_commit(client, "isolation_bob")
-        s_alice = (rand_r_alice + c_alice * x_alice) % server.Q
+        s_alice = (rand_r_alice + c_alice * x_alice) % EC_ORDER
 
         # Alice's valid solution applied to Bob's session must fail
         cross_attempt = client.post(

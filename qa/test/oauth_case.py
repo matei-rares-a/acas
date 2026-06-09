@@ -9,20 +9,20 @@ from qa_utils import (
     OAUTH_PKCE_CLIENT_ID, OAUTH_SIMPLE_CLIENT_ID, OAUTH_REDIRECT_URI,
     AUTHLIB_CLIENT_ID, AUTHLIB_REDIRECT_URI,
     OAuthTestSuite,
+    derive_password_x, ec_scalar_mult, EC_ORDER, EC_GENERATOR,
 )
 
 
 def _register_oauth(client, client_id, password):
     """Register user credentials for ZKP, PKCE, Simple and Authlib OAuth."""
-    from qa_utils import derive_password_x
-    x,_ = derive_password_x(password)
-    y = pow(server.G, x, server.P)
-    resp = client.post("/register", json={"client_id": client_id, "secret_y": y})
+    x, _ = derive_password_x(password)
+    Y = ec_scalar_mult(x, EC_GENERATOR)
+    resp = client.post("/register", json={"client_id": client_id, "secret_y_x": str(Y[0]), "secret_y_y": str(Y[1])})
     assert resp.status_code in (200, 201)
     assert client.post("/oauth/pkce/register",   json={"client_id": client_id, "password": password}).status_code == 201
     assert client.post("/oauth/simple/register", json={"client_id": client_id, "password": password}).status_code == 201
     assert client.post("/authlib/register",      json={"client_id": client_id, "password": password}).status_code == 201
-    return x, y
+    return x, Y
 
 
 def _code_from_redirect(resp):
@@ -234,10 +234,9 @@ class TestOAuthCases(OAuthTestSuite):
         code_verifier = _s.token_urlsafe(48)
 
         # ZKP registration must come first (OAuth register validates user exists)
-        from qa_utils import derive_password_x
         x, _ = derive_password_x("compat-pass")
-        y = pow(server.G, x, server.P)
-        assert client.post("/register", json={"client_id": "compat_user", "secret_y": y}).status_code in (200, 201)
+        Y = ec_scalar_mult(x, EC_GENERATOR)
+        assert client.post("/register", json={"client_id": "compat_user", "secret_y_x": str(Y[0]), "secret_y_y": str(Y[1])}).status_code in (200, 201)
 
         # Register via compat alias
         assert client.post(

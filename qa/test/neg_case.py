@@ -3,7 +3,11 @@ import time
 
 import pytest
 
-from qa_utils import server, derive_password_x, register_user, start_commit, BaseTestSuite
+from qa_utils import server, derive_password_x, register_user, start_commit, BaseTestSuite, ec_scalar_mult, ec_point_add, EC_ORDER, EC_GENERATOR
+
+
+def _ec_encoded(Y: tuple) -> bytes:
+    return Y[0].to_bytes(32, 'big') + Y[1].to_bytes(32, 'big')
 
 class TestNegativeCases(BaseTestSuite):
 
@@ -18,7 +22,7 @@ class TestNegativeCases(BaseTestSuite):
         rand_r, challenge_c, session_id = start_commit(client, client_id)
 
         wrong_x, _ = derive_password_x(wrong_password)
-        wrong_solution_s = (rand_r + challenge_c * wrong_x) % server.Q
+        wrong_solution_s = (rand_r + challenge_c * wrong_x) % EC_ORDER
 
         verify_response = client.post(
             "/login/verify",
@@ -39,7 +43,7 @@ class TestNegativeCases(BaseTestSuite):
 
         x, _ = register_user(client, client_id, password)
         rand_r, challenge_c, session_id = start_commit(client, client_id)
-        solution_s = (rand_r + challenge_c * x) % server.Q
+        solution_s = (rand_r + challenge_c * x) % EC_ORDER
 
         first_verify = client.post(
             "/login/verify",
@@ -65,10 +69,10 @@ class TestNegativeCases(BaseTestSuite):
 
         x, _ = register_user(client, client_id, password)
         rand_r, challenge_c, session_id = start_commit(client, client_id)
-        solution_s = (rand_r + challenge_c * x) % server.Q
+        solution_s = (rand_r + challenge_c * x) % EC_ORDER
 
         real_time = time.time
-        monkeypatch.setattr(server.time, "time", lambda: real_time() + 6)
+        monkeypatch.setattr(server.time, "time", lambda: real_time() + server.SESSION_TTL + 1)
 
         verify_response = client.post(
             "/login/verify",
@@ -92,12 +96,11 @@ class TestNegativeCases(BaseTestSuite):
 
         time.sleep(0.1)
 
+        _rand_k = secrets_module.randbelow(EC_ORDER - 1) + 1
+        _T = ec_scalar_mult(_rand_k, EC_GENERATOR)
         second_commit = client.post(
             "/login/commit",
-            json={
-                "client_id": client_id,
-                "commitment_t": pow(server.G, secrets_module.randbelow(server.P - 2) + 1, server.P),
-            },
+            json={"client_id": client_id, "commitment_t_x": str(_T[0]), "commitment_t_y": str(_T[1])},
         )
 
         assert second_commit.status_code == 409
@@ -117,19 +120,19 @@ class TestNegativeCases(BaseTestSuite):
 
         initial_password_x,_ = derive_password_x(initial_password)
         second_password_x,_ = derive_password_x(second_password)
-
-        initial_secret_y = pow(server.G, initial_password_x, server.P)
-        second_secret_y = pow(server.G, second_password_x, server.P)
+        initial_Y = ec_scalar_mult(initial_password_x, EC_GENERATOR)
+        second_Y  = ec_scalar_mult(second_password_x, EC_GENERATOR)
+        initial_encoded = _ec_encoded(initial_Y)
 
         with server.app.app_context():
             server.db.session.add(
-                server.User(client_id=client_id, secret_y=initial_secret_y.to_bytes(256, 'big'))
+                server.User(client_id=client_id, secret_y=initial_encoded)
             )
             server.db.session.commit()
 
         response = client.post(
             "/register",
-            json={"client_id": client_id, "secret_y": second_secret_y},
+            json={"client_id": client_id, "secret_y_x": str(second_Y[0]), "secret_y_y": str(second_Y[1])},
         )
 
         assert response.status_code == 409
@@ -138,5 +141,5 @@ class TestNegativeCases(BaseTestSuite):
         with server.app.app_context():
             users = server.User.query.filter_by(client_id=client_id).all()
             assert len(users) == 1
-            assert users[0].secret_y == initial_secret_y.to_bytes(256, 'big')
+            assert users[0].secret_y == initial_encoded
 

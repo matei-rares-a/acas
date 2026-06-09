@@ -20,6 +20,7 @@ from qa_utils import (
     derive_password_x, pkce_challenge,
     OAUTH_PKCE_CLIENT_ID, OAUTH_SIMPLE_CLIENT_ID, OAUTH_REDIRECT_URI,
     AUTHLIB_CLIENT_ID, AUTHLIB_REDIRECT_URI,
+    ec_scalar_mult, ec_point_add, EC_ORDER, EC_GENERATOR,
 )
 from measurement_utils import setup_isolated_test_user
 from benchmark import (
@@ -45,14 +46,14 @@ def audit_traffic_content(output_md: str = str(_GENERATED / "audit_traffic_conte
     x, client = setup_isolated_test_user(client_id, password)
     server.sessions.clear()
 
-    rand_r = secrets_module.randbelow(server.P - 2) + 1
-    t = pow(server.G, rand_r, server.P)
+    rand_r = secrets_module.randbelow(EC_ORDER - 1) + 1
+    T = ec_scalar_mult(rand_r, EC_GENERATOR)
 
-    commit_body = {"client_id": client_id, "commitment_t": str(t)}
+    commit_body = {"client_id": client_id, "commitment_t_x": str(T[0]), "commitment_t_y": str(T[1])}
     commit_resp = client.post("/login/commit", json=commit_body)
     payload = commit_resp.get_json()
     c = int(payload["challenge_c"])
-    s = (rand_r + c * x) % server.Q
+    s = (rand_r + c * x) % EC_ORDER
     verify_body = {"solution_s": str(s)}
 
     classic_example_body = {"client_id": client_id, "password": password}
@@ -192,7 +193,7 @@ def audit_traffic_content(output_md: str = str(_GENERATED / "audit_traffic_conte
 
 # ---------------------------------------------------------------------------
 # Probe 3 -  Extract parts of server.py that ensure a protection for some attacks
-# # Ex: is_subgroup_member / del sessions[...] (Replay) / secrets.randbelow (entropy)
+# # Ex: is_valid_ec_point / del sessions[...] (Replay) / secrets.randbelow (entropy)
 # TODO: Manual
 # ---------------------------------------------------------------------------
 
@@ -234,14 +235,14 @@ def generate_charts(latency_data: dict | None = None, output_dir: str = str(_GEN
         for _ in range(100):
             # ZKP /login/verify
             server.sessions.clear()
-            rand_r = secrets_module.randbelow(server.P - 2) + 1
-            t = pow(server.G, rand_r, server.P)
+            rand_r = secrets_module.randbelow(EC_ORDER - 1) + 1
+            T = ec_scalar_mult(rand_r, EC_GENERATOR)
             resp = client.post("/login/commit",
-                               json={"client_id": client_id, "commitment_t": t})
+                               json={"client_id": client_id, "commitment_t_x": str(T[0]), "commitment_t_y": str(T[1])})
             p = resp.get_json()
             c = int(p["challenge_c"])
             sid = p["session_id"]
-            s = (rand_r + c * x) % server.Q
+            s = (rand_r + c * x) % EC_ORDER
             t0 = time.perf_counter_ns()
             client.post("/login/verify",
                         headers={"X-Auth-Session": sid},
@@ -548,7 +549,7 @@ def run_server_internals_benchmark(
 ) -> None:
     """
     Measures server.py functions and endpoints not covered by benchmark.py:
-      - is_subgroup_member()        pow(value, Q, P) subgroup check
+      - is_valid_ec_point()        EC curve membership check
       - _compute_session_binding()  SHA-256 channel binding derivation
       - _compute_challenge()        int.from_bytes + modulo reduction
       - _issue_jwt()                HS256 JWT signing
@@ -561,14 +562,12 @@ def run_server_internals_benchmark(
     import timeit
     import statistics as _stats
 
-    P, Q, G = server.P, server.Q, server.G
-
     # -- representative inputs -----------------------------------------------
-    sample_y = pow(G, 42, P)                 # valid subgroup element
+    sample_Y = ec_scalar_mult(42, EC_GENERATOR)   # valid EC point
     sample_session_id = "sample-session-abc"
     sample_client_id  = "internals_bench_user"
     sample_binding    = server._compute_session_binding(
-        "127.0.0.1", "test-agent", sample_session_id, sample_client_id, sample_y
+        "127.0.0.1", "test-agent", sample_session_id, sample_client_id, sample_Y
     )
 
     def _time(fn, n=iterations):
@@ -583,12 +582,12 @@ def run_server_internals_benchmark(
 
     results = {}
 
-    results["is_subgroup_member (ms)"] = _time(
-        lambda: server.is_subgroup_member(sample_y)
+    results["is_valid_ec_point (ms)"] = _time(
+        lambda: server.is_valid_ec_point(*sample_Y)
     )
     results["_compute_session_binding (ms)"] = _time(
         lambda: server._compute_session_binding(
-            "127.0.0.1", "test-agent", sample_session_id, sample_client_id, sample_y
+            "127.0.0.1", "test-agent", sample_session_id, sample_client_id, sample_Y
         )
     )
     results["_compute_challenge (ms)"] = _time(
@@ -602,10 +601,10 @@ def run_server_internals_benchmark(
     with server.app.test_client() as c:
         with server.app.app_context():
             x, _ = derive_password_x("internals-bench-pw")
-            y = pow(G, x, P)
+            Y = ec_scalar_mult(x, EC_GENERATOR)
             existing = server.User.query.filter_by(client_id=sample_client_id).first()
             if not existing:
-                server.db.session.add(server.User(client_id=sample_client_id, secret_y=y.to_bytes(256, 'big')))
+                server.db.session.add(server.User(client_id=sample_client_id, secret_y=Y[0].to_bytes(32,'big') + Y[1].to_bytes(32,'big')))
                 server.db.session.commit()
 
         # GET /parameters
@@ -626,7 +625,7 @@ def run_server_internals_benchmark(
         reg_times = []
         for _ in range(iterations):
             t0 = time.perf_counter_ns()
-            c.post("/register", json={"client_id": reg_client_id, "secret_y": str(y)})
+            c.post("/register", json={"client_id": reg_client_id, "secret_y_x": str(Y[0]), "secret_y_y": str(Y[1])})
             reg_times.append((time.perf_counter_ns() - t0) / 1e6)
         results["POST /register (ms)"] = {
             "mean":  _stats.mean(reg_times),  "min": min(reg_times),
@@ -636,12 +635,12 @@ def run_server_internals_benchmark(
         }
 
         # Obtain a JWT via a single ZKP login for /data measurements
-        rand_r = secrets_module.randbelow(P - 2) + 1
-        commitment_t = pow(G, rand_r, P)
+        rand_r = secrets_module.randbelow(EC_ORDER - 1) + 1
+        T_val = ec_scalar_mult(rand_r, EC_GENERATOR)
         server.sessions.clear()
-        cr = c.post("/login/commit", json={"client_id": sample_client_id, "commitment_t": commitment_t})
+        cr = c.post("/login/commit", json={"client_id": sample_client_id, "commitment_t_x": str(T_val[0]), "commitment_t_y": str(T_val[1])})
         payload = cr.get_json()
-        s = (rand_r + int(payload["challenge_c"]) * x) % Q
+        s = (rand_r + int(payload["challenge_c"]) * x) % EC_ORDER
         vr = c.post("/login/verify",
                     headers={"X-Auth-Session": payload["session_id"]},
                     json={"solution_s": s})

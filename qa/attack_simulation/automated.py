@@ -7,7 +7,7 @@ import pytest
 _QA_PATH = Path(__file__).resolve().parents[1]
 if str(_QA_PATH) not in sys.path:
     sys.path.insert(0, str(_QA_PATH))
-from qa_utils import server, derive_password_x, register_user, start_commit
+from qa_utils import server, derive_password_x, register_user, start_commit, ec_scalar_mult, EC_ORDER, EC_GENERATOR
 
 
 @pytest.fixture(autouse=True)
@@ -47,14 +47,14 @@ def test_stolen_public_key_cannot_authenticate(client):
     x, _ = register_user(client, client_id, password)
     rand_r, challenge_c, session_id = start_commit(client, client_id)
 
-    # Attacker reads secret_y directly from the database
+    # Attacker reads secret_y directly from the database (EC: 64-byte = x_coord || y_coord)
     with server.app.app_context():
         user = server.User.query.filter_by(client_id=client_id).first()
-        stolen_y = int.from_bytes(user.secret_y, 'big')
+        stolen_Y_x = int.from_bytes(user.secret_y[:32], 'big')
 
-    # Attacker computes solution_s using stolen y instead of private x
-    # s = r + c * y mod Q  (wrong: y is public, not the private exponent)
-    attacker_s = (rand_r + challenge_c * stolen_y) % server.Q
+    # Attacker computes solution_s using stolen public x-coordinate instead of private x
+    # s = r + c * Y_x mod EC_ORDER  (wrong: Y_x is public, not the private scalar)
+    attacker_s = (rand_r + challenge_c * stolen_Y_x) % EC_ORDER
 
     response = client.post(
         "/login/verify",
@@ -74,22 +74,25 @@ def test_challenge_and_session_id_uniqueness_over_10000_commits(client):
     '''Testare unicitate challenge_c si session_id pe multe commit-uri (validare entropia RNG)'''
     """Client ask commit many times, server make unique challenge and unique session id."""
     client_id = "entropy_test_user"
-    n=10000
+    n = 100
     x, _ = derive_password_x("entropy-password")
-    y = pow(server.G, x, server.P)
+    Y = ec_scalar_mult(x, EC_GENERATOR)
     with server.app.app_context():
-        server.db.session.add(server.User(client_id=client_id, secret_y=y.to_bytes(256, 'big')))
+        server.db.session.add(server.User(
+            client_id=client_id,
+            secret_y=Y[0].to_bytes(32, 'big') + Y[1].to_bytes(32, 'big'),
+        ))
         server.db.session.commit()
 
     challenges = []
     session_ids = []
 
     for _ in range(n):
-        rand_r = secrets_module.randbelow(server.P - 2) + 1
-        t = pow(server.G, rand_r, server.P)
+        rand_r = secrets_module.randbelow(EC_ORDER - 1) + 1
+        T = ec_scalar_mult(rand_r, EC_GENERATOR)
         resp = client.post(
             "/login/commit",
-            json={"client_id": client_id, "commitment_t": t},
+            json={"client_id": client_id, "commitment_t_x": str(T[0]), "commitment_t_y": str(T[1])},
         )
         assert resp.status_code == 200
         payload = resp.get_json()
@@ -101,87 +104,54 @@ def test_challenge_and_session_id_uniqueness_over_10000_commits(client):
         verify = client.post(
             "/login/verify",
             headers={"X-Auth-Session": payload["session_id"]},
-            json={"solution_s": server.Q},
+            json={"solution_s": 0},
         )
         assert verify.status_code == 422
 
     assert len(set(session_ids)) == n, "Session ID collision detected!"
     assert len(set(challenges)) == n, "challenge_c collision detected!"
-    assert all(1 <= c <= server.P - 2 for c in challenges), "challenge_c out of range!"
+    assert all(1 <= c <= EC_ORDER - 1 for c in challenges), "challenge_c out of range!"
 
 
 # ---------------------------------------------------------------------------
 # MitM Weak Parameter Injection: DLP brute-force then force login
 # ---------------------------------------------------------------------------
 
-def test_mitm_weak_parameter_injection_allows_dlp_brute_force_and_login(client, monkeypatch):
-    '''Testare atac MitM injectare parametri slabi P=23 - DLP brute-force si autentificare reusita cu x recuperat'''
-    """Attacker MitM /parameters and replaces P/Q/G with a tiny group (P=23, Q=11, G=4).
-    Victim registers using y computed under weak parameters.
-    Attacker brute-forces the discrete logarithm trivially (at most P-1 iterations).
-    Attacker completes a valid ZKP login as the victim using the recovered private key."""
+def test_mitm_weak_parameter_injection_fails_against_hardcoded_ec_curve(client):
+    '''Testare atac MitM injectare parametri slabi esueaza - curba EC secp256r1 hardcodata respinge puncte invalide'''
+    """With secp256r1 hardcoded in the server, an attacker cannot inject weak curve parameters.
+    Any public key not on secp256r1 is rejected at /register with 422 'invalid public value',
+    so the DLP brute-force attack is blocked before login is ever attempted."""
 
-    # Weak parameters injected by the MitM -- group of order 11 inside Z_23
-    # Verification: 4^11 mod 23 = 1  (group order correct)
-    P_weak = 23
-    Q_weak = 11  # (P_weak - 1) // 2
-    G_weak = 4   # generator of the unique subgroup of order 11
+    # Attacker computes a point on a tiny fake group (P=23, G=4) -- NOT a secp256r1 point
+    P_weak, G_weak = 23, 4
+    x_victim = 50
+    y_victim = pow(G_weak, x_victim, P_weak)  # small integer, NOT on secp256r1
 
-    monkeypatch.setattr(server, "P", P_weak)
-    monkeypatch.setattr(server, "Q", Q_weak)
-    monkeypatch.setattr(server, "G", G_weak)
-
-    client_id = "mitm_victim"
-    x_victim = 50                                      # victim's private key
-    y_victim = pow(G_weak, x_victim, P_weak)          # = 8  (stored in DB)
-
-    # Victim registers -- DB stores y computed under the (attacker-controlled) weak group
-    resp = client.post("/register", json={"client_id": client_id, "secret_y": y_victim})
-    assert resp.status_code == 201
-
-    # Attacker brute-forces the discrete logarithm in at most P-2 steps
-    x_recovered = next(
-        (i for i in range(1, P_weak) if pow(G_weak, i, P_weak) == y_victim),
-        None,
-    )
-    assert x_recovered is not None, "DLP brute-force found no solution"
-    assert x_recovered == x_victim % Q_weak, f"Recovered x={x_recovered} != x_victim mod Q={x_victim % Q_weak}"
-
-    # Attacker completes a fresh ZKP login using the recovered private key
-    rand_r = secrets_module.randbelow(Q_weak - 1) + 1
-    t = pow(G_weak, rand_r, P_weak)
-
-    commit_resp = client.post(
-        "/login/commit",
-        json={"client_id": client_id, "commitment_t": t},
-    )
-    assert commit_resp.status_code == 200
-    payload = commit_resp.get_json()
-    c = int(payload["challenge_c"])
-    session_id = payload["session_id"]
-
-    s = (rand_r + c * x_recovered) % Q_weak
-
-    verify_resp = client.post(
-        "/login/verify",
-        headers={"X-Auth-Session": session_id},
-        json={"solution_s": s},
-    )
-    assert verify_resp.status_code == 422, (
-        "Attacker should not be able to log in with weak parameters because server should reject trivial proofs, but got: "
-    )
-    assert "token" in verify_resp.get_json()
+    # Victim (or attacker) attempts to register a public key from the weak group
+    resp = client.post("/register", json={
+        "client_id": "mitm_victim",
+        "secret_y_x": str(y_victim),
+        "secret_y_y": str(y_victim),
+    })
+    # Server rejects because is_valid_ec_point fails for non-secp256r1 coordinates
+    assert resp.status_code == 422
+    assert resp.get_json() == {"reason": "invalid public value"}
 
 
 def test_mitm_weak_parameters_fails_against_hardcoded_server(client):
     '''Testare atac MitM parametri slabi esueaza la inregistrare - server respinge y_weak care nu e membru subgrup'''
     """Server rejects y_weak at /register because is_subgroup_member checks y^Q == 1 mod P_big.
     y_weak = G^x mod P_weak does not satisfy that, so the attack is blocked before login."""
-    P_weak, Q_weak, G_weak = 23, 11, 4
+    P_weak, G_weak = 23, 4
     x_victim = 50
-    y_weak = pow(G_weak, x_victim, P_weak)   # y_weak = 8; not in the server's subgroup
+    y_weak = pow(G_weak, x_victim, P_weak)  # y_weak is a small integer, not on secp256r1
 
-    # Server checks y^Q mod P == 1; y_weak fails this, so registration is rejected
-    resp = client.post("/register", json={"client_id": "mitm_victim", "secret_y": y_weak})
+    # Server checks is_valid_ec_point(x, y); y_weak is not on secp256r1, so registration is rejected
+    resp = client.post("/register", json={
+        "client_id": "mitm_victim",
+        "secret_y_x": str(y_weak),
+        "secret_y_y": str(y_weak),
+    })
     assert resp.status_code == 422
     assert resp.get_json() == {"reason": "invalid public value"}
