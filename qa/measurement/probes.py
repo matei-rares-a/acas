@@ -601,7 +601,7 @@ def run_server_internals_benchmark(
     # -- endpoint latency (Flask test client) --------------------------------
     with server.app.test_client() as c:
         with server.app.app_context():
-            x, _ = derive_password_x("internals-bench-pw")
+            x = derive_password_x("internals-bench-pw")
             y = pow(G, x, P)
             existing = server.User.query.filter_by(client_id=sample_client_id).first()
             if not existing:

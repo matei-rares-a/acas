@@ -1,6 +1,10 @@
 function showStatus(message) {
     const statusDiv = document.getElementById('auth-status');
     const statusContent = document.getElementById('auth-status-content');
+    if (!statusDiv || !statusContent) {
+        console.log('[status]', message);
+        return;
+    }
     statusDiv.style.display = 'block';
     statusContent.innerHTML += `<div class="status-item">${message}</div>`;
     statusContent.scrollTop = statusContent.scrollHeight;
@@ -33,8 +37,9 @@ async function authenticate() {
         btn.innerHTML = '<span class="spinner"></span>Authenticating...';
 
         const statusContent = document.getElementById('auth-status-content');
-        statusContent.innerHTML = '';
-        document.getElementById('auth-status').style.display = 'block';
+        if (statusContent) statusContent.innerHTML = '';
+        const statusBox = document.getElementById('auth-status');
+        if (statusBox) statusBox.style.display = 'block';
 
         // Step 0: Fetch parameters from server
         showStatus('Fetching parameters from server...');

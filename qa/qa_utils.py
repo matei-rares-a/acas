@@ -29,15 +29,18 @@ assert spec and spec.loader
 spec.loader.exec_module(server)
 
 
-def derive_password_x(password_string: str, salt: bytes = secrets_module.token_bytes(16)) -> int:
-    """Derive private scalar x from a password using scrypt KDF."""
-    hashed = hashlib.scrypt(password_string.encode(), salt=salt, n=2**11, r=8, p=1)
-    return int.from_bytes(hashed, "big") % server.Q, salt
+_KDF_SALT = b'acas-zkp-fixed-salt-2026'
+
+
+def derive_password_x(password_string: str) -> int:
+    """Derive private scalar x from a password. Uses SHAKE-256 (fast, 2048-bit output)."""
+    hashed = hashlib.shake_256(password_string.encode() + _KDF_SALT).digest(256)
+    return int.from_bytes(hashed, 'big') % server.Q or 1
 
 
 def register_user(client, client_id: str, password: str):
     """Register a new user and return (x, y)."""
-    x, _ = derive_password_x(password)
+    x = derive_password_x(password)
     y = pow(server.G, x, server.P)
     resp = client.post("/register", json={"client_id": client_id, "secret_y": y})
     assert resp.status_code in (200, 201)

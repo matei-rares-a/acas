@@ -157,12 +157,11 @@ def _summarize(name: str, timings: list[float]) -> dict:
 
 
 def run_classic_schnorr(password: str, iterations: int = 100) -> dict:
-    salt = b'ec_compare_fixed_salt_2026'
     stats = {k: [] for k in ('derive_x', 'compute_y', 'commit', 'solve', 'verify', 'total')}
 
     for _ in range(iterations):
         t0 = time.perf_counter()
-        x, _ = derive_password_x(password, salt)
+        x = derive_password_x(password)
         x = x % CLASSIC_Q
         t1 = time.perf_counter()
         stats['derive_x'].append((t1 - t0) * 1000)

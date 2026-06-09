@@ -1,0 +1,107 @@
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  ML-KEM (NIST FIPS 203)  vs  ECDH P-256  —  50 iterations                                        │
+│  Post-Quantum KEM  vs  Classical ECDH                                                            │
+│  ML-KEM via kyber-py (pure Python) — ECDH via cryptography + OpenSSL                             │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+  NOTE: kyber-py is a pure Python reference implementation (~20-50x slower than
+  liboqs C library or OpenSSL native ML-KEM). ECDH uses native OpenSSL bindings.
+  These timings show algorithmic overhead structure, not production performance.
+
+  ML-KEM-512  [NIST FIPS 203 | NIST Level 1 (~128-bit)]
+  ┌─────────────────────┬──────────┬──────────┬──────────┬──────────┐
+  │ Stage               │ mean     │ min      │ p95      │ stdev    │
+  ├─────────────────────┼──────────┼──────────┼──────────┼──────────┤
+  │ ML-KEM-512   keygen │ 1.468 ms │ 1.256 ms │ 1.716 ms │ 0.172 ms │
+  │ ML-KEM-512   encaps │ 2.034 ms │ 1.699 ms │ 2.399 ms │ 0.211 ms │
+  │ ML-KEM-512   decaps │ 2.952 ms │ 2.469 ms │ 3.447 ms │ 0.306 ms │
+  │ ML-KEM-512   total  │ 6.453 ms │ 5.734 ms │ 7.176 ms │ 0.484 ms │
+  └─────────────────────┴──────────┴──────────┴──────────┴──────────┘
+  Sizes: ek=800B  dk=1632B  ciphertext=768B  shared_key=32B
+
+  ML-KEM-768  [NIST FIPS 203 | NIST Level 3 (~192-bit)]
+  ┌─────────────────────┬──────────┬──────────┬───────────┬──────────┐
+  │ Stage               │ mean     │ min      │ p95       │ stdev    │
+  ├─────────────────────┼──────────┼──────────┼───────────┼──────────┤
+  │ ML-KEM-768   keygen │ 2.478 ms │ 2.190 ms │ 2.821 ms  │ 0.202 ms │
+  │ ML-KEM-768   encaps │ 3.139 ms │ 2.735 ms │ 3.570 ms  │ 0.349 ms │
+  │ ML-KEM-768   decaps │ 4.274 ms │ 3.682 ms │ 4.798 ms  │ 0.301 ms │
+  │ ML-KEM-768   total  │ 9.891 ms │ 8.877 ms │ 10.631 ms │ 0.494 ms │
+  └─────────────────────┴──────────┴──────────┴───────────┴──────────┘
+  Sizes: ek=1184B  dk=2400B  ciphertext=1088B  shared_key=32B
+
+  ML-KEM-1024  [NIST FIPS 203 | NIST Level 5 (~256-bit)]
+  ┌─────────────────────┬───────────┬───────────┬───────────┬──────────┐
+  │ Stage               │ mean      │ min       │ p95       │ stdev    │
+  ├─────────────────────┼───────────┼───────────┼───────────┼──────────┤
+  │ ML-KEM-1024  keygen │ 3.861 ms  │ 3.387 ms  │ 4.645 ms  │ 0.448 ms │
+  │ ML-KEM-1024  encaps │ 4.509 ms  │ 3.917 ms  │ 4.941 ms  │ 0.322 ms │
+  │ ML-KEM-1024  decaps │ 6.109 ms  │ 5.182 ms  │ 6.924 ms  │ 0.952 ms │
+  │ ML-KEM-1024  total  │ 14.479 ms │ 13.020 ms │ 16.962 ms │ 1.253 ms │
+  └─────────────────────┴───────────┴───────────┴───────────┴──────────┘
+  Sizes: ek=1568B  dk=3168B  ciphertext=1568B  shared_key=32B
+
+  ECDH P-256  [Classical | ~128-bit security | secp256r1]
+  ┌─────────────────────┬──────────┬──────────┬──────────┬──────────┐
+  │ Stage               │ mean     │ min      │ p95      │ stdev    │
+  ├─────────────────────┼──────────┼──────────┼──────────┼──────────┤
+  │ ECDH P-256   keygen │ 0.111 ms │ 0.016 ms │ 0.024 ms │ 0.649 ms │
+  │ ECDH P-256   encaps │ 0.088 ms │ 0.078 ms │ 0.090 ms │ 0.029 ms │
+  │ ECDH P-256   decaps │ 0.071 ms │ 0.060 ms │ 0.099 ms │ 0.025 ms │
+  │ ECDH P-256   total  │ 0.269 ms │ 0.155 ms │ 0.202 ms │ 0.677 ms │
+  └─────────────────────┴──────────┴──────────┴──────────┴──────────┘
+  Sizes: public_key=65B  private_key=32B  ciphertext=N/A  shared_key=32B
+
+  * ECDH "encaps" = party B keygen + derive; "decaps" = party A derive.
+  * ML-KEM "encaps" = encapsulate(ek) → (shared_key, ciphertext).
+  * ML-KEM "decaps" = decapsulate(dk, ciphertext) → shared_key.
+
+  SUMMARY  (mean latency)
+  ┌─────────────┬─────────────────────────┬──────────┬──────────┬──────────┬───────────┬─────────┬────────────┐
+  │ Algorithm   │ Security Level          │ Keygen   │ Encaps   │ Decaps   │ Total     │ CT size │ vs fastest │
+  ├─────────────┼─────────────────────────┼──────────┼──────────┼──────────┼───────────┼─────────┼────────────┤
+  │ ML-KEM-512  │ NIST Level 1 (~128-bit) │ 1.468 ms │ 2.034 ms │ 2.952 ms │ 6.453 ms  │ 768B    │ 23.96x     │
+  │ ML-KEM-768  │ NIST Level 3 (~192-bit) │ 2.478 ms │ 3.139 ms │ 4.274 ms │ 9.891 ms  │ 1088B   │ 36.73x     │
+  │ ML-KEM-1024 │ NIST Level 5 (~256-bit) │ 3.861 ms │ 4.509 ms │ 6.109 ms │ 14.479 ms │ 1568B   │ 53.77x     │
+  │ ECDH P-256  │ Classical ~128-bit      │ 0.111 ms │ 0.088 ms │ 0.071 ms │ 0.269 ms  │ 65B pub │ 1.00x      │
+  └─────────────┴─────────────────────────┴──────────┴──────────┴──────────┴───────────┴─────────┴────────────┘
+  * CT = ciphertext / public key size transmitted during key exchange.
+
+  KEY & CIPHERTEXT SIZES
+  ┌─────────────┬─────────────┬────────────┬────────────┬────────────┬────────────────┬─────────┐
+  │ Algorithm   │ Private Key │ Public Key │ Ciphertext │ Shared Key │ Security       │ PQ Safe │
+  ├─────────────┼─────────────┼────────────┼────────────┼────────────┼────────────────┼─────────┤
+  │ ML-KEM-512  │ 800B        │ 1632B      │ 768B       │ 32B        │ NIST Level 1   │ YES     │
+  │ ML-KEM-768  │ 1184B       │ 2400B      │ 1088B      │ 32B        │ NIST Level 3   │ YES     │
+  │ ML-KEM-1024 │ 1568B       │ 3168B      │ 1568B      │ 32B        │ NIST Level 5   │ YES     │
+  │ ECDH P-256  │ 32B         │ 65B        │ N/A        │ 32B        │ Classical 128b │ NO      │
+  └─────────────┴─────────────┴────────────┴────────────┴────────────┴────────────────┴─────────┘
+
+  FEATURE COMPARISON
+  ┌───────────────────────────────┬────────────────┬────────────────┬────────────────┬────────────────────────┐
+  │ Property                      │ ML-KEM-512     │ ML-KEM-768     │ ML-KEM-1024    │ ECDH P-256             │
+  ├───────────────────────────────┼────────────────┼────────────────┼────────────────┼────────────────────────┤
+  │ Standard                      │ NIST FIPS 203  │ NIST FIPS 203  │ NIST FIPS 203  │ ECDH / RFC 6090        │
+  │ Security assumption           │ Module-LWE     │ Module-LWE     │ Module-LWE     │ ECDLP                  │
+  │ Quantum-safe (Shor resistant) │ YES            │ YES            │ YES            │ NO                     │
+  │ NIST security level           │ Level 1 (L1)   │ Level 3 (L3)   │ Level 5 (L5)   │ Classical 128-bit      │
+  │ Classical security bits       │ ~128           │ ~192           │ ~256           │ ~128                   │
+  │ Public key / ek size          │ 800 B          │ 1184 B         │ 1568 B         │ 65 B (uncompressed)    │
+  │ Private key / dk size         │ 1632 B         │ 2400 B         │ 3168 B         │ 32 B                   │
+  │ Ciphertext size               │ 768 B          │ 1088 B         │ 1568 B         │ N/A (ephemeral pubkey) │
+  │ Shared secret size            │ 32 B           │ 32 B           │ 32 B           │ 32 B                   │
+  │ KEM mechanism                 │ IND-CCA2 KEM   │ IND-CCA2 KEM   │ IND-CCA2 KEM   │ DH exchange            │
+  │ Mutual auth built-in          │ NO (needs sig) │ NO (needs sig) │ NO (needs sig) │ NO (needs sig)         │
+  │ FIPS 203 compliant            │ YES            │ YES            │ YES            │ NO                     │
+  └───────────────────────────────┴────────────────┴────────────────┴────────────────┴────────────────────────┘
+
+  ALGORITHM SELECTION GUIDANCE:
+  ML-KEM-512  : equivalent quantum resistance to AES-128; suitable for non-critical data.
+  ML-KEM-768  : recommended general-purpose choice (NIST recommended minimum for new systems).
+  ML-KEM-1024 : highest security margin; use when long-term confidentiality matters (>10 years).
+  ECDH P-256  : classical baseline; NOT quantum-safe; widely deployed / very fast (native).
+
+  IMPORTANT — kyber-py vs liboqs performance:
+  These timings use a pure Python reference. With liboqs (C library), ML-KEM is typically
+  ~0.01–0.10 ms per operation (100–500x faster), making it competitive with ECDH P-256.
+  Real-world TLS 1.3 + ML-KEM-768 (Hybrid X25519MLKEM768) adds < 1 ms overhead vs ECDH.

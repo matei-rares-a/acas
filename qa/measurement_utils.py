@@ -21,7 +21,7 @@ def setup_isolated_test_user(client_id: str, password: str):
     Each call wipes the database to guarantee a clean, isolated state.
     """
     server.app.config["TESTING"] = True
-    x, _ = derive_password_x(password)
+    x = derive_password_x(password)
     y = pow(server.G, x, server.P)
     with server.app.app_context():
         server.db.session.remove()

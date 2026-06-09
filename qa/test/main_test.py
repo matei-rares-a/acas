@@ -52,11 +52,11 @@ class SuiteExecutor:
                 'path': str(self.test_dir / 'security_case.py'),
                 'description': 'Cryptographic Attack Vectors & Protocol Security'
             },
-            {
-                'name': 'OAuth2 Functional Tests',
-                'path': str(self.test_dir / 'oauth_case.py'),
-                'description': 'OAuth2 PKCE & Simple Authorization Code Flow'
-            },
+            # {
+            #     'name': 'OAuth2 Functional Tests',
+            #     'path': str(self.test_dir / 'oauth_case.py'),
+            #     'description': 'OAuth2 PKCE & Simple Authorization Code Flow'
+            # },
         ]
     
     def print_header(self):

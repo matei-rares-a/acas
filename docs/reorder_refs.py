@@ -1,6 +1,6 @@
 import re
 
-filepath = r"c:\local_store\files\my_workspace\acas\docs\Disertatie_Matei_Rares_draft4.md"
+filepath = r"c:\local_store\files\my_workspace\acas\docs\Disertatie_Matei_Rares_5.md"
 with open(filepath, "r", encoding="utf-8") as f:
     content = f.read()
 
@@ -8,83 +8,67 @@ bib_marker = "\nBibliografie\n"
 bib_start_idx = content.find(bib_marker)
 anexe_idx = content.find("\nAnexe\n", bib_start_idx)
 
+if bib_start_idx == -1:
+    raise SystemExit("ERROR: 'Bibliografie' section not found")
+if anexe_idx == -1:
+    raise SystemExit("ERROR: 'Anexe' section not found")
+
 text_before_bib = content[:bib_start_idx]
-bib_section = content[bib_start_idx:anexe_idx]
+bib_content = content[bib_start_idx + len(bib_marker):anexe_idx]
 rest_after_bib = content[anexe_idx:]
 
+# Find first-appearance order of [N] citations in the text body
 order = []
 for m in re.finditer(r"\[(\d+)\]", text_before_bib):
     num = int(m.group(1))
     if num not in order:
         order.append(num)
 
+# mapping: old citation number -> new citation number (1-based, first-appearance order)
 mapping = {old: new + 1 for new, old in enumerate(order)}
 
 def apply_mapping(text, mapping):
     def replace(m):
         num = int(m.group(1))
-        if num in mapping:
-            return "XREFX{}XREFX".format(mapping[num])
-        return m.group(0)
+        return "XREFX{}XREFX".format(mapping[num]) if num in mapping else m.group(0)
     result = re.sub(r"\[(\d+)\]", replace, text)
-    result = re.sub(r"XREFX(\d+)XREFX", lambda m: "[{}]".format(m.group(1)), result)
-    return result
+    return re.sub(r"XREFX(\d+)XREFX", lambda m: "[{}]".format(m.group(1)), result)
 
 new_text_before_bib = apply_mapping(text_before_bib, mapping)
 
-bib_content = bib_section[len(bib_marker):]
-lines = bib_content.split("\n")
-current_num = None
-current_lines = []
-raw_entries = {}
+# Parse bibliography: tab-indented non-empty lines in order = entries [1], [2], ...
+# (bibliography entries have no [N] prefix — they are positionally indexed)
+entry_lines = [l for l in bib_content.split("\n") if l.startswith("\t") and l.strip()]
+raw_entries = {i + 1: line for i, line in enumerate(entry_lines)}
 
-for line in lines:
-    m = re.match(r"^\[(\d+)\](.*)$", line)
-    if m:
-        if current_num is not None:
-            raw_entries[current_num] = "\n".join(current_lines).rstrip("\n")
-        current_num = int(m.group(1))
-        current_lines = [line]
-    else:
-        if current_num is not None:
-            current_lines.append(line)
+print("Found {} bibliography entries".format(len(raw_entries)))
+print("Found {} unique citations in text: {}".format(len(order), order))
 
-if current_num is not None:
-    raw_entries[current_num] = "\n".join(current_lines).rstrip("\n")
-
-preamble_lines = []
-for line in lines:
-    if re.match(r"^\[(\d+)\]", line):
-        break
-    preamble_lines.append(line)
-preamble = "\n".join(preamble_lines)
-
-print("Found {} bibliography entries: {}".format(len(raw_entries), sorted(raw_entries.keys())))
-
-new_bib_entries = []
-for old_num, new_num in sorted(mapping.items(), key=lambda x: x[1]):
+# Build reordered entry list
+new_entry_lines = []
+for old_num in order:
     if old_num in raw_entries:
-        old_entry_text = raw_entries[old_num]
-        new_entry_text = re.sub(r"^\[" + str(old_num) + r"\]", "[{}]".format(new_num), old_entry_text)
-        new_bib_entries.append((new_num, new_entry_text))
+        new_entry_lines.append(raw_entries[old_num])
+    else:
+        print("WARNING: no bibliography entry for citation [{}]".format(old_num))
 
-trailer = bib_content
-for num in sorted(raw_entries.keys()):
-    trailer = trailer.replace(raw_entries[num], "", 1)
-trailer = trailer.strip()
-if trailer:
-    print("Trailer: {}".format(repr(trailer[:300])))
+uncited = sorted(set(raw_entries.keys()) - set(order))
+if uncited:
+    print("WARNING: entries not cited in text, appended at end: {}".format(uncited))
+    for old_num in uncited:
+        new_entry_lines.append(raw_entries[old_num])
 
-new_bib_entries_sorted = sorted(new_bib_entries, key=lambda x: x[0])
-new_bib_content = preamble
-for new_num, entry_text in new_bib_entries_sorted:
-    new_bib_content += "\n" + entry_text + "\n"
+# Reconstruct bib section: replace entry lines in-place, keep all other lines (blank lines etc.)
+entry_iter = iter(new_entry_lines)
+result_lines = []
+for line in bib_content.split("\n"):
+    if line.startswith("\t") and line.strip():
+        result_lines.append(next(entry_iter))
+    else:
+        result_lines.append(line)
 
-if trailer:
-    new_bib_content += "\n" + trailer + "\n"
-
-new_bib_section = bib_marker + new_bib_content
-new_content = new_text_before_bib + new_bib_section + rest_after_bib
+new_bib_content = "\n".join(result_lines)
+new_content = new_text_before_bib + bib_marker + new_bib_content + rest_after_bib
 
 with open(filepath, "w", encoding="utf-8") as f:
     f.write(new_content)

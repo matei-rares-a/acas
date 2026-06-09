@@ -155,7 +155,7 @@ def run_custom_schnorr(password: str, iterations: int = 100) -> dict:
     for _ in range(iterations):
         # KDF: scrypt → password scalar x
         t0 = time.perf_counter()
-        x, _ = derive_password_x(password, _FIXED_SALT)
+        x = derive_password_x(password)
         x = x % CLASSIC_Q
         t1 = time.perf_counter()
         stats['derive_x'].append((t1 - t0) * 1000)

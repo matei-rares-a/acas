@@ -53,7 +53,7 @@ class ZKPUser(HttpUser):
     def on_start(self):
         self._client_id = f"locust_{secrets_module.token_hex(8)}"
         self._password  = f"password-locust_{secrets_module.token_hex(16)}"
-        self._x, self._salt = derive_password_x(self._password)
+        self._x = derive_password_x(self._password)
         self._y = pow(server.G, self._x, server.P)
         self.client.post("/register", json={"client_id": self._client_id, "secret_y": self._y})
 
@@ -79,7 +79,7 @@ class ZKPUser(HttpUser):
         payload     = commit.json()
         challenge_c = int(payload["challenge_c"])
         session_id  = payload["session_id"]
-        x, _        = derive_password_x(self._password, self._salt)
+        x           = derive_password_x(self._password)
         s = (rand_r + challenge_c * x) % server.Q
         verify = self.client.post(
             "/login/verify",

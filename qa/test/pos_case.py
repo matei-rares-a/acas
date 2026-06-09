@@ -14,7 +14,7 @@ class TestPositiveCases(BaseTestSuite):
         """Client send register data, server save public value, server doesn't keep plain password."""
         client_id = "test_user"
         raw_password = "my-secure-password-12345"
-        password_x,_ = derive_password_x(raw_password)
+        password_x = derive_password_x(raw_password)
         secret_y = pow(server.G, password_x, server.P)
 
         response = client.post(
@@ -39,7 +39,7 @@ class TestPositiveCases(BaseTestSuite):
         """Client send register data, server must not store any hash of the plain password."""
         client_id = "test_user_hash"
         raw_password = "my-secure-password-12345"
-        password_x, _ = derive_password_x(raw_password)
+        password_x = derive_password_x(raw_password)
         secret_y = pow(server.G, password_x, server.P)
 
         response = client.post(
@@ -70,7 +70,7 @@ class TestPositiveCases(BaseTestSuite):
         client_id = "test_login"
         raw_password = "test-password-secure"
 
-        password_x,_ = derive_password_x(raw_password)
+        password_x = derive_password_x(raw_password)
         secret_y = pow(server.G, password_x, server.P)
 
         with server.app.app_context():
@@ -114,7 +114,7 @@ class TestPositiveCases(BaseTestSuite):
         client_id = "test_user"
         raw_password = "data-endpoint-password"
 
-        password_x, _ = derive_password_x(raw_password)
+        password_x = derive_password_x(raw_password)
         secret_y = pow(server.G, password_x, server.P)
 
         register_response = client.post(
@@ -160,9 +160,9 @@ class TestPositiveCases(BaseTestSuite):
         '''Testare autentificare paralela - doi utilizatori diferiti se autentifica simultan cu succes'''
         """Alice and Bob both commit so their sessions coexist, Alice verify with her correct s and get token, Bob verify with his correct s and get token, both receive 200."""
         # Register both users
-        x_alice, _ = derive_password_x("alice-parallel-pass")
+        x_alice = derive_password_x("alice-parallel-pass")
         y_alice = pow(server.G, x_alice, server.P)
-        x_bob, _ = derive_password_x("bob-parallel-pass")
+        x_bob = derive_password_x("bob-parallel-pass")
         y_bob = pow(server.G, x_bob, server.P)
 
         with server.app.app_context():

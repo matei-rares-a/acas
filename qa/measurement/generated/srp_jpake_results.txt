@@ -1,0 +1,76 @@
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│  SRP-6a  vs  J-PAKE  —  50 iterations                                                       │
+│  RFC 5054 2048-bit MODP  |  RFC 8236 J-PAKE 2048-bit MODP                                   │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
+
+  SRP-6a  [RFC 5054, 2048-bit MODP, SHA-256 KDF, 4-round login]
+  ┌───────────────────┬───────────┬───────────┬───────────┬──────────┐
+  │ Stage             │ mean      │ min       │ p95       │ stdev    │
+  ├───────────────────┼───────────┼───────────┼───────────┼──────────┤
+  │ SRP-6a  register  │ 1.192 ms  │ 1.064 ms  │ 1.310 ms  │ 0.187 ms │
+  │ SRP-6a  commit    │ 0.076 ms  │ 0.055 ms  │ 0.090 ms  │ 0.010 ms │
+  │ SRP-6a  challenge │ 0.076 ms  │ 0.056 ms  │ 0.094 ms  │ 0.012 ms │
+  │ SRP-6a  solve     │ 20.125 ms │ 18.900 ms │ 21.753 ms │ 0.878 ms │
+  │ SRP-6a  verify    │ 20.559 ms │ 19.346 ms │ 22.033 ms │ 0.946 ms │
+  │ SRP-6a  total     │ 40.837 ms │ 39.377 ms │ 42.861 ms │ 1.217 ms │
+  └───────────────────┴───────────┴───────────┴───────────┴──────────┘
+
+  J-PAKE  [RFC 8236, 2048-bit MODP, ZKP every round, 4-round login]
+  ┌─────────────────────┬───────────┬───────────┬───────────┬──────────┐
+  │ Stage               │ mean      │ min       │ p95       │ stdev    │
+  ├─────────────────────┼───────────┼───────────┼───────────┼──────────┤
+  │ J-PAKE  round1_A    │ 21.746 ms │ 19.072 ms │ 26.868 ms │ 2.624 ms │
+  │ J-PAKE  round1_B    │ 22.606 ms │ 18.706 ms │ 28.042 ms │ 3.234 ms │
+  │ J-PAKE  round1_wall │ 23.377 ms │ 20.117 ms │ 30.375 ms │ 3.316 ms │
+  │ J-PAKE  proc1_A     │ 18.801 ms │ 15.479 ms │ 25.843 ms │ 3.437 ms │
+  │ J-PAKE  proc1_B     │ 18.241 ms │ 15.578 ms │ 24.329 ms │ 2.738 ms │
+  │ J-PAKE  proc1_wall  │ 19.760 ms │ 16.085 ms │ 25.843 ms │ 3.521 ms │
+  │ J-PAKE  round2_A    │ 16.417 ms │ 13.967 ms │ 21.389 ms │ 2.866 ms │
+  │ J-PAKE  round2_B    │ 16.029 ms │ 14.046 ms │ 20.819 ms │ 2.643 ms │
+  │ J-PAKE  round2_wall │ 17.349 ms │ 14.233 ms │ 23.376 ms │ 3.285 ms │
+  │ J-PAKE  proc2_A     │ 9.009 ms  │ 7.677 ms  │ 11.620 ms │ 1.403 ms │
+  │ J-PAKE  proc2_B     │ 9.193 ms  │ 7.515 ms  │ 13.407 ms │ 1.950 ms │
+  │ J-PAKE  proc2_wall  │ 9.714 ms  │ 7.980 ms  │ 13.407 ms │ 1.871 ms │
+  │ J-PAKE  total       │ 70.199 ms │ 60.605 ms │ 84.594 ms │ 9.420 ms │
+  └─────────────────────┴───────────┴───────────┴───────────┴──────────┘
+
+  * _wall = max(A, B) — parallel cost per round-trip.
+  * J-PAKE total = round1_wall + proc1_wall + round2_wall + proc2_wall.
+  * SRP total    = commit + challenge + solve + verify (registration excluded).
+
+  SUMMARY
+  ┌──────────┬──────────────┬──────────────┬───────────┬──────────┬────────────┐
+  │ Protocol │ Registration │ Auth (login) │ Total     │ Rounds   │ vs fastest │
+  ├──────────┼──────────────┼──────────────┼───────────┼──────────┼────────────┤
+  │ SRP-6a   │ 1.192 ms     │ 40.837 ms    │ 40.837 ms │ 4 rounds │ 1.00x      │
+  │ J-PAKE   │ N/A (inline) │ 70.199 ms    │ 70.199 ms │ 4 rounds │ 1.72x      │
+  └──────────┴──────────────┴──────────────┴───────────┴──────────┴────────────┘
+  * Registration is a one-time cost (not on login hot-path).
+  * J-PAKE has no separate registration — verifier is derived inline each time.
+
+  FEATURE COMPARISON
+  ┌────────────────────────────┬─────────────────────────────┬─────────────────────────────────┐
+  │ Property                   │ SRP-6a                      │ J-PAKE                          │
+  ├────────────────────────────┼─────────────────────────────┼─────────────────────────────────┤
+  │ Mutual authentication      │ YES                         │ YES                             │
+  │ Session key established    │ YES                         │ YES                             │
+  │ Password never sent        │ YES                         │ YES                             │
+  │ Server-breach resistant    │ YES                         │ YES                             │
+  │ Separate registration step │ YES                         │ NO — inline                     │
+  │ ZKP embedded in protocol   │ NO                          │ YES — every round               │
+  │ Explicit key confirmation  │ HAMK round                  │ Implicit (K match)              │
+  │ Standardised               │ RFC 5054                    │ RFC 8236                        │
+  │ Group / modulus            │ 2048-bit MODP (RFC 5054)    │ 2048-bit MODP (library default) │
+  │ Security level             │ ~112 bits                   │ ~112 bits                       │
+  │ Round trips (login)        │ 3 (commit+challenge+verify) │ 4 (one+proc1+two+proc2)         │
+  └────────────────────────────┴─────────────────────────────┴─────────────────────────────────┘
+
+  KEY DIFFERENCES:
+  SRP-6a : Server stores a verifier (salt + hash) — breached DB reveals
+           precomputed verifiers but NOT the password directly.
+           Faster login: 3 meaningful rounds (library uses C for modexp).
+
+  J-PAKE : No verifier stored — server never holds any password-derived
+           material between sessions. ZKPs prove knowledge at every step.
+           True forward secrecy: past sessions safe even if password leaked.
+           Extra round needed because ZKPs require two-way key-share exchange.

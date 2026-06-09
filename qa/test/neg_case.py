@@ -17,7 +17,7 @@ class TestNegativeCases(BaseTestSuite):
         register_user(client, client_id, correct_password)
         rand_r, challenge_c, session_id = start_commit(client, client_id)
 
-        wrong_x, _ = derive_password_x(wrong_password)
+        wrong_x = derive_password_x(wrong_password)
         wrong_solution_s = (rand_r + challenge_c * wrong_x) % server.Q
 
         verify_response = client.post(
@@ -68,7 +68,7 @@ class TestNegativeCases(BaseTestSuite):
         solution_s = (rand_r + challenge_c * x) % server.Q
 
         real_time = time.time
-        monkeypatch.setattr(server.time, "time", lambda: real_time() + 6)
+        monkeypatch.setattr(server.time, "time", lambda: real_time() + server.SESSION_TTL + 1)
 
         verify_response = client.post(
             "/login/verify",
@@ -115,8 +115,8 @@ class TestNegativeCases(BaseTestSuite):
         initial_password = "initial-password-version1"
         second_password = "second-password-version2"
 
-        initial_password_x,_ = derive_password_x(initial_password)
-        second_password_x,_ = derive_password_x(second_password)
+        initial_password_x = derive_password_x(initial_password)
+        second_password_x = derive_password_x(second_password)
 
         initial_secret_y = pow(server.G, initial_password_x, server.P)
         second_secret_y = pow(server.G, second_password_x, server.P)

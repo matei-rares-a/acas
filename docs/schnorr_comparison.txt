@@ -1,0 +1,74 @@
+================================================================================
+  COMPARATIE PROTOCOALE SCHNORR
+  Server (MODP 2048-bit)  vs  Schnorr-EC-Mutual (secp256r1)
+================================================================================
+
+┌─────────────────────────┬──────────────────────────────┬──────────────────────────────────┐
+│ Aspect                  │ Server  (server.py)           │ Schnorr-EC-Mutual                │
+├─────────────────────────┼──────────────────────────────┼──────────────────────────────────┤
+│ Grup criptografic       │ MODP 2048-bit (RFC 3526)      │ Curba eliptica secp256r1         │
+│                         │ G^x mod P  (intreg mare)      │ x·G  (punct pe curba)            │
+├─────────────────────────┼──────────────────────────────┼──────────────────────────────────┤
+│ Nivel securitate        │ ~112 biti                     │ ~128 biti                        │
+├─────────────────────────┼──────────────────────────────┼──────────────────────────────────┤
+│ Cheie publica           │ Y = G^x mod P  (intreg)       │ Y = x·G  (punct EC: x, y)        │
+├─────────────────────────┼──────────────────────────────┼──────────────────────────────────┤
+│ Commitment              │ T = G^r mod P  (intreg)       │ T = r·G  (punct EC: x, y)        │
+├─────────────────────────┼──────────────────────────────┼──────────────────────────────────┤
+│ Challenge c             │ SHA-256(IP | UA | session     │ Fiat-Shamir:                     │
+│                         │         | client_id | T)      │ SHA-256(T_client || T_server)    │
+│                         │ → legat de conexiunea TCP     │ → legat de ambele commit-uri     │
+├─────────────────────────┼──────────────────────────────┼──────────────────────────────────┤
+│ Verificare              │ G^s ≡ T · Y^c  (mod P)       │ s·G  =  T + c·Y  (EC)            │
+├─────────────────────────┼──────────────────────────────┼──────────────────────────────────┤
+│ Autentificare mutuala   │ NU — doar clientul se         │ DA — client + server isi         │
+│                         │ autentifica la server         │ dovedesc reciproc cheia privata  │
+├─────────────────────────┼──────────────────────────────┼──────────────────────────────────┤
+│ Cheie de sesiune        │ NU                            │ DA — ECDH: x·Y_server            │
+│                         │                               │ = sk_server · Y_client           │
+├─────────────────────────┼──────────────────────────────┼──────────────────────────────────┤
+│ Session binding         │ DA — challenge-ul include IP  │ NU                               │
+│ (anti-relay/MitM)       │ + User-Agent la nivel retea   │                                  │
+├─────────────────────────┼──────────────────────────────┼──────────────────────────────────┤
+│ TTL sesiune             │ DA — expira dupa 10 secunde   │ NU (benchmark, fara TTL)         │
+├─────────────────────────┼──────────────────────────────┼──────────────────────────────────┤
+│ Detectie race condition │ DA — fereastra 50 ms intre    │ NU                               │
+│                         │ doua commit-uri simultane     │                                  │
+├─────────────────────────┼──────────────────────────────┼──────────────────────────────────┤
+│ Token emis              │ DA — JWT (HS256, 1 ora)       │ NU (benchmark pur)               │
+├─────────────────────────┼──────────────────────────────┼──────────────────────────────────┤
+│ Stocare date            │ DA — SQLite (secret_y ca      │ NU — calcule in memorie          │
+│                         │ bytes, 256 octeti)            │                                  │
+├─────────────────────────┼──────────────────────────────┼──────────────────────────────────┤
+├─────────────────────────┼──────────────────────────────┼──────────────────────────────────┤
+│ Complexitate operatie   │ modexp 2048-bit:              │ scalar mult EC 256-bit:          │
+│ (crypto pura)           │ ~3-5 ms / operatie            │ ~2-3 ms / operatie               │
+│                         │ (4 modexp per autentificare)  │ (4 scalar mult per auth)         │
+└─────────────────────────┴──────────────────────────────┴──────────────────────────────────┘
+
+--------------------------------------------------------------------------------
+  CONCLUZIE
+--------------------------------------------------------------------------------
+
+  Server (MODP):
+    + Standard (RFC 3526), compatibil cu SRP/IKE
+    + Session binding — protejeaza impotriva relay si MitM la nivel de retea
+    + JWT, DB, TTL — sistem complet de autentificare
+    - Autentificare unilaterala (doar clientul se probeaza)
+    - Fara cheie de sesiune derivata din protocol
+    - modexp pe 2048 biti mai lent decat EC pe 256 biti
+
+  Schnorr-EC-Mutual:
+    + Autentificare mutuala — serverul isi probeaza si el identitatea
+    + Cheie de sesiune ECDH — canalul post-auth este protejat criptografic
+    + Securitate mai ridicata (128 vs 112 biti)
+    + Operatii EC mai eficiente decat MODP la acelasi nivel de securitate
+    - Fara session binding la nivel TCP (nu verifica IP/UA)
+    - Fara TTL, fara detectie race, fara JWT, fara DB
+    - Necesita infrastructura aditionala pentru a fi productizat
+
+  Schnorr-EC-Mutual este o extensie naturala a protocolului din server,
+  cu autentificare bidirectionala si cheie de sesiune — ceea ce il aduce
+  la paritate functionala cu SRP-6a si SPAKE2.
+
+================================================================================

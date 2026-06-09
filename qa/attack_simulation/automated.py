@@ -75,7 +75,7 @@ def test_challenge_and_session_id_uniqueness_over_10000_commits(client):
     """Client ask commit many times, server make unique challenge and unique session id."""
     client_id = "entropy_test_user"
     n=10000
-    x, _ = derive_password_x("entropy-password")
+    x = derive_password_x("entropy-password")
     y = pow(server.G, x, server.P)
     with server.app.app_context():
         server.db.session.add(server.User(client_id=client_id, secret_y=y.to_bytes(256, 'big')))

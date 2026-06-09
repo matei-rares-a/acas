@@ -1,0 +1,105 @@
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  ZKP Authentication — Schnorr Proof-of-Knowledge across 4 groups                                 │
+│  Same ZK protocol (Fiat-Shamir Schnorr PoK), different arithmetic groups                         │
+│  50 iterations per group                                                                         │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+  PROTOCOL (all four groups):
+    Prove:  R = r·G,  c = SHA-256(Y ‖ R),  s = r − c·x  (mod q)
+    Verify: s·G + c·Y == R  (in group)
+  MODP-2048 uses multiplicative group notation: R = g^r mod p
+  P-256 uses ECDSA which is Schnorr-family (sign=prove, verify=verify).
+
+  Implementation basis:
+    MODP-2048    Python built-in  pow(base, exp, mod)  — optimized C bigint
+    P-256        cryptography library (OpenSSL bindings) — near-native C speed
+    bn128-G1     py_ecc 8.0.0 — pure Python EC arithmetic (~1.7 ms/scalar-mul)
+    bls12-381-G1 py_ecc 8.0.0 — pure Python EC arithmetic (~3.0 ms/scalar-mul)
+
+  MODP-2048         [RFC 3526 2048-bit safe prime | ~112 bit | Python bigint pow]
+  ┌────────────────────┬───────────┬───────────┬───────────┬──────────┐
+  │ Stage              │ mean      │ min       │ p95       │ stdev    │
+  ├────────────────────┼───────────┼───────────┼───────────┼──────────┤
+  │ MODP-2048   keygen │ 1.953 ms  │ 1.708 ms  │ 2.577 ms  │ 0.273 ms │
+  │ MODP-2048   prove  │ 1.976 ms  │ 1.730 ms  │ 2.424 ms  │ 0.218 ms │
+  │ MODP-2048   verify │ 18.448 ms │ 16.991 ms │ 20.191 ms │ 0.841 ms │
+  │ MODP-2048   total  │ 22.376 ms │ 20.556 ms │ 24.295 ms │ 0.986 ms │
+  └────────────────────┴───────────┴───────────┴───────────┴──────────┘
+  Use case: Classic ZKP auth (SRP, J-PAKE, this server)
+
+  P-256             [NIST secp256r1 elliptic curve | ~128 bit | cryptography lib (C)]
+  ┌────────────────────┬──────────┬──────────┬──────────┬──────────┐
+  │ Stage              │ mean     │ min      │ p95      │ stdev    │
+  ├────────────────────┼──────────┼──────────┼──────────┼──────────┤
+  │ P-256       keygen │ 0.129 ms │ 0.017 ms │ 0.033 ms │ 0.744 ms │
+  │ P-256       prove  │ 0.059 ms │ 0.034 ms │ 0.060 ms │ 0.100 ms │
+  │ P-256       verify │ 0.080 ms │ 0.064 ms │ 0.103 ms │ 0.017 ms │
+  │ P-256       total  │ 0.268 ms │ 0.116 ms │ 0.193 ms │ 0.848 ms │
+  └────────────────────┴──────────┴──────────┴──────────┴──────────┘
+  Use case: TLS client auth, ECDSA, WebAuthn
+
+  bn128-G1          [BN-128 pairing-friendly EC | ~100 bit | py_ecc pure Python]
+  ┌────────────────────┬───────────┬───────────┬───────────┬──────────┐
+  │ Stage              │ mean      │ min       │ p95       │ stdev    │
+  ├────────────────────┼───────────┼───────────┼───────────┼──────────┤
+  │ bn128-G1    keygen │ 5.464 ms  │ 4.482 ms  │ 6.594 ms  │ 0.603 ms │
+  │ bn128-G1    prove  │ 5.569 ms  │ 4.615 ms  │ 6.740 ms  │ 0.762 ms │
+  │ bn128-G1    verify │ 11.015 ms │ 9.396 ms  │ 13.332 ms │ 1.187 ms │
+  │ bn128-G1    total  │ 22.048 ms │ 19.513 ms │ 25.975 ms │ 1.978 ms │
+  └────────────────────┴───────────┴───────────┴───────────┴──────────┘
+  Use case: Ethereum zk-SNARK (Groth16) proofs
+
+  bls12-381-G1      [BLS12-381 pairing-friendly EC | ~128 bit | py_ecc pure Python]
+  ┌────────────────────┬───────────┬───────────┬───────────┬──────────┐
+  │ Stage              │ mean      │ min       │ p95       │ stdev    │
+  ├────────────────────┼───────────┼───────────┼───────────┼──────────┤
+  │ bls12-381   keygen │ 21.435 ms │ 19.690 ms │ 24.429 ms │ 1.667 ms │
+  │ bls12-381   prove  │ 20.993 ms │ 19.392 ms │ 22.608 ms │ 0.958 ms │
+  │ bls12-381   verify │ 42.381 ms │ 40.027 ms │ 45.072 ms │ 2.164 ms │
+  │ bls12-381   total  │ 84.808 ms │ 80.179 ms │ 90.117 ms │ 3.059 ms │
+  └────────────────────┴───────────┴───────────┴───────────┴──────────┘
+  Use case: Ethereum PoS, BLS aggregate signatures
+
+  SUMMARY  (Schnorr PoK mean latency)
+  ┌──────────────┬──────────┬──────────────────────┬─────────────────┬───────────┬───────────┬───────────┬───────────┬────────────┐
+  │ Group        │ Security │ Implementation       │ Operation       │ Keygen    │ Prove     │ Verify    │ Total     │ vs fastest │
+  ├──────────────┼──────────┼──────────────────────┼─────────────────┼───────────┼───────────┼───────────┼───────────┼────────────┤
+  │ MODP-2048    │ ~112 bit │ Python bigint pow    │ pow(g,x,p)      │ 1.953 ms  │ 1.976 ms  │ 18.448 ms │ 22.376 ms │ 83.39x     │
+  │ P-256        │ ~128 bit │ cryptography lib (C) │ ECDSA (OpenSSL) │ 0.129 ms  │ 0.059 ms  │ 0.080 ms  │ 0.268 ms  │ 1.00x      │
+  │ bn128-G1     │ ~100 bit │ py_ecc pure Python   │ EC scalar mul   │ 5.464 ms  │ 5.569 ms  │ 11.015 ms │ 22.048 ms │ 82.16x     │
+  │ bls12-381-G1 │ ~128 bit │ py_ecc pure Python   │ EC scalar mul   │ 21.435 ms │ 20.993 ms │ 42.381 ms │ 84.808 ms │ 316.04x    │
+  └──────────────┴──────────┴──────────────────────┴─────────────────┴───────────┴───────────┴───────────┴───────────┴────────────┘
+
+  FEATURE COMPARISON
+  ┌──────────────────────┬─────────────────────┬────────────────┬─────────────────────┬───────────────────┐
+  │ Property             │ MODP-2048           │ P-256          │ bn128-G1            │ bls12-381-G1      │
+  ├──────────────────────┼─────────────────────┼────────────────┼─────────────────────┼───────────────────┤
+  │ Group type           │ Multiplicative Z*_p │ Elliptic curve │ Elliptic curve      │ Elliptic curve    │
+  │ Curve / modulus      │ RFC 3526 2048-bit   │ NIST P-256     │ BN-128              │ BLS12-381         │
+  │ Field size (bits)    │ 2048                │ 256            │ 254                 │ 381               │
+  │ Security (classical) │ ~112 bit            │ ~128 bit       │ ~100 bit (see note) │ ~128 bit          │
+  │ Quantum-safe         │ NO                  │ NO             │ NO                  │ NO                │
+  │ Pairing-friendly     │ NO                  │ NO             │ YES (Groth16)       │ YES (BLS sigs)    │
+  │ On-chain ZK use      │ NO                  │ rarely         │ YES (Ethereum)      │ YES (ETH2, Zcash) │
+  │ BLS aggregation      │ NO                  │ NO             │ partial             │ YES               │
+  │ FIPS approved        │ YES (group)         │ YES            │ NO                  │ NO                │
+  │ Implementation here  │ Python bigint pow   │ OpenSSL (C)    │ py_ecc (Python)     │ py_ecc (Python)   │
+  │ Prove time (approx)  │ ~10 ms              │ ~0.1 ms        │ ~5 ms               │ ~21 ms            │
+  │ Verify time (approx) │ ~10 ms              │ ~0.1 ms        │ ~11 ms              │ ~41 ms            │
+  └──────────────────────┴─────────────────────┴────────────────┴─────────────────────┴───────────────────┘
+
+  NOTES:
+  bn128 security: ~100 classical bits (Kim-Barbulescu attack on pairing curves).
+  All four groups are broken by Shor's quantum algorithm — not quantum-safe.
+
+  IMPLEMENTATION BIAS:
+  P-256 uses native OpenSSL — orders of magnitude faster than pure Python.
+  MODP-2048 uses Python's C-backed pow(b,e,m) — competitive for large modulus.
+  bn128/bls12-381 use py_ecc (pure Python) — expected ~50-100x slower than liboqs/C.
+  With native C (e.g. libsecp256k1, blst): bn128 ≈ 0.05 ms, bls12-381 ≈ 0.1 ms.
+
+  ABOUT zk-STARKs vs Schnorr:
+  Schnorr PoK proves "I know x such that Y = x·G" (single scalar, linear relation).
+  zk-STARKs (FRI-based) prove arbitrary computations; overhead: ~10,000–1,000,000x.
+  No pure-Python zk-STARK library is available on PyPI for Python 3.12 (2026-06).
+  Benchmarking zk-STARK auth would require Cairo (StarkWare) or Circom + snarkjs.

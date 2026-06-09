@@ -132,7 +132,7 @@ def run_throughput_sweep(
 
     server.app.config["TESTING"] = True
     with server.app.test_client() as c:
-        x, _ = derive_password_x(password)
+        x = derive_password_x(password)
         y = pow(server.G, x, server.P)
         c.post("/register",              json={"client_id": client_id_base, "secret_y": str(y)})
         c.post("/oauth/pkce/register",   json={"client_id": client_id_base, "password": password})
@@ -346,7 +346,7 @@ def _benchmark_latency(iterations=100):
     P, Q, G = server.P, server.Q, server.G
 
     def _derive():
-        x, _ = derive_password_x("bench-password")
+        x = derive_password_x("bench-password")
         return x
 
     def _commitment(x):
@@ -437,7 +437,7 @@ def _benchmark_e2e_flows(iterations=100):
     results = {}
 
     with server.app.test_client() as c:
-        x, _ = derive_password_x(password)
+        x = derive_password_x(password)
         y = pow(G, x, P)
         with server.app.app_context():
             server.db.session.add(server.User(client_id=client_id, secret_y=y.to_bytes(256, 'big')))
@@ -448,7 +448,7 @@ def _benchmark_e2e_flows(iterations=100):
 
         # -- ZKP: commit + verify ---------------------------------------------
         zkp_times = []
-        x, _ = derive_password_x(password)
+        x = derive_password_x(password)
         for _ in range(iterations):
             t0 = _time.perf_counter()
             rand_r = secrets_module.randbelow(P - 2) + 1

@@ -15,7 +15,7 @@ from qa_utils import (
 def _register_oauth(client, client_id, password):
     """Register user credentials for ZKP, PKCE, Simple and Authlib OAuth."""
     from qa_utils import derive_password_x
-    x,_ = derive_password_x(password)
+    x = derive_password_x(password)
     y = pow(server.G, x, server.P)
     resp = client.post("/register", json={"client_id": client_id, "secret_y": y})
     assert resp.status_code in (200, 201)
@@ -235,7 +235,7 @@ class TestOAuthCases(OAuthTestSuite):
 
         # ZKP registration must come first (OAuth register validates user exists)
         from qa_utils import derive_password_x
-        x, _ = derive_password_x("compat-pass")
+        x = derive_password_x("compat-pass")
         y = pow(server.G, x, server.P)
         assert client.post("/register", json={"client_id": "compat_user", "secret_y": y}).status_code in (200, 201)
 

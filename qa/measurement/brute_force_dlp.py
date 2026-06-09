@@ -169,14 +169,13 @@ if __name__ == "__main__":
 
 
 '''  RESULTS
-
 ========================================================================
   DISCRETE LOGARITHM BRUTE-FORCE DEMO
   Password  : 'my_secure_password'
   Attack    : iterate x = 1, 2, 3, ... checking  g^x mod p == y
   Progress  : total tries printed when each stage ends
   Threads   : all stages run in parallel
-  Timeout   : 600s shared deadline (timeout => infeasible)
+  Timeout   : 1200s shared deadline (timeout => infeasible)
 ========================================================================
 
   +-- Stage:    8-bit
@@ -263,57 +262,49 @@ if __name__ == "__main__":
 
   +-- Result:    8-bit
       [FOUND]  x = 26 after 26 tries
-  -> Attack SUCCEEDED in 1819.096 ms  (x = 26)
+  -> Attack SUCCEEDED in 2066.597 ms  (x = 26)
   -> Verified: g^26 mod p == y  [OK]
 
   +-- Result:   12-bit
       [FOUND]  x = 732 after 732 tries
-  -> Attack SUCCEEDED in 2165.972 ms  (x = 732)
+  -> Attack SUCCEEDED in 2339.259 ms  (x = 732)
   -> Verified: g^732 mod p == y  [OK]
 
   +-- Result:   16-bit
       [FOUND]  x = 2356 after 2,356 tries
-  -> Attack SUCCEEDED in 2414.727 ms  (x = 2356)
+  -> Attack SUCCEEDED in 3049.261 ms  (x = 2356)
   -> Verified: g^2356 mod p == y  [OK]
 
   +-- Result:   20-bit
       [FOUND]  x = 2030 after 2,030 tries
-  -> Attack SUCCEEDED in 2930.272 ms  (x = 2030)
+  -> Attack SUCCEEDED in 3564.130 ms  (x = 2030)
   -> Verified: g^2030 mod p == y  [OK]
 
   +-- Result:   24-bit
       [FOUND]  x = 2891456 after 2,891,456 tries
-  -> Attack SUCCEEDED in 3212.259 ms  (x = 2891456)
+  -> Attack SUCCEEDED in 4274.132 ms  (x = 2891456)
   -> Verified: g^2891456 mod p == y  [OK]
 
   +-- Result:   28-bit
       [FOUND]  x = 27455126 after 27,455,126 tries
-  -> Attack SUCCEEDED in 6990.731 ms  (x = 27455126)
+  -> Attack SUCCEEDED in 7001.530 ms  (x = 27455126)
   -> Verified: g^27455126 mod p == y  [OK]
 
   +-- Result:   32-bit
       [FOUND]  x = 744702253 after 744,702,253 tries
-  -> Attack SUCCEEDED in 282747.737 ms  (x = 744702253)
+  -> Attack SUCCEEDED in 319480.520 ms  (x = 744702253)
   -> Verified: g^744702253 mod p == y  [OK]
 
   +-- Result:   64-bit
-      [1,444,529,212 tries -- timeout]
-  -> Timed out after 599295.4 ms -- attack INFEASIBLE at this key size
+      [2,609,244,738 tries -- timeout]
+  -> Timed out after 1199375.2 ms -- attack INFEASIBLE at this key size
 
   +-- Result:  128-bit
-      [1,306,246,020 tries -- timeout]
-  -> Timed out after 599161.3 ms -- attack INFEASIBLE at this key size
+      [2,568,461,085 tries -- timeout]
+  -> Timed out after 1199143.2 ms -- attack INFEASIBLE at this key size
 
   +-- Result: 1024-bit (full protocol)
-      [884,634,079 tries -- timeout]
-  -> Timed out after 598805.6 ms -- attack INFEASIBLE at this key size
-
-  
-    CONCLUSION
-  - For small primes, brute-force recovers x in milliseconds.
-  - Each extra bit doubles the search space.
-  - The 1024-bit protocol prime has a search space of ~2^511 --
-    larger than the number of atoms in the observable universe.
-  - No classical computer can solve DLP at this size.
+      [2,032,997,579 tries -- timeout]
+  -> Timed out after 1198816.9 ms -- attack INFEASIBLE at this key size
 
 '''
