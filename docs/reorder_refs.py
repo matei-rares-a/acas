@@ -59,11 +59,19 @@ if uncited:
         new_entry_lines.append(raw_entries[old_num])
 
 # Reconstruct bib section: replace entry lines in-place, keep all other lines (blank lines etc.)
-entry_iter = iter(new_entry_lines)
+def _update_bib_prefix(line: str, new_num: int) -> str:
+    """If the entry line starts with \t[N] update N to new_num, otherwise leave as-is."""
+    m = re.match(r'^(\t)\[(\d+)\](.*)', line, re.DOTALL)
+    if m:
+        return "{}[{}]{}".format(m.group(1), new_num, m.group(3))
+    return line
+
+entry_iter = iter(enumerate(new_entry_lines, start=1))
 result_lines = []
 for line in bib_content.split("\n"):
     if line.startswith("\t") and line.strip():
-        result_lines.append(next(entry_iter))
+        new_num, new_line = next(entry_iter)
+        result_lines.append(_update_bib_prefix(new_line, new_num))
     else:
         result_lines.append(line)
 
