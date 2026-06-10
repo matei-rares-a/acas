@@ -43,8 +43,8 @@ async function fetchParameters(serverUrl) {
     }
 }
 
-//NOTE: the client app should compute the secret_y using the password and the salt at registration and save the secret_y locally (in an encrypted manner) in order to be used at login
-//Simplicity: the secret_y is computed everytime using password and client_id as salt
+// NOTE: Ideally, secret_y should be derived once at registration and stored locally (encrypted).
+// Here, it is recomputed each login using SHA-256(client_id:password) for simplicity.
 async function derivePasswordX(password, client_id = '') {
     const normalized = `${client_id}:${password}`; 
 

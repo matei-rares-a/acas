@@ -46,13 +46,6 @@ async function register() {
 
             document.getElementById('username').value = '';
             document.getElementById('password').value = '';
-
-            // Redirect to login page after short delay if it's a successful registration (not update)
-            // if (response.status === 201) {
-            //     setTimeout(() => {
-            //         window.location.href = 'login.html';
-            //     }, 2000);
-            // }
         } else {
             showAlert(`❌ Registration failed: ${result.reason}`, 'error');
         }

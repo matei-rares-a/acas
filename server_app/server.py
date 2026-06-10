@@ -18,20 +18,10 @@ import jwt
 # ---------------------------------------------------------------------------
 # Schnorr group parameters  (P = 2Q + 1 safe prime, G = 4)
 # ---------------------------------------------------------------------------
-'''
-Note: constants and settings should be in env files
-Simplicity: hardcoded constants and settings
-'''
 # P = 11731722534755988379582498904317031585514431212880510373180315650809605302410493595610739947214327053090791642864835392206070266585210162380812213540641579
 # Q = (P - 1) // 2
 # G = 4
-
-# ---------------------------------------------------------------------------
-# RFC 3526 / RFC 5054 2048-bit MODP group  (safe prime, G = 2)
-# Same group used by SRP-6a and IKE group 14.
-# Provides ~112-bit security — comparable to secp256r1 (128-bit) and
-# far stronger than the 512-bit group above.
-# ---------------------------------------------------------------------------
+# Note: hardcoded for simplicity; move constants to env vars in production.
 P = int(
     'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1'
     '29024E088A67CC74020BBEA63B139B22514A08798E3404DD'
@@ -88,22 +78,15 @@ def _before_request():
 
 
 _SECURITY_HEADERS = {
-    # Prevents browsers from guessing the response type. For an auth API returning JSON, that matters
-    # because you do not want a browser treating a JSON response like script or HTML under odd conditions.
-    # It reduces client-side misinterpretation and some XSS-style abuse paths.
+    # Prevents MIME-type sniffing; reduces XSS-style misinterpretation.
     'X-Content-Type-Options': 'nosniff',
-    # Stops your pages or responses from being embedded in an iframe.
-    # In a browser-based login flow, that helps defend against clickjacking.
+    # Blocks iframe embedding; prevents clickjacking.
     'X-Frame-Options': 'DENY',
-    # Limits where scripts and other resources can load from, prevents base URL manipulation,
-    # and forbids framing. That matters because if malicious JavaScript runs in the client,
-    # it can steal the JWT returned after successful Schnorr verification or tamper with
-    # the proof flow before it reaches the server.
+    # Restricts resource loading to same origin; prevents script injection and frame embedding.
     'Content-Security-Policy': "default-src 'self'; base-uri 'self'; frame-ancestors 'none'",
-    # Not needed for Schnorr correctness, but it is reasonable least-privilege hardening for a browser client.
+    # Least-privilege: disable unused browser features.
     'Permissions-Policy': 'geolocation=(), camera=(), microphone=()',
-    # Limits what the browser leaks in the Referer header when navigating away or making cross-origin
-    # requests. That helps avoid exposing sensitive URL structure or workflow details.
+    # Limits Referer leakage on cross-origin requests.
     'Referrer-Policy': 'strict-origin-when-cross-origin',
 }
 
@@ -126,9 +109,9 @@ def _after_request(response):
     response.headers.setdefault('Content-Type', 'application/json; charset=utf-8')
 
     elapsed_ms = (time.time_ns() - request.start_time) / 1_000_000
-    # Helps you measure slow endpoints
+    # Endpoint latency in milliseconds.
     response.headers['X-Response-Time'] = f"{elapsed_ms:.3f} ms"
-    # Similar to X-Response-Time, but standardized for browser tooling. Good for performance debugging in the frontend.
+    # W3C Server Timing for frontend DevTools.
     response.headers['Server-Timing']   = f"app;dur={elapsed_ms:.3f}"
 
     if response.status_code == 401:
@@ -137,10 +120,7 @@ def _after_request(response):
     return response
 
 
-'''
-note: should be in database
-simplicity: in memory commitments and challenges
-'''
+# Note: in-memory store; replace with DB for production.
 class _SessionStore(dict):
     """dict with a built-in reverse index: client_id -> session_id.
 
@@ -231,8 +211,8 @@ def validate_int_field(data: dict, key: str):
 
 
 def is_subgroup_member(value: int) -> bool:
-    """True iff value is a non-trivial element of the Schnorr subgroup of order Q."""
-    '''# Note: prevents Small Subgroup attack -- rejects y or t outside the subgroup of order Q with 422.'''
+    """True iff value is a non-trivial element of the Schnorr subgroup of order Q.
+    Prevents Small Subgroup attack -- rejects y or t outside the subgroup."""
     return 1 < value < P and pow(value, Q, P) == 1
 
 
@@ -315,15 +295,8 @@ def getParametersAPI():
 
 @app.route('/register', methods=['POST'])
 def registerAPI():
-    '''
-    User registration, client sends client_id and secret_y (y = g^x mod p) computed from password,
-    server saves it for later verification at login
-    '''
-    '''
-    Note: the server should have the relation of client_id - secret_y,
-         this endpoint can be secured with a shared secret or other methods
-    Simplicity: no authentication for this endpoint, in a real implementation it should be protected
-    '''
+    '''POST /register: client sends client_id and secret_y=G^x; server stores it.
+    No auth guard on this endpoint (simplicity; protect with shared secret in production).'''
     data = request.get_json() or {}
     client_id = data.get('client_id')
     secret = validate_int_field(data, 'secret_y')
@@ -352,10 +325,7 @@ init_authlib(app, SECRET)
 
 @app.route('/login/commit', methods=['POST'])
 def commitAPI():
-    '''
-    Login commitment, client sends client_id and commitment t,
-    server saves it and returns challenge c
-    '''
+    '''POST /login/commit: client sends client_id and commitment_t; server returns challenge_c and session_id.'''
     data = request.get_json() or {}
     client_id = data.get('client_id')
     t = validate_int_field(data, 'commitment_t')
@@ -398,11 +368,7 @@ def commitAPI():
 
 @app.route('/login/verify', methods=['POST'])
 def verifyAPI():
-    '''
-    Login verification, client sends client_id and solution s,
-    server verifies the proof using the saved commitment t and challenge c,
-    if valid returns JWT token
-    '''
+    '''POST /login/verify: client sends solution_s; server verifies G^s == t*y^c and issues JWT.'''
     data = request.get_json() or {}
     #session_id will be in X-Auth-Session: header
     session_id = (request.headers.get('X-Auth-Session') or '').strip()
@@ -426,7 +392,7 @@ def verifyAPI():
     raw_addr_now, ua_now = _get_peer()
     stored_binding = sess.get('binding')
 
-    #NOTE: check for binding mismatch to prevent relay/mitm attack, if the peer address or user agent changed between requests
+    #NOTE: check for binding mismatch to prevent relay/MITM attack
     current_binding = _compute_session_binding(raw_addr_now, ua_now, session_id, client_id, sess['t'])
     if stored_binding and current_binding != stored_binding:
         original_ip = sess.get("raw_addr", "unknown")
@@ -436,11 +402,6 @@ def verifyAPI():
         )
         del sessions[session_id]
         return jsonify({'reason': 'session binding mismatch'}), 401
-
-    #NOTE: extra check, in case of relay/mitm
-    # if _compute_challenge(stored_binding or b'') != sess['c']:
-    #     del sessions[session_id]
-    #     return jsonify({'reason': 'challenge integrity check failed'}), 400
 
     
     user = User.query.filter_by(client_id=client_id).first()

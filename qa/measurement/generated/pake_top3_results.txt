@@ -1,65 +1,79 @@
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
-│  Top-3 PAKE Benchmark  —  30 iterations                                                │
-│  SRP-6a  |  SPAKE2  |  Schnorr-EC-Mutual                                               │
+│  Top-4 PAKE Benchmark  —  100 iterations                                               │
+│  SRP-6a  |  SPAKE2  |  Schnorr-EC-Mutual  |  Schnorr-EC-Lib (C-backed)                 │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 
   SRP-6a  [RFC 5054 2048-bit MODP, SHA-256 KDF]
   ┌───────────────────┬───────────┬───────────┬───────────┬──────────┐
   │ Stage             │ mean      │ min       │ p95       │ stdev    │
   ├───────────────────┼───────────┼───────────┼───────────┼──────────┤
-  │ SRP-6a  register  │ 1.274 ms  │ 1.047 ms  │ 1.661 ms  │ 0.449 ms │
-  │ SRP-6a  commit    │ 0.077 ms  │ 0.062 ms  │ 0.088 ms  │ 0.011 ms │
-  │ SRP-6a  challenge │ 0.076 ms  │ 0.056 ms  │ 0.096 ms  │ 0.012 ms │
-  │ SRP-6a  solve     │ 20.125 ms │ 18.861 ms │ 21.392 ms │ 1.194 ms │
-  │ SRP-6a  verify    │ 20.785 ms │ 19.315 ms │ 22.182 ms │ 0.973 ms │
-  │ SRP-6a  total     │ 42.337 ms │ 40.227 ms │ 43.842 ms │ 1.534 ms │
+  │ SRP-6a  register  │ 1.205 ms  │ 1.000 ms  │ 1.525 ms  │ 0.165 ms │
+  │ SRP-6a  commit    │ 0.080 ms  │ 0.052 ms  │ 0.138 ms  │ 0.030 ms │
+  │ SRP-6a  challenge │ 0.081 ms  │ 0.053 ms  │ 0.143 ms  │ 0.033 ms │
+  │ SRP-6a  solve     │ 20.697 ms │ 18.938 ms │ 24.139 ms │ 1.611 ms │
+  │ SRP-6a  verify    │ 21.042 ms │ 19.254 ms │ 23.014 ms │ 1.766 ms │
+  │ SRP-6a  total     │ 43.104 ms │ 39.573 ms │ 48.232 ms │ 2.891 ms │
   └───────────────────┴───────────┴───────────┴───────────┴──────────┘
 
   SPAKE2  [Ed25519 / M255, + HMAC key confirmation]
   ┌─────────────────────┬──────────┬──────────┬───────────┬──────────┐
   │ Stage               │ mean     │ min      │ p95       │ stdev    │
   ├─────────────────────┼──────────┼──────────┼───────────┼──────────┤
-  │ SPAKE2  start_a     │ 2.666 ms │ 2.360 ms │ 3.425 ms  │ 0.556 ms │
-  │ SPAKE2  start_b     │ 2.683 ms │ 2.283 ms │ 3.307 ms  │ 0.392 ms │
-  │ SPAKE2  finish_a    │ 4.096 ms │ 3.601 ms │ 4.703 ms  │ 0.513 ms │
-  │ SPAKE2  finish_b    │ 3.990 ms │ 3.546 ms │ 4.405 ms  │ 0.507 ms │
-  │ SPAKE2  finish_wall │ 4.310 ms │ 3.609 ms │ 5.406 ms  │ 0.589 ms │
-  │ SPAKE2  confirm     │ 0.025 ms │ 0.016 ms │ 0.036 ms  │ 0.008 ms │
-  │ SPAKE2  total       │ 9.685 ms │ 8.687 ms │ 10.968 ms │ 0.752 ms │
+  │ SPAKE2  start_a     │ 2.645 ms │ 2.316 ms │ 3.661 ms  │ 0.391 ms │
+  │ SPAKE2  start_b     │ 2.620 ms │ 2.317 ms │ 3.415 ms  │ 0.392 ms │
+  │ SPAKE2  finish_a    │ 3.957 ms │ 3.560 ms │ 4.975 ms  │ 0.433 ms │
+  │ SPAKE2  finish_b    │ 4.070 ms │ 3.595 ms │ 5.092 ms  │ 0.527 ms │
+  │ SPAKE2  finish_wall │ 4.219 ms │ 3.611 ms │ 5.215 ms  │ 0.561 ms │
+  │ SPAKE2  confirm     │ 0.022 ms │ 0.015 ms │ 0.043 ms  │ 0.008 ms │
+  │ SPAKE2  total       │ 9.506 ms │ 8.441 ms │ 10.869 ms │ 0.750 ms │
   └─────────────────────┴──────────┴──────────┴───────────┴──────────┘
 
   Schnorr-EC-Mutual  [secp256r1, SHAKE-256 KDF, dual proofs + ECDH]
   ┌────────────────────────┬───────────┬───────────┬───────────┬──────────┐
   │ Stage                  │ mean      │ min       │ p95       │ stdev    │
   ├────────────────────────┼───────────┼───────────┼───────────┼──────────┤
-  │ Schnorr  derive_x      │ 0.013 ms  │ 0.009 ms  │ 0.019 ms  │ 0.005 ms │
-  │ Schnorr  compute_y     │ 4.355 ms  │ 3.736 ms  │ 4.945 ms  │ 0.534 ms │
-  │ Schnorr  mutual_proofs │ 26.384 ms │ 23.831 ms │ 28.546 ms │ 1.958 ms │
-  │ Schnorr  session_key   │ 9.438 ms  │ 8.495 ms  │ 10.667 ms │ 0.696 ms │
-  │ Schnorr  total         │ 40.190 ms │ 36.296 ms │ 42.185 ms │ 1.850 ms │
+  │ Schnorr  derive_x      │ 0.012 ms  │ 0.006 ms  │ 0.017 ms  │ 0.004 ms │
+  │ Schnorr  compute_y     │ 4.452 ms  │ 3.670 ms  │ 5.713 ms  │ 0.632 ms │
+  │ Schnorr  mutual_proofs │ 27.633 ms │ 24.525 ms │ 30.811 ms │ 2.159 ms │
+  │ Schnorr  session_key   │ 10.132 ms │ 8.810 ms  │ 11.735 ms │ 0.840 ms │
+  │ Schnorr  total         │ 42.228 ms │ 38.634 ms │ 45.622 ms │ 2.420 ms │
   └────────────────────────┴───────────┴───────────┴───────────┴──────────┘
 
+  Schnorr-EC-Lib-Mutual  [secp256r1, C-backed (OpenSSL), dual proofs + ECDH]
+  ┌──────────────────────────┬──────────┬──────────┬───────────┬──────────┐
+  │ Stage                    │ mean     │ min      │ p95       │ stdev    │
+  ├──────────────────────────┼──────────┼──────────┼───────────┼──────────┤
+  │ Schnorr-C  derive_x      │ 0.007 ms │ 0.004 ms │ 0.013 ms  │ 0.003 ms │
+  │ Schnorr-C  compute_y     │ 0.046 ms │ 0.031 ms │ 0.076 ms  │ 0.020 ms │
+  │ Schnorr-C  mutual_proofs │ 9.799 ms │ 8.221 ms │ 11.493 ms │ 1.318 ms │
+  │ Schnorr-C  session_key   │ 0.094 ms │ 0.058 ms │ 0.157 ms  │ 0.065 ms │
+  │ Schnorr-C  total         │ 9.947 ms │ 8.339 ms │ 11.620 ms │ 1.335 ms │
+  └──────────────────────────┴──────────┴──────────┴───────────┴──────────┘
+
   SUMMARY
-  ┌───────────────────┬──────────────┬──────────────┬───────────┬────────────┐
-  │ Protocol          │ Registration │ Auth (login) │ Total     │ vs fastest │
-  ├───────────────────┼──────────────┼──────────────┼───────────┼────────────┤
-  │ SRP-6a            │ 1.274 ms     │ 41.064 ms    │ 42.337 ms │ 4.24x      │
-  │ SPAKE2            │ N/A          │ 9.685 ms     │ 9.685 ms  │ 1.00x      │
-  │ Schnorr-EC-Mutual │ 4.368 ms     │ 35.835 ms    │ 40.190 ms │ 3.70x      │
-  └───────────────────┴──────────────┴──────────────┴───────────┴────────────┘
+  ┌───────────────────────┬──────────────┬──────────────┬───────────┬────────────┐
+  │ Protocol              │ Registration │ Auth (login) │ Total     │ vs fastest │
+  ├───────────────────────┼──────────────┼──────────────┼───────────┼────────────┤
+  │ SRP-6a                │ 1.205 ms     │ 41.898 ms    │ 43.104 ms │ 4.41x      │
+  │ SPAKE2                │ N/A          │ 9.506 ms     │ 9.506 ms  │ 1.00x      │
+  │ Schnorr-EC-Mutual     │ 4.463 ms     │ 37.776 ms    │ 42.228 ms │ 3.97x      │
+  │ Schnorr-EC-Lib-Mutual │ 0.053 ms     │ 9.900 ms     │ 9.947 ms  │ 1.04x      │
+  └───────────────────────┴──────────────┴──────────────┴───────────┴────────────┘
   * Registration is a one-time cost, not on the login hot-path.
 
   FEATURE COMPARISON
-  ┌─────────────────────────┬───────────────┬───────────┬─────────────────────┐
-  │ Property                │ SRP-6a        │ SPAKE2    │ Schnorr-EC-Mut      │
-  ├─────────────────────────┼───────────────┼───────────┼─────────────────────┤
-  │ Mutual authentication   │ YES           │ YES       │ YES                 │
-  │ Session key established │ YES           │ YES       │ YES                 │
-  │ Password never sent     │ YES           │ YES       │ YES                 │
-  │ Server-breach resistant │ YES           │ YES *     │ NO                  │
-  │ Standardised (RFC/IETF) │ RFC 5054      │ Draft     │ NO                  │
-  │ KDF on login path       │ NO            │ NO        │ Minimal (SHAKE-256) │
-  │ Group / curve           │ 2048-bit MODP │ Ed25519   │ secp256r1 P-256     │
-  │ Security level          │ ~112 bits     │ ~128 bits │ ~128 bits           │
-  └─────────────────────────┴───────────────┴───────────┴─────────────────────┘
+  ┌─────────────────────────┬───────────────┬───────────┬──────────────────┬─────────────────┐
+  │ Property                │ SRP-6a        │ SPAKE2    │ Schnorr-EC-Mut   │ Schnorr-EC-Lib  │
+  ├─────────────────────────┼───────────────┼───────────┼──────────────────┼─────────────────┤
+  │ Mutual authentication   │ YES           │ YES       │ YES              │ YES             │
+  │ Session key established │ YES           │ YES       │ YES              │ YES             │
+  │ Password never sent     │ YES           │ YES       │ YES              │ YES             │
+  │ Server-breach resistant │ YES           │ YES *     │ NO               │ NO              │
+  │ Standardised (RFC/IETF) │ RFC 5054      │ Draft     │ NO               │ NO              │
+  │ KDF on login path       │ NO            │ NO        │ Minimal (SHAKE)  │ Minimal (SHAKE) │
+  │ Group / curve           │ 2048-bit MODP │ Ed25519   │ secp256r1 P-256  │ secp256r1 P-256 │
+  │ Security level          │ ~112 bits     │ ~128 bits │ ~128 bits        │ ~128 bits       │
+  │ EC ops                  │ N/A           │ N/A       │ Pure Python wNAF │ OpenSSL (C)     │
+  └─────────────────────────┴───────────────┴───────────┴──────────────────┴─────────────────┘
   * SPAKE2+ (server-breach resistant) is not in the spake2 library used here.
+  Schnorr-EC-Lib: c*Y (arbitrary-point mult) still uses pure Python wNAF; all k*G via OpenSSL.

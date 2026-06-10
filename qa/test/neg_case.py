@@ -8,8 +8,7 @@ from qa_utils import server, derive_password_x, register_user, start_commit, Bas
 class TestNegativeCases(BaseTestSuite):
 
     def test_wrong_password_proof_is_rejected_and_session_is_deleted(self, client):
-        '''Testare verificare cu solutie folosind parola gresita si secret furat (stolen secret_y, adversary trying to login with wrong password)'''
-        """Client send wrong proof, server reject login, server remove used session."""
+        """Attacker with stolen y but wrong password sends invalid s; server rejects and deletes session."""
         client_id = "client_test"
         correct_password = "correct-password"
         wrong_password = "wrong-password"
@@ -32,8 +31,7 @@ class TestNegativeCases(BaseTestSuite):
 
 
     def test_replay_attack_reusing_verify_payload_is_rejected(self, client):
-        '''Testare replay attack folosind aceeasi solutie si session_id (replay attack )'''
-        """Client do valid verify once, client replay same data, server reject replay."""
+        """Replay attack: reusing an already-consumed session_id is rejected with 404."""
         client_id = "replay_test"
         password = "replay-password"
 
@@ -58,8 +56,7 @@ class TestNegativeCases(BaseTestSuite):
 
 
     def test_verify_rejects_expired_session_and_cleans_up_state(self, client, monkeypatch):
-        '''Testare expirare sesiune daca dureaza prea mult rezolvarea challenge-ului (DoS prevention)'''
-        """Client wait too long then verify, server mark session expired and clean state."""
+        """Session expiry (DoS prevention): verifying after SESSION_TTL seconds is rejected and the session is cleaned up."""
         client_id = "timeout_test"
         password = "timeout-password"
 
@@ -82,8 +79,7 @@ class TestNegativeCases(BaseTestSuite):
 
 
     def test_second_commit_same_user_returns_conflict_and_invalidates_old_session(self, client):
-        '''Testare commit dublu pentru acelasi user, fara a finaliza prima sesiune (Hijacking / Overwrite prevention)'''
-        """Client send second commit for same user, server return conflict and drop old session."""
+        """Double-commit prevention (hijack guard): a second commit for the same user drops the old session and returns 409."""
         client_id = "alice_test"
         password = "alice-password"
         register_user(client, client_id, password)
@@ -109,8 +105,7 @@ class TestNegativeCases(BaseTestSuite):
         assert len(active_for_client) == 0  
 
     def test_register_rejects_duplicate_client_id_with_conflict(self, client):
-        '''Testarea conflict la inregistrare duplicat'''
-        """Client register once, server return 201, client register same client_id again, server return 409 and not duplicate user."""
+        """Duplicate registration is rejected with 409; original credentials are preserved."""
         client_id = "test_user"
         initial_password = "initial-password-version1"
         second_password = "second-password-version2"

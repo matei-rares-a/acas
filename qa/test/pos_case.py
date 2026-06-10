@@ -10,8 +10,7 @@ from qa_utils import server, derive_password_x, BaseTestSuite
 class TestPositiveCases(BaseTestSuite):
 
     def test_register_creates_user_and_does_not_store_plain_password(self, client):
-        '''Testarea inregistrarii'''
-        """Client send register data, server save public value, server doesn't keep plain password."""
+        """Server saves public value y=G^x; plain password is never stored."""
         client_id = "test_user"
         raw_password = "my-secure-password-12345"
         password_x = derive_password_x(raw_password)
@@ -35,8 +34,7 @@ class TestPositiveCases(BaseTestSuite):
 
 
     def test_register_does_not_store_hashed_password(self, client):
-        '''Testarea ca baza de date nu stocheaza parola hashuita'''
-        """Client send register data, server must not store any hash of the plain password."""
+        """Server must not store any hash variant (SHA-256/512/MD5) of the plain password."""
         client_id = "test_user_hash"
         raw_password = "my-secure-password-12345"
         password_x = derive_password_x(raw_password)
@@ -65,8 +63,7 @@ class TestPositiveCases(BaseTestSuite):
 
 
     def test_login_commit_then_verify_success_and_session_is_deleted(self, client):
-        '''Testarea fluxului de autentificare '''
-        """Client send commit then verify, server check proof, server give token, server delete session."""
+        """Full ZKP login: commit then verify; server validates proof, issues JWT, and deletes the session."""
         client_id = "test_login"
         raw_password = "test-password-secure"
 
@@ -109,8 +106,7 @@ class TestPositiveCases(BaseTestSuite):
 
 
     def test_data_authorization_with_valid_and_invalid_tokens(self, client):
-        '''Testarea consumare token'''
-        """Client send valid token and get data, client send bad token and server deny."""
+        """Valid token grants data access; missing or expired token is rejected with 401."""
         client_id = "test_user"
         raw_password = "data-endpoint-password"
 

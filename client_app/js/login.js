@@ -78,9 +78,6 @@ async function authenticate() {
         if (!commitResponse.ok) {
             throw new Error(commitResult.reason || 'Commit failed');
         }
-        //sleep for 6 seconds to test session expiration
-        //await new Promise(resolve => setTimeout(resolve, 6000));
-
         const challenge_c = BigInt(commitResult.challenge_c);
         showStatus(`Received challenge c=${challenge_c}`);
 

@@ -31,10 +31,7 @@ ALLOWED_SCOPES = {"openid", "profile", "read:data", "write:data"}
 # ---------------------------------------------------------------------------
 # State stores  (one dict per implementation for deterministic comparison)
 # ---------------------------------------------------------------------------
-'''
-Note: should be in a database
-Simplicity: in-memory stores per implementation
-'''
+# Note: in-memory stores for simplicity; replace with DB in production.
 # Separate state stores make comparison deterministic between implementations.
 OAUTH_PASSWORD_HASHES     = {"pkce": {}, "simple": {}}
 OAUTH_AUTHORIZATION_CODES = {"pkce": {}, "simple": {}}
@@ -53,10 +50,7 @@ def clear_oauth_state():
 # ---------------------------------------------------------------------------
 # Module context -- populated once by init_oauth()
 # ---------------------------------------------------------------------------
-'''
-Note: these are set at startup and treated as read-only after that,
-so no lock is needed.
-'''
+# Set at startup; treated as read-only after init, so no lock needed.
 _db = _User = _AuthToken = _OAuthCredential = _secret = None
 
 # Two blueprints -- one per implementation -- give each its own visible URL prefix.

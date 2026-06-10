@@ -21,10 +21,8 @@ class TestSecurityCases(BaseTestSuite):
     # =============================================================================
 
     def test_commitment_binding_simulator_s_fails_against_bound_t(self, client):
-        '''Math: simulator picks s freely -> t_sim = G^s * y^(-c) mod P, so (t_sim, c, s) self-verifies.
-        Session is bound to t_real != t_sim; checking G^s == t_real * y^c (mod P) fails.'''
-        '''Testare legare commitment - atacatorul forjeaza s cu t_sim diferit de t_real (simulator Schnorr)'''
-        """Prover commit to t_real, attacker build simulator transcript with different t_sim, attacker send forged s to bound session, server reject because t_sim not match t_real."""
+        """Simulator attack: prover commits t_real; attacker builds transcript (t_sim, c, s_forged)
+        where t_sim = G^s * y^{-c}. G^s == t_sim*y^c self-verifies but fails against the bound t_real."""
         client_id = "binding_user"
         x, y = register_user(client, client_id, "binding-pass")
 
@@ -53,9 +51,7 @@ class TestSecurityCases(BaseTestSuite):
 
 
     def test_public_key_as_commitment_legitimate_user_can_authenticate(self, client):
-        '''Math: t = y = G^x. Verify: G^s == y * y^c = y^(1+c) mod P -> correct s = x(1+c) mod Q.'''
-        '''Testare autentificare legitima cu t egal y (cheia publica ca commitment)'''
-        """Client commit with t equal public key y, server accept commitment, client compute correct s with known x, server verify and accept."""
+        """t=y=G^x: correct s = x*(1+c) mod Q. Client commits t=y, computes s accordingly, server verifies and accepts."""
         client_id = "t_eq_y_legit"
         x, y = register_user(client, client_id, "t-eq-y-legit-pass")
 
@@ -76,9 +72,7 @@ class TestSecurityCases(BaseTestSuite):
     # =============================================================================
 
     def test_bare_nonce_as_solution_fails(self, client):
-        '''Math: s = r (no c*x term). Verify: G^r ==? G^r * y^c = G^(r+c*x). Fails unless c*x == 0 mod Q.'''
-        '''Testare atac cu s egal r (nonce gol, fara contributia cheii private c*x)'''
-        """Client commit with nonce r, client send s equal r without adding c*x term, server reject because verification equation g^r not equal t * y^c."""
+        """s=r (no c*x term): G^r != G^r * y^c unless c*x == 0 mod Q. Server rejects."""
         client_id = "bare_nonce_user"
         register_user(client, client_id, "bare-nonce-pass")
 
@@ -96,9 +90,8 @@ class TestSecurityCases(BaseTestSuite):
 
 
     def test_off_by_one_solution_fails(self, client):
-        '''Math: s' = s +/- 1. Verify: G^s' = G^s * G^(+/-1) ==? t * y^c. Fails since G^(+/-1) != 1 in the subgroup.'''
-        '''Testare atac incrementare s cu 1 si decrementare s cu 1 (bit-flip / integer forgery)'''
-        """Client commit, client send s + 1 instead of correct s, server reject, client commit again, client send s - 1, server reject again."""
+        """s+/-1 forgery: G^(s+/-1) = G^s * G^(+/-1) != t * y^c since G^(+/-1) != 1 in the subgroup.
+        Server rejects both s+1 and s-1."""
         client_id = "off_by_one_user"
         x, _ = register_user(client, client_id, "off-by-one-pass")
 
@@ -126,9 +119,7 @@ class TestSecurityCases(BaseTestSuite):
 
 
     def test_solution_s_zero_fails_no_crash(self, client):
-        '''Math: s = 0. Verify: G^0 = 1 ==? t * y^c mod P. Fails since t * y^c != 1 for any valid t, y.'''
-        '''Testare s egal 0 ca solutie (respingere fara crash server)'''
-        """Client commit, client send s equal zero, server reach math check because zero pass range check, server return 401 and not crash with 500."""
+        """s=0: G^0=1 != t*y^c for any valid t,y. Server returns 422 without crashing."""
         client_id = "s_zero_user"
         register_user(client, client_id, "s-zero-pass")
 
@@ -147,9 +138,7 @@ class TestSecurityCases(BaseTestSuite):
     # =============================================================================
 
     def test_solution_from_consumed_session_fails_on_new_session(self, client):
-        '''Math: s1 = r1 + c1*x satisfies G^s1 == t1 * y^c1. New session has (t2, c2) != (t1, c1); G^s1 != t2 * y^c2.'''
-        '''Testare replay s valid din sesiunea anterioara in sesiune noua (cross-session replay)'''
-        """Client login and consume session_1 with valid s1, client commit again and get session_2, client replay s1 to session_2, server reject because t and c differ."""
+        """Cross-session replay: s1 satisfies G^s1=t1*y^c1 but fails against (t2,c2) of a new session."""
         client_id = "cross_session_user"
         x, _ = register_user(client, client_id, "cross-session-pass")
 
@@ -177,9 +166,7 @@ class TestSecurityCases(BaseTestSuite):
 
 
     def test_session_id_brute_force_infeasible(self, client):
-        '''Math: session_id in {0,1}^256. P(single hit) = 1/2^256; 500 trials: P ~= 500/2^256 ~= 0.'''
-        '''Testare imposibilitate ghicire session_id prin forta bruta (256 biti entropy)'''
-        """Server create live session with 256-bit random ID, attacker generate 500 random session IDs, attacker probe each, server reject all because none match."""
+        """Session_id is 256-bit random (1/2^256 per guess). 500 random probes against a live session all miss."""
         register_user(client, "brute_target", "brute-pass")
         start_commit(client, "brute_target")  # ensures at least one real session exists
 
@@ -204,9 +191,7 @@ class TestSecurityCases(BaseTestSuite):
     # (10 000 samples) by automated.py::test_challenge_and_session_id_uniqueness_over_10000_commits.
 
     def test_concurrent_users_sessions_are_isolated(self, client):
-        '''Math: s_alice satisfies G^s == t_alice * y_alice^c_alice. Bob's session binds (t_bob, y_bob, c_bob); equality holds with P ~= 1/Q ~= 0.'''
-        '''Testare izolare sesiuni intre utilizatori concurenti (Alice si Bob sesiuni simultane)'''
-        """Alice commit and Bob commit at same time, Alice send valid s to Bob session, server reject, Alice send same s to her own session, server accept."""
+        """Session isolation: Alice's valid s fails on Bob's session (different t,c,y). Alice's own session still accepts the correct s."""
         x_alice, _ = register_user(client, "isolation_alice", "alice-iso-pass")
         x_bob,   _ = register_user(client, "isolation_bob",   "bob-iso-pass")
 

@@ -63,10 +63,7 @@ AUTHLIB_ACCESS_TOKEN_TTL      = 3600  # seconds
 # ---------------------------------------------------------------------------
 # State stores
 # ---------------------------------------------------------------------------
-'''
-Note: should be in a database
-Simplicity: in-memory stores, cleared per test via clear_authlib_state()
-'''
+# Note: in-memory stores for simplicity; replace with DB in production.
 _AUTHLIB_PASSWORDS:      dict[str, str]       = {}
 _AUTHLIB_AUTH_CODES:     dict[str, "_AuthCode"] = {}
 _AUTHLIB_TOKENS:         dict[str, "_Token"]  = {}
@@ -83,7 +80,6 @@ def clear_authlib_state() -> None:
 # Module context -- set once by init_authlib()
 # ---------------------------------------------------------------------------
 _AUTHLIB_SECRET: str = ""
-# AuthorizationServer instance -- created in init_authlib(), used by route handlers.
 _authorization: AuthorizationServer | None = None
 
 
