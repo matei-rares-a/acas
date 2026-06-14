@@ -19,7 +19,7 @@ const PKCE_SCOPE     = 'openid profile';
 // ---------------------------------------------------------------------------
 
 /**
- * Generate a cryptographically random code_verifier (43-128 chars, URL-safe Base64).
+ * Generate a cryptographically random code_verifier (43–128 chars, URL-safe Base64).
  * RFC 7636 §4.1
  */
 function generateCodeVerifier() {
@@ -30,7 +30,7 @@ function generateCodeVerifier() {
 
 /**
  * Compute code_challenge = BASE64URL(SHA-256(verifier)).
- * RFC 7636 §4.2 (S256 method)
+ * RFC 7636 S4.2, S256 method.
  * @param {string} verifier
  * @returns {Promise<string>}
  */
@@ -41,7 +41,7 @@ async function computeCodeChallenge(verifier) {
 }
 
 /**
- * Base64URL encode a byte array (no padding).
+ * Base64URL-encode a byte array (no padding).
  * @param {Uint8Array} bytes
  * @returns {string}
  */
@@ -52,7 +52,7 @@ function base64UrlEncode(bytes) {
 }
 
 /**
- * Generate a random state parameter (CSRF protection).
+ * Generate a random state value for CSRF protection.
  * @returns {string}
  */
 function generateState() {
@@ -179,8 +179,6 @@ async function oauthLogin() {
 
         // ------------------------------------------------------------------
         // Step 2: Encode code_verifier INSIDE the state payload.
-        // This makes the flow work regardless of origin (sessionStorage is
-        // per-origin, so cross-origin redirects would lose it).
         // The server passes state back unchanged in the 302 redirect;
         // the callback decodes it to recover both the CSRF nonce and cv.
         // ------------------------------------------------------------------

@@ -6,9 +6,10 @@ let Q = (P - 1n) / 2n;
 let G = 4n;
 
 /**
- * Fetch global parameters P and G from the server
- * @param {string} serverUrl - The server URL
- * @returns {Promise<{P: number, G: number}>} The parameters from server
+ * Pull the group parameters P and G from the server.
+ * Falls back to local defaults if the request fails.
+ * @param {string} serverUrl
+ * @returns {Promise<{P: bigint, G: bigint}>}
  */
 async function fetchParameters(serverUrl) {
     try {
@@ -43,28 +44,15 @@ async function fetchParameters(serverUrl) {
     }
 }
 
-// NOTE: Ideally, secret_y should be derived once at registration and stored locally (encrypted).
-// Here, it is recomputed each login using SHA-256(client_id:password) for simplicity.
+// Derives private scalar x from password using SHAKE-256(client_id:password).
 async function derivePasswordX(password, client_id = '') {
-    const normalized = `${client_id}:${password}`; 
-
-    if (window.crypto && window.crypto.subtle) {
-        const encoded = new TextEncoder().encode(normalized);
-        const digest = await window.crypto.subtle.digest('SHA-256', encoded);
-        const digestBytes = new Uint8Array(digest);
-        let value = 0n;
-        for (const b of digestBytes) {
-            value = (value << 8n) + BigInt(b);
-        }
-        return (value % (P - 1n)) + 1n;
+    const inputBytes = new TextEncoder().encode(`${client_id}:${password}`);
+    const digestBytes = new Uint8Array(shake_256.create(2176).update(inputBytes).array()); // 272 bytes = 2176 bits, eliminates bias when reducing mod Q (2047-bit)
+    let value = 0n;
+    for (const b of digestBytes) {
+        value = (value << 8n) + BigInt(b);
     }
-
-    // Fallback if subtle crypto is unavailable.
-    let fallback = 0n;
-    for (let i = 0; i < normalized.length; i++) {
-        fallback = (fallback * 257n + BigInt(normalized.charCodeAt(i))) % Q;
-    }
-    return (fallback % (P - 1n)) + 1n;
+    return (value % (P - 1n)) + 1n;
 }
 
 function modPow(base, exp, mod) {

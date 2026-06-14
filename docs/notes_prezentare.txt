@@ -1,11 +1,3 @@
-
-titlu
--------------------
-cuprins
--------------------
-
-
-
 -----------------------
 Protocolul este evaluat critic față de amenințările relevante pentru autentificarea la distanță, prin prisma schemei Schnorr și a deciziilor arhitecturale.
 Rezistența la interceptare nu depinde de TLS, ci de dificultatea logaritmului discret; transcriptul (t, c, s) nu permite deducerea lui x deoarece r este aleator și nedezvăluit, asigurând secret perfect.
@@ -23,11 +15,3 @@ tot ce am gasit
 
 ***, Nostr Community Group: HTTP Schnorr Authentication Draft, https://nostrcg.github.io/http-schnorr-auth, ultima accesare: 30/05/2026. -
 ----------------------
-
-
-
-----------------------
-rezultate și concluzii
-
-------------------------
-va multumesc

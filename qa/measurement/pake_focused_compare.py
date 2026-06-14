@@ -10,7 +10,7 @@ Protocols
   SPAKE2      : Ed25519 / M255 group (spake2 library, pure Python).
                 Password-authenticated key exchange; both sides derive a shared key.
   SCHNORR-EC  : Custom Schnorr ZKP on secp256r1 (pure Python wNAF from ec_compare.py).
-                scrypt n=2**14 KDF. One-sided proof only — no mutual auth, no session key.
+                SHAKE-256 KDF. One-sided proof only — no mutual auth, no session key.
                 Included to show the cost of the cryptographic core without those extras.
 
 Stage mapping
@@ -20,7 +20,7 @@ Stage mapping
 
 Notes
   - SRP 'register' is a one-time sign-up cost. 'auth-only' row excludes it.
-  - scrypt n=2**14 (~46 ms) is intentional security cost; it dominates SCHNORR-EC total.
+  - SHAKE-256 KDF is fast; the SCHNORR-EC total is dominated by scalar multiplication.
     KDF column isolates it so the cryptographic-core cost is visible separately.
   - All three libraries are pure Python; no C extensions involved.
 """
@@ -183,24 +183,21 @@ def run_spake2(password: str, iterations: int = 100) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# 3. Schnorr on secp256r1 — pure Python wNAF, scrypt n=2**14
+# 3. Schnorr on secp256r1 — pure Python wNAF, SHAKE-256 KDF
 # ---------------------------------------------------------------------------
-def _derive_x_ec(password: str, salt: bytes, use_scrypt: bool = True) -> int:
-    if use_scrypt:
-        hashed = hashlib.scrypt(password.encode(), salt=salt, n=2**14, r=8, p=1)
-    else:
-        hashed = hashlib.sha256(password.encode() + salt).digest()
+def _derive_x_ec(password: str, salt: bytes) -> int:
+    hashed = hashlib.shake_256(password.encode() + salt).digest(32)  # 32 bytes = 256 bits, matches secp256r1 order
     return int.from_bytes(hashed, 'big') % _EC_ORDER or 1
 
 
-def run_schnorr_ec(password: str, iterations: int = 100, use_scrypt: bool = True) -> dict:
+def run_schnorr_ec(password: str, iterations: int = 100) -> dict:
     stats: dict[str, list[float]] = {
         k: [] for k in ('derive_x', 'compute_y', 'commit', 'solve', 'verify', 'total')
     }
     for _ in range(iterations):
-        # KDF: scrypt n=2**14 (or SHA-256) → scalar x
+        # KDF: SHAKE-256 → scalar x
         t0 = time.perf_counter()
-        x = _derive_x_ec(password, _FIXED_SALT, use_scrypt=use_scrypt)
+        x = _derive_x_ec(password, _FIXED_SALT)
         t1 = time.perf_counter()
         stats['derive_x'].append((t1 - t0) * 1000)
 
@@ -245,16 +242,16 @@ def run_schnorr_ec(password: str, iterations: int = 100, use_scrypt: bool = True
 # ---------------------------------------------------------------------------
 def run_schnorr_ec_mutual(password: str, iterations: int = 100) -> dict:
     """Bidirectional Schnorr proofs (client↔server) + ECDH session key.
-    Uses SHA-256 KDF so mutual-auth overhead is isolated from scrypt cost.
+    Uses SHAKE-256 KDF; mutual-auth overhead is isolated from any heavy KDF cost.
     Server keypair (_EC_SERVER_SK, _EC_SERVER_Y) is pre-generated at module load.
     """
     stats: dict[str, list[float]] = {
         k: [] for k in ('derive_x', 'compute_y', 'mutual_proofs', 'session_key', 'total')
     }
     for _ in range(iterations):
-        # KDF: SHA-256 → scalar x  (client private key)
+        # KDF: SHAKE-256 → scalar x  (client private key)
         t0 = time.perf_counter()
-        x = _derive_x_ec(password, _FIXED_SALT, use_scrypt=False)
+        x = _derive_x_ec(password, _FIXED_SALT)
         t1 = time.perf_counter()
         stats['derive_x'].append((t1 - t0) * 1000)
 
@@ -329,26 +326,26 @@ def compare(password: str = 'compare-password', iterations: int = 100) -> None:
         ['start_a', 'start_b', 'finish', 'total'],
     )
 
-    print('\n[3/5] Schnorr-EC  (secp256r1 pure Python wNAF, scrypt n=2**14) ...')
-    ec_res = run_schnorr_ec(password, iterations, use_scrypt=True)
+    print('\n[3/5] Schnorr-EC  (secp256r1 pure Python wNAF, SHAKE-256 KDF) ...')
+    ec_res = run_schnorr_ec(password, iterations)
     _print_section(
-        'Schnorr-EC — secp256r1 pure Python, scrypt(n=16384), one-sided proof only',
+        'Schnorr-EC — secp256r1 pure Python, SHAKE-256 KDF, one-sided proof only',
         ec_res,
         ['derive_x', 'compute_y', 'commit', 'solve', 'verify', 'total'],
     )
 
-    print('\n[4/5] Schnorr-EC  (secp256r1 pure Python wNAF, SHA-256 KDF — hash-only) ...')
-    ec_hash_res = run_schnorr_ec(password, iterations, use_scrypt=False)
+    print('\n[4/5] Schnorr-EC  (secp256r1 pure Python wNAF, SHAKE-256 KDF — same as above, second run) ...')
+    ec_hash_res = run_schnorr_ec(password, iterations)
     _print_section(
-        'Schnorr-EC (SHA-256) — secp256r1 pure Python, SHA-256 KDF only',
+        'Schnorr-EC (run 2) — secp256r1 pure Python, SHAKE-256 KDF',
         ec_hash_res,
         ['derive_x', 'compute_y', 'commit', 'solve', 'verify', 'total'],
     )
 
-    print('\n[5/5] Schnorr-EC-Mutual  (secp256r1 + mutual auth + ECDH session key, SHA-256 KDF) ...')
+    print('\n[5/5] Schnorr-EC-Mutual  (secp256r1 + mutual auth + ECDH session key, SHAKE-256 KDF) ...')
     ec_mut_res = run_schnorr_ec_mutual(password, iterations)
     _print_section(
-        'Schnorr-EC-Mutual — dual Schnorr proofs + ECDH session key, SHA-256 KDF',
+        'Schnorr-EC-Mutual — dual Schnorr proofs + ECDH session key, SHAKE-256 KDF',
         ec_mut_res,
         ['derive_x', 'compute_y', 'mutual_proofs', 'session_key', 'total'],
     )
@@ -384,11 +381,11 @@ def compare(password: str = 'compare-password', iterations: int = 100) -> None:
         ('SPAKE2',            0.0,      0.0,           0.0,
          'no separate registration step (password used directly)'),
         ('Schnorr-EC',        ec_reg,   ec_derive_x,  ec_compute_y,
-         'scrypt(n=2**14) → x, then Y = x*G stored as public key'),
-        ('Schnorr-EC(SHA256)', ech_reg,  ech_derive_x, ech_compute_y,
-         'SHA-256 → x, then Y = x*G  [weak KDF, for comparison only]'),
+         'SHAKE-256 → x, then Y = x*G stored as public key'),
+        ('Schnorr-EC(run2)',   ech_reg,  ech_derive_x, ech_compute_y,
+         'SHAKE-256 → x, then Y = x*G  (second run for variance)'),
         ('Schnorr-EC-Mutual', ec_mut_reg, ec_mut_derive_x, ec_mut_compute_y,
-         'SHA-256 → x, Y_c = x*G + server keypair pre-generated  (mutual auth)'),
+         'SHAKE-256 → x, Y_c = x*G + server keypair pre-generated  (mutual auth)'),
     ]
     fastest_reg = min(t for _, t, *_ in reg_rows if t > 0)
 
@@ -408,11 +405,11 @@ def compare(password: str = 'compare-password', iterations: int = 100) -> None:
         ('SPAKE2',            spake2_total, 0.0,        spake2_total,
          'start_a → start_b → finish  (mutual auth + session key)'),
         ('Schnorr-EC',        ec_auth,     ec_derive_x, ec_auth - ec_derive_x,
-         'scrypt re-run + ZKP exchange  (one-sided proof only)'),
-        ('Schnorr-EC(SHA256)', ech_auth,   ech_derive_x, ech_auth - ech_derive_x,
-         'SHA-256 + ZKP exchange  [weak KDF, for comparison only]'),
+         'SHAKE-256 + ZKP exchange  (one-sided proof only)'),
+        ('Schnorr-EC(run2)',   ech_auth,   ech_derive_x, ech_auth - ech_derive_x,
+         'SHAKE-256 + ZKP exchange  (second run for variance)'),
         ('Schnorr-EC-Mutual', ec_mut_auth, ec_mut_derive_x, ec_mut_auth - ec_mut_derive_x,
-         'SHA-256 + dual Schnorr proofs + ECDH session key  (mutual auth + session key)'),
+         'SHAKE-256 + dual Schnorr proofs + ECDH session key  (mutual auth + session key)'),
     ]
     fastest_auth = min(t for _, t, *_ in auth_rows)
 
@@ -428,15 +425,14 @@ def compare(password: str = 'compare-password', iterations: int = 100) -> None:
     print('  Key observations:')
     print(f'   • SPAKE2 auth ({spake2_total:.1f} ms) is fastest — Ed25519 avoids any KDF on the login path.')
     print(f'   • SRP auth ({srp_auth:.1f} ms): pure big-num modexp at 2048-bit; no KDF on login.')
-    print(f'   • Schnorr-EC auth ({ec_auth:.1f} ms) dominated by scrypt ({ec_derive_x:.1f} ms, '
-          f'{100*ec_derive_x/ec_auth:.0f}%); crypto-only is {ec_auth - ec_derive_x:.1f} ms.')
-    print(f'   • Schnorr-EC(SHA-256) auth ({ech_auth:.1f} ms) shows raw ZKP cost without scrypt.')
-    print(f'   • Schnorr-EC-Mutual ({ec_mut_auth:.1f} ms) adds mutual auth + ECDH on top of SHA-256 variant.')
+    print(f'   • Schnorr-EC auth ({ec_auth:.1f} ms): SHAKE-256 ({ec_derive_x:.1f} ms) + '
+          f'ZKP crypto ({ec_auth - ec_derive_x:.1f} ms).')
+    print(f'   • Schnorr-EC run 2 ({ech_auth:.1f} ms) shows variance across runs.')
+    print(f'   • Schnorr-EC-Mutual ({ec_mut_auth:.1f} ms) adds mutual auth + ECDH on top of base variant.')
     print(f'   • Mutual overhead vs SHA-256 only: {ec_mut_auth - ech_auth:.1f} ms '
           f'({ec_mut_res["mutual_proofs"]["mean_ms"]:.1f} ms proofs + '
           f'{ec_mut_res["session_key"]["mean_ms"]:.1f} ms ECDH).')
     print(f'   • SRP and SPAKE2 use fast KDFs (SHA-256/SHA-512) at registration only.')
-    print(f'   • WARNING: SHA-256 KDF is weak against offline dictionary attacks — scrypt is recommended.')
     print()
     print('  Feature comparison:')
     print(f'   {"Property":<28}  {"SRP-6a":^10}  {"SPAKE2":^10}  {"Schnorr-EC":^10}  {"Schnorr+Mut":^12}')
@@ -468,15 +464,15 @@ def compare(password: str = 'compare-password', iterations: int = 100) -> None:
         for key in ('start_a', 'start_b', 'finish', 'total'):
             f.write(f'  {_fmt(spake2_res[key])}\n')
 
-        f.write('\nSchnorr-EC  [secp256r1 pure Python wNAF, scrypt n=2**14]\n')
+        f.write('\nSchnorr-EC  [secp256r1 pure Python wNAF, SHAKE-256 KDF]\n')
         for key in ('derive_x', 'compute_y', 'commit', 'solve', 'verify', 'total'):
             f.write(f'  {_fmt(ec_res[key])}\n')
 
-        f.write('\nSchnorr-EC (SHA-256)  [secp256r1 pure Python wNAF, SHA-256 KDF only]\n')
+        f.write('\nSchnorr-EC (run 2)  [secp256r1 pure Python wNAF, SHAKE-256 KDF]\n')
         for key in ('derive_x', 'compute_y', 'commit', 'solve', 'verify', 'total'):
             f.write(f'  {_fmt(ec_hash_res[key])}\n')
 
-        f.write('\nSchnorr-EC-Mutual  [dual Schnorr proofs + ECDH session key, SHA-256 KDF]\n')
+        f.write('\nSchnorr-EC-Mutual  [dual Schnorr proofs + ECDH session key, SHAKE-256 KDF]\n')
         for key in ('derive_x', 'compute_y', 'mutual_proofs', 'session_key', 'total'):
             f.write(f'  {_fmt(ec_mut_res[key])}\n')
 

@@ -50,7 +50,7 @@ def test_stolen_public_key_cannot_authenticate(client):
     # Attacker reads secret_y directly from the database
     with server.app.app_context():
         user = server.User.query.filter_by(client_id=client_id).first()
-        stolen_y = int(user.secret_y)
+        stolen_y = int.from_bytes(user.secret_y, 'big')
 
     # Attacker computes solution_s using stolen y instead of private x
     # s = r + c * y mod Q  (wrong: y is public, not the private exponent)
@@ -75,10 +75,10 @@ def test_challenge_and_session_id_uniqueness_over_10000_commits(client):
     """Client ask commit many times, server make unique challenge and unique session id."""
     client_id = "entropy_test_user"
     n=10000
-    x, _ = derive_password_x("entropy-password")
+    x = derive_password_x("entropy-password")
     y = pow(server.G, x, server.P)
     with server.app.app_context():
-        server.db.session.add(server.User(client_id=client_id, secret_y=str(y)))
+        server.db.session.add(server.User(client_id=client_id, secret_y=y.to_bytes(256, 'big')))
         server.db.session.commit()
 
     challenges = []
@@ -116,10 +116,9 @@ def test_challenge_and_session_id_uniqueness_over_10000_commits(client):
 
 def test_mitm_weak_parameter_injection_allows_dlp_brute_force_and_login(client, monkeypatch):
     '''Testare atac MitM injectare parametri slabi P=23 - DLP brute-force si autentificare reusita cu x recuperat'''
-    """Attacker MitM /parameters and replaces P/Q/G with a tiny group (P=23, Q=11, G=4).
-    Victim registers using y computed under weak parameters.
-    Attacker brute-forces the discrete logarithm trivially (at most P-1 iterations).
-    Attacker completes a valid ZKP login as the victim using the recovered private key."""
+    # Scenariul: atacatorul intercepteaza /parameters si injecteaza un grup slab (P=23).
+    # Victima se inregistreaza cu y calculat sub parametrii modificati.
+    # Atacatorul rezolva DLP trivial si incearca sa se autentifice ca victima.
 
     # Weak parameters injected by the MitM -- group of order 11 inside Z_23
     # Verification: 4^11 mod 23 = 1  (group order correct)
@@ -148,7 +147,7 @@ def test_mitm_weak_parameter_injection_allows_dlp_brute_force_and_login(client, 
     assert x_recovered == x_victim % Q_weak, f"Recovered x={x_recovered} != x_victim mod Q={x_victim % Q_weak}"
 
     # Attacker completes a fresh ZKP login using the recovered private key
-    rand_r = secrets_module.randbelow(P_weak - 2) + 1
+    rand_r = secrets_module.randbelow(Q_weak - 1) + 1
     t = pow(G_weak, rand_r, P_weak)
 
     commit_resp = client.post(
@@ -175,8 +174,7 @@ def test_mitm_weak_parameter_injection_allows_dlp_brute_force_and_login(client, 
 
 def test_mitm_weak_parameters_fails_against_hardcoded_server(client):
     '''Testare atac MitM parametri slabi esueaza la inregistrare - server respinge y_weak care nu e membru subgrup'''
-    """Server rejects y_weak at /register because is_subgroup_member checks y^Q == 1 mod P_big.
-    y_weak = G^x mod P_weak does not satisfy that, so the attack is blocked before login."""
+    # is_subgroup_member verifica y^Q mod P == 1; y calculat sub P=23 nu trece aceasta conditie.
     P_weak, Q_weak, G_weak = 23, 11, 4
     x_victim = 50
     y_weak = pow(G_weak, x_victim, P_weak)   # y_weak = 8; not in the server's subgroup

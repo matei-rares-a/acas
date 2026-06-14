@@ -143,10 +143,11 @@ def run_throughput_sweep(
         for burst in burst_sizes:
             print(f"  burst={burst}")
 
-            # -- ZKP: commit + verify -----------------------------------------
+            # -- ZKP: KDF + commit + verify -----------------------------------------
             t0 = time.perf_counter()
             zkp_ok = 0
             for _ in range(burst):
+                x_iter = derive_password_x(password)
                 rand_r = secrets_module.randbelow(server.P - 2) + 1
                 t_val = pow(server.G, rand_r, server.P)
                 resp = c.post("/login/commit",
@@ -154,7 +155,7 @@ def run_throughput_sweep(
                 if resp.status_code != 200:
                     continue
                 payload = resp.get_json()
-                s = (rand_r + int(payload["challenge_c"]) * x) % server.Q
+                s = (rand_r + int(payload["challenge_c"]) * x_iter) % server.Q
                 c.post("/login/verify",
                        headers={"X-Auth-Session": payload["session_id"]},
                        json={"solution_s": s})
@@ -164,7 +165,7 @@ def run_throughput_sweep(
             rows.append({"users": burst, "method": "ZKP", "rps": rps})
             print(f"    ZKP          : {zkp_ok}/{burst} OK  {rps:.2f} RPS")
 
-            # -- OAuth2 PKCE: authorize only (GET + POST -> 302) -------------
+            # -- OAuth2 PKCE: GET authorize + POST authorize + token ----------
             t0 = time.perf_counter()
             pkce_ok = 0
             for _ in range(burst):
@@ -175,14 +176,21 @@ def run_throughput_sweep(
                     client_id_base, password,
                     code_challenge=challenge, code_challenge_method="S256",
                 )
-                if ok:
+                if ok and code:
+                    c.post("/oauth/pkce/token", json={
+                        "grant_type": "authorization_code",
+                        "code": code,
+                        "client_id": OAUTH_PKCE_CLIENT_ID,
+                        "redirect_uri": OAUTH_REDIRECT_URI,
+                        "code_verifier": code_verifier,
+                    })
                     pkce_ok += 1
             elapsed = time.perf_counter() - t0
             rps = round(pkce_ok / elapsed, 4) if elapsed > 0 else 0
             rows.append({"users": burst, "method": "OAuth2 PKCE", "rps": rps})
             print(f"    OAuth2 PKCE  : {pkce_ok}/{burst} OK  {rps:.2f} RPS")
 
-            # -- OAuth2 Simple: authorize only (GET + POST -> 302) -----------
+            # -- OAuth2 Simple: GET authorize + POST authorize + token --------
             t0 = time.perf_counter()
             simple_ok = 0
             for _ in range(burst):
@@ -190,7 +198,13 @@ def run_throughput_sweep(
                     c, "oauth/simple", OAUTH_SIMPLE_CLIENT_ID, OAUTH_REDIRECT_URI,
                     client_id_base, password,
                 )
-                if ok:
+                if ok and code:
+                    c.post("/oauth/simple/token", json={
+                        "grant_type": "authorization_code",
+                        "code": code,
+                        "client_id": OAUTH_SIMPLE_CLIENT_ID,
+                        "redirect_uri": OAUTH_REDIRECT_URI,
+                    })
                     simple_ok += 1
             elapsed = time.perf_counter() - t0
             rps = round(simple_ok / elapsed, 4) if elapsed > 0 else 0
@@ -308,7 +322,7 @@ def gen_latency_table_zkp_fun_only(iterations: int = 100) -> str:
         sep,
         row("/login/commit (server side)", commit_times),
         row("/login/verify (server side)", verify_times),
-        row("Round-Trip Total (client)", rtt_times),
+        row("HTTP RTT: commit + verify (no client crypto)", rtt_times),
         "",
     ]
     save_benchmark_csv(
@@ -325,7 +339,7 @@ def gen_latency_table_zkp_fun_only(iterations: int = 100) -> str:
                 "p95": sorted(verify_times)[int(len(verify_times) * 0.95)],
                 "stdev": statistics.stdev(verify_times),
             },
-            "Round-Trip Total (client)": {
+            "HTTP RTT: commit + verify (no client crypto)": {
                 "mean": statistics.mean(rtt_times), "min": min(rtt_times),
                 "max": max(rtt_times),
                 "p95": sorted(rtt_times)[int(len(rtt_times) * 0.95)],
@@ -389,6 +403,17 @@ def _benchmark_latency(iterations=100):
     r, t = _commitment(x)
     c = secrets_module.randbelow(Q - 1) + 1
     s = (r + c * x) % Q
+
+    # Client-side solution: s = (r + c * x) mod Q  (computed after receiving challenge)
+    solve_times = [timeit.timeit(lambda: (r + c * x) % Q, number=1) * 1000 for _ in range(iterations)]
+    results["ZKP solve s = (r + c*x) mod Q (ms)"] = {
+        "mean":  statistics.mean(solve_times),
+        "min":   min(solve_times),
+        "max":   max(solve_times),
+        "p95":   sorted(solve_times)[int(iterations * 0.95)],
+        "stdev": statistics.stdev(solve_times),
+    }
+
     verify_times = [timeit.timeit(lambda: _verify_math(t, y, c, s), number=1) * 1000 for _ in range(iterations)]
     results["ZKP verify math (ms)"] = {
         "mean": statistics.mean(verify_times),
@@ -422,10 +447,13 @@ def _benchmark_latency(iterations=100):
 # ---------------------------------------------------------------------------
 # End-to-end protocol comparison: ZKP vs OAuth2, equal footing
 # ---------------------------------------------------------------------------
-# Both protocols complete exactly 2 HTTP round-trips per authentication.
-# The timer covers the per-authentication client-side work only (derivation excluded):
-#   ZKP   : rand_r + g^r mod P + 2 HTTP calls + s = (r + c*x) mod Q
-#   OAuth2: code_verifier + SHA-256 PKCE challenge + 2 HTTP calls
+# All protocols are timed from first per-authentication client action to last HTTP response.
+# Derivation of long-term keys (derive_password_x / register) is excluded for all.
+# Per-authentication ephemeral client crypto IS included in all timers:
+#   ZKP         : KDF(password→x) + rand_r + g^r mod P  +  2 HTTP calls  + s = (r + c*x) mod Q
+#   OAuth2 PKCE : code_verifier gen + S256 challenge    +  3 HTTP calls  (GET+POST authorize + token)
+#   OAuth2 Simple:                                          3 HTTP calls  (GET+POST authorize + token)
+#   Authlib PKCE: code_verifier gen + S256 challenge    +  2 HTTP calls  (POST authorize + token)
 
 def _benchmark_e2e_flows(iterations=100):
     """Full end-to-end authentication latency including all client-side crypto."""
@@ -446,11 +474,13 @@ def _benchmark_e2e_flows(iterations=100):
         c.post("/oauth/simple/register", json={"client_id": client_id, "password": password})
         c.post("/authlib/register",      json={"client_id": client_id, "password": password})
 
-        # -- ZKP: commit + verify ---------------------------------------------
+        # -- ZKP: KDF + commit + verify ---------------------------------------
+        # derive_password_x is included in every iteration: the client must
+        # re-derive x from the password on each login to compute s = (r + c*x) mod Q.
         zkp_times = []
-        x = derive_password_x(password)
         for _ in range(iterations):
             t0 = _time.perf_counter()
+            x = derive_password_x(password)
             rand_r = secrets_module.randbelow(P - 2) + 1
             commitment_t = pow(G, rand_r, P)
             commit_resp = c.post("/login/commit", json={"client_id": client_id, "commitment_t": commitment_t})
@@ -461,32 +491,39 @@ def _benchmark_e2e_flows(iterations=100):
             c.post("/login/verify", headers={"X-Auth-Session": payload["session_id"]}, json={"solution_s": s})
             zkp_times.append((_time.perf_counter() - t0) * 1000)
 
-        results["ZKP full flow (commit + verify) (ms)"] = {
+        results["ZKP full flow (KDF + commit + verify) (ms)"] = {
             "mean": statistics.mean(zkp_times), "min": min(zkp_times),
             "max": max(zkp_times), "p95": sorted(zkp_times)[int(len(zkp_times) * 0.95)],
         }
 
-        # -- OAuth2 PKCE: authorize only (GET + POST -> 302 redirect) ----------
+        # -- OAuth2 PKCE: client crypto + GET authorize + POST authorize + token
         pkce_times = []
         for _ in range(iterations):
+            t0 = _time.perf_counter()
             code_verifier = secrets_module.token_urlsafe(48)
             challenge = pkce_challenge(code_verifier)
-            t0 = _time.perf_counter()
             code, ok = _oauth_authorize(
                 c, "oauth/pkce", OAUTH_PKCE_CLIENT_ID, OAUTH_REDIRECT_URI,
                 client_id, password,
                 code_challenge=challenge, code_challenge_method="S256",
             )
-            pkce_times.append((_time.perf_counter() - t0) * 1000)
-            if not ok:
+            if not (ok and code):
                 continue
+            c.post("/oauth/pkce/token", json={
+                "grant_type": "authorization_code",
+                "code": code,
+                "client_id": OAUTH_PKCE_CLIENT_ID,
+                "redirect_uri": OAUTH_REDIRECT_URI,
+                "code_verifier": code_verifier,
+            })
+            pkce_times.append((_time.perf_counter() - t0) * 1000)
 
-        results["OAuth2 PKCE login (authorize GET + POST) (ms)"] = {
+        results["OAuth2 PKCE login (authorize + token) (ms)"] = {
             "mean": statistics.mean(pkce_times), "min": min(pkce_times),
             "max": max(pkce_times), "p95": sorted(pkce_times)[int(len(pkce_times) * 0.95)],
         }
 
-        # -- OAuth2 Simple: authorize only (GET + POST -> 302 redirect) --------
+        # -- OAuth2 Simple: GET authorize + POST authorize + token
         simple_times = []
         for _ in range(iterations):
             t0 = _time.perf_counter()
@@ -494,11 +531,17 @@ def _benchmark_e2e_flows(iterations=100):
                 c, "oauth/simple", OAUTH_SIMPLE_CLIENT_ID, OAUTH_REDIRECT_URI,
                 client_id, password,
             )
-            simple_times.append((_time.perf_counter() - t0) * 1000)
-            if not ok:
+            if not (ok and code):
                 continue
+            c.post("/oauth/simple/token", json={
+                "grant_type": "authorization_code",
+                "code": code,
+                "client_id": OAUTH_SIMPLE_CLIENT_ID,
+                "redirect_uri": OAUTH_REDIRECT_URI,
+            })
+            simple_times.append((_time.perf_counter() - t0) * 1000)
 
-        results["OAuth2 Simple login (authorize GET + POST) (ms)"] = {
+        results["OAuth2 Simple login (authorize + token) (ms)"] = {
             "mean": statistics.mean(simple_times), "min": min(simple_times),
             "max": max(simple_times), "p95": sorted(simple_times)[int(len(simple_times) * 0.95)],
         }
@@ -562,6 +605,7 @@ class TestBenchmark(OAuthTestSuite):
         assert "Mean (ms)" in output
         assert "StdDev" in output
         assert "commitment_t = g^r mod p (ms)" in output
+        assert "ZKP solve s = (r + c*x) mod Q (ms)" in output
         assert all(v["mean"] >= 0 for v in data.values())
 
     def test_benchmark_e2e_protocol_comparison(self, capsys):
@@ -575,7 +619,7 @@ class TestBenchmark(OAuthTestSuite):
         )
         sep = "|" + "-" * 54 + "|" + ("-" * 12 + "|") * 4
         print()
-        print("END-TO-END PROTOCOL COMPARISON  (full auth latency: client-side crypto + 2 HTTP calls each)")
+        print("END-TO-END PROTOCOL COMPARISON  (full auth: client crypto + HTTP calls; ZKP=2, PKCE/Simple=3, Authlib=2)")
         print(header)
         print(sep)
         for op, vals in data.items():
@@ -585,7 +629,7 @@ class TestBenchmark(OAuthTestSuite):
             )
         output = capsys.readouterr().out
         sys.stdout.write(output)
-        assert "ZKP full flow" in output
+        assert "ZKP full flow (KDF + commit + verify)" in output
         assert "OAuth2 PKCE login" in output
         assert "Authlib PKCE full flow" in output
         assert all(v["mean"] >= 0 for v in data.values())

@@ -20,7 +20,7 @@ def register_and_commit(client, client_id, password):
 
 class TestCornerCases(BaseTestSuite):
 
-    @pytest.mark.parametrize("bad_s", [-1, server.Q, server.Q + 1, server.P * 10])
+    @pytest.mark.parametrize("bad_s", [-1, server.Q, server.Q + 1, server.P * 10,0 ])
     def test_verify_rejects_out_of_range_solution_s(self, client, bad_s):
         """Out-of-range s (s<0 or s>=Q) is rejected with 422 and the session is cleared."""
         client_id = "boundary_s_user"

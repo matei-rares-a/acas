@@ -1,0 +1,76 @@
+PAKE / ZKP timing comparison  (iterations=50)
+See module docstring for fairness caveats.
+================================================================================
+
+Custom Schnorr ZKP  [512-bit BROKEN, scrypt n=2**11]
+  SCHNORR derive_x                mean=   0.0269 ms  min=   0.0095 ms  p95=   0.0467 ms  stdev=  0.0150 ms
+  SCHNORR compute_y               mean=  15.4123 ms  min=  14.0370 ms  p95=  16.9467 ms  stdev=  0.7895 ms
+  SCHNORR commit                  mean=  15.1274 ms  min=  14.1099 ms  p95=  16.6231 ms  stdev=  0.6859 ms
+  SCHNORR solve                   mean=   0.0130 ms  min=   0.0090 ms  p95=   0.0110 ms  stdev=  0.0223 ms
+  SCHNORR verify                  mean=  33.8583 ms  min=  32.0683 ms  p95=  35.8458 ms  stdev=  1.1893 ms
+  SCHNORR total                   mean=  64.4379 ms  min=  60.7424 ms  p95=  67.4773 ms  stdev=  1.8156 ms
+
+Custom Schnorr ZKP  [2048-bit, scrypt n=2**14 — FAIR BASELINE]
+  SCHNORR-2K derive_x             mean=   5.1503 ms  min=   4.4549 ms  p95=   6.4251 ms  stdev=  0.8326 ms
+  SCHNORR-2K compute_y            mean=   3.8541 ms  min=   3.4650 ms  p95=   5.1520 ms  stdev=  0.5631 ms
+  SCHNORR-2K commit               mean=  15.6142 ms  min=  14.4545 ms  p95=  16.9783 ms  stdev=  1.1305 ms
+  SCHNORR-2K solve                mean=   0.0044 ms  min=   0.0029 ms  p95=   0.0052 ms  stdev=  0.0057 ms
+  SCHNORR-2K verify               mean=  34.5156 ms  min=  32.3088 ms  p95=  36.7165 ms  stdev=  1.4003 ms
+  SCHNORR-2K total                mean=  59.1387 ms  min=  56.2201 ms  p95=  62.7485 ms  stdev=  2.0655 ms
+
+Custom Schnorr ZKP+  [2048-bit, mutual auth + DH session key]
+  SCHNORR+ derive_x               mean=   4.9800 ms  min=   4.4298 ms  p95=   6.3537 ms  stdev=  0.6144 ms
+  SCHNORR+ compute_y              mean=   3.7586 ms  min=   3.5091 ms  p95=   4.0833 ms  stdev=  0.3049 ms
+  SCHNORR+ commit                 mean=  15.3145 ms  min=  14.3595 ms  p95=  16.6973 ms  stdev=  0.8394 ms
+  SCHNORR+ srv_commit             mean=  15.2419 ms  min=  14.4405 ms  p95=  16.5083 ms  stdev=  0.6080 ms
+  SCHNORR+ solve                  mean=   0.0037 ms  min=   0.0030 ms  p95=   0.0043 ms  stdev=  0.0008 ms
+  SCHNORR+ srv_verify_client      mean=  33.8545 ms  min=  31.9622 ms  p95=  36.0990 ms  stdev=  1.2438 ms
+  SCHNORR+ srv_prove              mean=   0.0028 ms  min=   0.0021 ms  p95=   0.0036 ms  stdev=  0.0005 ms
+  SCHNORR+ client_verify_server   mean=  33.7360 ms  min=  31.9551 ms  p95=  35.4967 ms  stdev=  1.2353 ms
+  SCHNORR+ session_key            mean=  37.1849 ms  min=  35.2596 ms  p95=  39.5677 ms  stdev=  1.3088 ms
+  SCHNORR+ total                  mean= 144.0769 ms  min= 139.2812 ms  p95= 148.1736 ms  stdev=  2.7598 ms
+
+SRP-6a  [RFC 5054 2048-bit, SHA-256, srp pure Python]
+  SRP register                    mean=   1.1617 ms  min=   1.0470 ms  p95=   1.2546 ms  stdev=  0.1349 ms
+  SRP commit                      mean=   0.0646 ms  min=   0.0518 ms  p95=   0.0835 ms  stdev=  0.0150 ms
+  SRP challenge                   mean=   0.0603 ms  min=   0.0500 ms  p95=   0.0727 ms  stdev=  0.0085 ms
+  SRP solve                       mean=  19.8190 ms  min=  18.6706 ms  p95=  21.2459 ms  stdev=  0.9611 ms
+  SRP verify                      mean=  20.2508 ms  min=  19.0004 ms  p95=  21.9859 ms  stdev=  1.1357 ms
+  SRP total                       mean=  41.3564 ms  min=  39.4127 ms  p95=  43.1720 ms  stdev=  1.5760 ms
+
+SPAKE2  [Ed25519 / M255, spake2 pure Python]
+  SPAKE2 start_a                  mean=   2.9453 ms  min=   2.3110 ms  p95=   3.9731 ms  stdev=  1.3975 ms
+  SPAKE2 start_b                  mean=   2.7383 ms  min=   2.3334 ms  p95=   3.2025 ms  stdev=  0.4259 ms
+  SPAKE2 finish                   mean=   8.5620 ms  min=   7.4294 ms  p95=  10.9814 ms  stdev=  1.3485 ms
+  SPAKE2 total                    mean=  14.2455 ms  min=  12.2873 ms  p95=  17.2537 ms  stdev=  2.7748 ms
+
+Schnorr-EC  [secp256r1, pure Python wNAF, scrypt n=2**14]
+  SCHNORR-EC derive_x             mean=   4.9801 ms  min=   4.3871 ms  p95=   6.5010 ms  stdev=  0.5846 ms
+  SCHNORR-EC compute_y            mean=   4.9950 ms  min=   4.0437 ms  p95=   5.7474 ms  stdev=  1.7733 ms
+  SCHNORR-EC commit               mean=   4.7751 ms  min=   3.9693 ms  p95=   5.5531 ms  stdev=  0.6005 ms
+  SCHNORR-EC solve                mean=   0.0007 ms  min=   0.0006 ms  p95=   0.0009 ms  stdev=  0.0001 ms
+  SCHNORR-EC verify               mean=   9.6482 ms  min=   8.7288 ms  p95=  11.0909 ms  stdev=  0.6121 ms
+  SCHNORR-EC total                mean=  24.3991 ms  min=  21.6253 ms  p95=  26.0758 ms  stdev=  2.2229 ms
+
+Schnorr-EC-LIB  [secp256r1, C-backed via cryptography, scrypt n=2**14]
+  SCHNORR-EC-LIB derive_x         mean=   4.9184 ms  min=   4.3503 ms  p95=   5.6952 ms  stdev=  0.4083 ms
+  SCHNORR-EC-LIB compute_y        mean=   0.0656 ms  min=   0.0426 ms  p95=   0.0952 ms  stdev=  0.0266 ms
+  SCHNORR-EC-LIB commit           mean=   0.0305 ms  min=   0.0283 ms  p95=   0.0331 ms  stdev=  0.0029 ms
+  SCHNORR-EC-LIB solve            mean=   0.0009 ms  min=   0.0007 ms  p95=   0.0013 ms  stdev=  0.0002 ms
+  SCHNORR-EC-LIB verify           mean=   5.2262 ms  min=   4.5131 ms  p95=   6.1191 ms  stdev=  1.0078 ms
+  SCHNORR-EC-LIB total            mean=  10.2417 ms  min=   9.0230 ms  p95=  12.0780 ms  stdev=  1.1822 ms
+
+================================================================================
+  Protocol                           Total    Crypto       KDF  Ops
+  SCHNORR (512-bit BROKEN)        64.4379  64.4110  0.0269  4 modexps @ 512-bit  ***BROKEN***
+  SCHNORR-2K                      59.1387  53.9884  5.1503  4 modexps @ 2048-bit
+  SCHNORR+ (mutual+key)           144.0769  138.9267  5.1503  9 modexps @ 2048-bit
+  SRP-6a (pure Python)            41.3564  40.1947  1.1617  5 modexps @ 2048-bit  (pure Python)
+  SPAKE2 (pure Python)            14.2455  14.2455  0.0000  4 scalar mults @ Ed25519  (pure Python)
+  SCHNORR-EC (pure Py)            24.3991  19.2488  5.1503  4 scalar mults @ secp256r1  (pure Python)
+  SCHNORR-EC-LIB (C-backed)       10.2417  5.0914  5.1503  4 scalar mults @ secp256r1  (3/4 C-backed)
+
+  scrypt n=2**11 cost : 0.0269 ms
+  scrypt n=2**14 cost : 5.1503 ms
+  EC group speedup (crypto-only): 2.8x
+  C-backend speedup (crypto-only): 3.8x

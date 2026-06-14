@@ -1,5 +1,5 @@
 /**
- * Network Monitor - Intercepts and logs all fetch requests/responses in real-time
+ * Network Monitor — wraps window.fetch to log every request/response in real-time.
  */
 
 const NetworkMonitor = {
@@ -7,10 +7,10 @@ const NetworkMonitor = {
     maxLogs: 100,
 
     /**
-     * Add a log entry to the network monitor
-     * @param {string} type - 'request', 'response', 'error', 'info'
-     * @param {string} message - The message to log
-     * @param {object} data - Optional data object to display
+     * Append a log entry to the monitor panel.
+     * @param {string} type  - 'request', 'response', 'error', or 'info'
+     * @param {string} message
+     * @param {object} [data] - optional payload to show below the message
      */
     addLog(type, message, data = null) {
         const logDiv = document.getElementById('network-log');
@@ -58,7 +58,7 @@ const NetworkMonitor = {
     },
 
     /**
-     * Escape HTML special characters for safe display
+     * Escape HTML special characters.
      */
     escapeHtml(text) {
         const map = {
@@ -179,7 +179,7 @@ window.fetch = function(...args) {
 };
 
 /**
- * Try to parse JSON string, return object or original string
+ * Try to parse a string as JSON; return the original string if it fails.
  */
 function tryParseJson(str) {
     try {
@@ -189,4 +189,4 @@ function tryParseJson(str) {
     }
 }
 
-console.log('✓ Network Monitor initialized');
+console.log('Network Monitor initialized');

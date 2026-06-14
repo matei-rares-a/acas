@@ -1005,7 +1005,9 @@ suplimentar rezistență la compromiterea bazei de date, proprietate pe care var
 nu o implementează nativ, aceasta constituind o direcție prioritară de dezvoltare. Din punct de 
 vedere al nivelului de securitate, SRP-6a operează la aproximativ 112 biți, în timp ce SPAKE2 și 
 Schnorr-EC-Mutual ating 128 de biți, iar în ceea ce privește standardizarea, doar SRP-6a 
-beneficiază de o specificație formalizată (RFC 5054). 
+beneficiază de o specificație formalizată (RFC 5054). Varianta Schnorr-EC-C-Lib, care delegă 
+operațiile pe curbe eliptice unei biblioteci native implementate în C, înregistrează cea mai redusă 
+latență totală dintre toate protocoalele evaluate (10,655 ms). 
 III.4.  
 Simularea atacurilor și analiza vulnerabilităților 
 Pentru evaluarea rezistenței arhitecturii propuse, a fost elaborată și executată o campanie 
@@ -1025,9 +1027,9 @@ de compensat fără cunoașterea valorii private x. Se confirmă astfel că sust
 criptografic stocat pe server nu furnizează unui atacator capacitatea de generare a unor dovezi 
 valide cu cunoștințe zero, proprietate care diferențiază fundamental schema Schnorr de 
 paradigmele bazate pe stocarea rezumatelor criptografice ale parolelor. Cu toate acestea, analiza 
+22 
 comparativă prezentată în secțiunea III.3 (Tabelul 5) a evidențiat faptul că protocoalele SRP-6a și 
 SPAKE2 oferă suplimentar rezistență la compromiterea bazei de date (server-breach resistance), 
-22 
 proprietate pe care implementarea curentă a schemei Schnorr nu o integrează nativ, reprezentând 
 o direcție prioritară de dezvoltare. 
 În completarea analizei de reziliență, s-a evaluat calitatea sursei de entropie criptografică 
@@ -1085,9 +1087,9 @@ Pe de altă parte, o suprafață de atac vulnerabilă în cadrul protocoalelor b
 logaritmului discret este reprezentată de faza de distribuție a parametrilor publici. În acest sens, s
 a simulat un atac de tip Man-in-the-Middle (MitM) bazat pe injectarea unor parametri slabi (P = 
 23, Q = 11, G = 4), prin interceptarea și substituirea răspunsului punctului terminal GET 
+23 
 /parameters. S-a demonstrat că, prin acceptarea acestor parametri minimali de către un client 
 neprotejat, complexitatea problemei logaritmului discret colapsează, grupul criptografic având 
-23 
 doar 11 elemente în loc de aproximativ 22047, candidați corespunzători parametrilor reali ai 
 protocolului (P de 2048 biți, RFC 3526 Group 14, G = 4), ceea ce permite rezolvarea prin forță 
 brută în cel mult P-2 pași. Cu toate acestea, serverul, respinge în mod proactiv la faza de 

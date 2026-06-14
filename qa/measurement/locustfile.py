@@ -1,5 +1,4 @@
 '''Testarea de Scalabilitate (Load Testing cu Locust) - simulare utilizatori simultani ZKP si OAuth2'''
-"""HttpUser spawn with unique credentials on start, ZKP task do full commit+verify flow and fire single timed transaction, OAuth tasks do authorize+token flow, Locust collect stats and write HTML report on exit."""
 
 ''' locustfile.py -- Locust load-test scenarios for all four auth protocols.
  Run against a live server:
@@ -162,18 +161,32 @@ class OAuthPKCEUser(HttpUser):
             return
         loc   = authorize.headers.get("Location", "")
         codes = _parse_qs(_urlparse(loc).query).get("code")
-        elapsed = (_time.perf_counter() - start) * 1000
         if not codes:
             self.environment.events.request.fire(
                 request_type="OAUTH2", name="oauth_pkce_login",
-                response_time=elapsed, response_length=0,
+                response_time=(_time.perf_counter() - start) * 1000,
+                response_length=0,
                 exception=RuntimeError("no code in redirect"), context={},
             )
             return
+        token_resp = self.client.post(
+            "/oauth/pkce/token",
+            json={
+                "grant_type":    "authorization_code",
+                "code":          codes[0],
+                "client_id":     OAUTH_PKCE_CLIENT_ID,
+                "redirect_uri":  OAUTH_REDIRECT_URI,
+                "code_verifier": code_verifier,
+            },
+            name="/oauth/pkce/token",
+        )
+        elapsed = (_time.perf_counter() - start) * 1000
         self.environment.events.request.fire(
             request_type="OAUTH2", name="oauth_pkce_login",
             response_time=elapsed, response_length=0,
-            exception=None, context={},
+            exception=None if token_resp.status_code == 200
+                      else RuntimeError(f"token failed: {token_resp.status_code}"),
+            context={},
         )
 
 
@@ -238,18 +251,31 @@ class OAuthSimpleUser(HttpUser):
             return
         loc   = authorize.headers.get("Location", "")
         codes = _parse_qs(_urlparse(loc).query).get("code")
-        elapsed = (_time.perf_counter() - start) * 1000
         if not codes:
             self.environment.events.request.fire(
                 request_type="OAUTH2", name="oauth_simple_login",
-                response_time=elapsed, response_length=0,
+                response_time=(_time.perf_counter() - start) * 1000,
+                response_length=0,
                 exception=RuntimeError("no code in redirect"), context={},
             )
             return
+        token_resp = self.client.post(
+            "/oauth/simple/token",
+            json={
+                "grant_type":   "authorization_code",
+                "code":         codes[0],
+                "client_id":    OAUTH_SIMPLE_CLIENT_ID,
+                "redirect_uri": OAUTH_REDIRECT_URI,
+            },
+            name="/oauth/simple/token",
+        )
+        elapsed = (_time.perf_counter() - start) * 1000
         self.environment.events.request.fire(
             request_type="OAUTH2", name="oauth_simple_login",
             response_time=elapsed, response_length=0,
-            exception=None, context={},
+            exception=None if token_resp.status_code == 200
+                      else RuntimeError(f"token failed: {token_resp.status_code}"),
+            context={},
         )
 
 
@@ -296,11 +322,32 @@ class AuthlibUser(HttpUser):
                 context={},
             )
             return
-        elapsed = (_time.perf_counter() - start) * 1000
         code = authorize.json().get("code")
+        if not code:
+            self.environment.events.request.fire(
+                request_type="AUTHLIB", name="full_authlib_pkce_login",
+                response_time=(_time.perf_counter() - start) * 1000,
+                response_length=0,
+                exception=RuntimeError("no code in response"),
+                context={},
+            )
+            return
+        token_resp = self.client.post(
+            "/authlib/oauth/token",
+            data={
+                "grant_type":    "authorization_code",
+                "code":          code,
+                "client_id":     AUTHLIB_CLIENT_ID,
+                "redirect_uri":  AUTHLIB_REDIRECT_URI,
+                "code_verifier": code_verifier,
+            },
+            name="/authlib/oauth/token",
+        )
+        elapsed = (_time.perf_counter() - start) * 1000
         self.environment.events.request.fire(
             request_type="AUTHLIB", name="full_authlib_pkce_login",
             response_time=elapsed, response_length=0,
-            exception=None if code else RuntimeError("no code in response"),
+            exception=None if token_resp.status_code == 200
+                      else RuntimeError(f"token failed: {token_resp.status_code}"),
             context={},
         )

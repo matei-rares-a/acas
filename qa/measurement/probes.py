@@ -231,25 +231,27 @@ def generate_charts(latency_data: dict | None = None, output_dir: str = str(_GEN
         authlib_ms: list[float] = []
         classic_ms: list[float] = []
 
+        import re as _re2
+        from urllib.parse import urlparse as _urlparse2, parse_qs as _parse_qs2
         for _ in range(100):
-            # ZKP /login/verify
+            # ZKP full login: commit + verify
             server.sessions.clear()
             rand_r = secrets_module.randbelow(server.P - 2) + 1
             t = pow(server.G, rand_r, server.P)
+            t0 = time.perf_counter_ns()
             resp = client.post("/login/commit",
                                json={"client_id": client_id, "commitment_t": t})
             p = resp.get_json()
             c = int(p["challenge_c"])
             sid = p["session_id"]
             s = (rand_r + c * x) % server.Q
-            t0 = time.perf_counter_ns()
             client.post("/login/verify",
                         headers={"X-Auth-Session": sid},
                         json={"solution_s": s})
             t1 = time.perf_counter_ns()
             verify_ms.append((t1 - t0) / 1e6)
 
-            # OAuth2 PKCE: GET authorize + POST authorize (stop at code received)
+            # OAuth2 PKCE: GET authorize + POST authorize + token exchange
             code_verifier = secrets_module.token_urlsafe(48)
             challenge = pkce_challenge(code_verifier)
             t0 = time.perf_counter_ns()
@@ -258,17 +260,25 @@ def generate_charts(latency_data: dict | None = None, output_dir: str = str(_GEN
                 "redirect_uri": OAUTH_REDIRECT_URI, "scope": "openid profile",
                 "code_challenge": challenge, "code_challenge_method": "S256",
             })
-            import re as _re2
             ar_match = _re2.search(r'name="auth_request_id"\s+value="([^"]+)"',
                                    get_r.data.decode("utf-8") if get_r.status_code == 200 else "")
             ar_id = ar_match.group(1) if ar_match else ""
-            client.post("/oauth/pkce/authorize",
+            post_r = client.post("/oauth/pkce/authorize",
                         data={"auth_request_id": ar_id, "username": client_id, "password": password},
                         follow_redirects=False)
+            _loc = post_r.headers.get("Location", "")
+            _codes = _parse_qs2(_urlparse2(_loc).query).get("code", [])
+            if _codes:
+                client.post("/oauth/pkce/token",
+                            json={"grant_type": "authorization_code",
+                                  "code": _codes[0],
+                                  "client_id": OAUTH_PKCE_CLIENT_ID,
+                                  "redirect_uri": OAUTH_REDIRECT_URI,
+                                  "code_verifier": code_verifier})
             t1 = time.perf_counter_ns()
             pkce_ms.append((t1 - t0) / 1e6)
 
-            # OAuth2 Simple: GET authorize + POST authorize (stop at code received)
+            # OAuth2 Simple: GET authorize + POST authorize + token exchange
             t0 = time.perf_counter_ns()
             get_r = client.get("/oauth/simple/authorize", query_string={
                 "response_type": "code", "client_id": OAUTH_SIMPLE_CLIENT_ID,
@@ -277,9 +287,17 @@ def generate_charts(latency_data: dict | None = None, output_dir: str = str(_GEN
             ar_match = _re2.search(r'name="auth_request_id"\s+value="([^"]+)"',
                                    get_r.data.decode("utf-8") if get_r.status_code == 200 else "")
             ar_id = ar_match.group(1) if ar_match else ""
-            client.post("/oauth/simple/authorize",
+            post_r = client.post("/oauth/simple/authorize",
                         data={"auth_request_id": ar_id, "username": client_id, "password": password},
                         follow_redirects=False)
+            _loc = post_r.headers.get("Location", "")
+            _codes = _parse_qs2(_urlparse2(_loc).query).get("code", [])
+            if _codes:
+                client.post("/oauth/simple/token",
+                            json={"grant_type": "authorization_code",
+                                  "code": _codes[0],
+                                  "client_id": OAUTH_SIMPLE_CLIENT_ID,
+                                  "redirect_uri": OAUTH_REDIRECT_URI})
             t1 = time.perf_counter_ns()
             simple_ms.append((t1 - t0) / 1e6)
 
@@ -325,10 +343,10 @@ def generate_charts(latency_data: dict | None = None, output_dir: str = str(_GEN
     classic_ms = latency_data.get("classic_ms", [])
 
     protocols = [
-        (verify_ms,  "ZKP\n/login/verify",  "#1565C0"),
-        (pkce_ms,    "OAuth2\nPKCE",        "#2E7D32"),
-        (simple_ms,  "OAuth2\nSimple",      "#E65100"),
-        (authlib_ms, "Authlib\nPKCE",       "#6A1B9A"),
+        (verify_ms,  "ZKP\n(commit+verify)",  "#1565C0"),
+        (pkce_ms,    "OAuth2\nPKCE",          "#2E7D32"),
+        (simple_ms,  "OAuth2\nSimple",        "#E65100"),
+        (authlib_ms, "Authlib\nPKCE",         "#6A1B9A"),
     ]
 
     # Box plot: per-protocol latency distribution with individual data points
@@ -392,7 +410,7 @@ def generate_charts(latency_data: dict | None = None, output_dir: str = str(_GEN
         fig.patch.set_facecolor("#FFFFFF")
         bins = 25
         ax.hist(verify_ms,  bins=bins, alpha=0.70, color="#1565C0",
-                label="ZKP /login/verify",  edgecolor="white", linewidth=0.4)
+                label="ZKP (commit+verify)",  edgecolor="white", linewidth=0.4)
         ax.hist(classic_ms, bins=bins, alpha=0.70, color="#E53935",
                 label="SHA-256 (clasic)",   edgecolor="white", linewidth=0.4)
         ax.set_xlabel("Latenta (ms)", fontsize=11)
@@ -412,9 +430,7 @@ def generate_charts(latency_data: dict | None = None, output_dir: str = str(_GEN
 # ---------------------------------------------------------------------------
 # Probe 5 - Resource monitor (psutil, runs alongside a live server process)
 # ---------------------------------------------------------------------------
-# TODO: This monitor requires a live Flask server process.
-#       Run it as: python qa/measurement/main_probes.py --monitor <flask-pid>
-#       It will record CPU/RAM/sessions to monitor_resources.csv every second.
+
 
 def run_resource_monitor(flask_pid: int, duration_seconds: int = 30,
                          output_csv: str = str(_GENERATED / "monitor_resources.csv")):
@@ -963,7 +979,7 @@ def _wait_for_all_servers(timeout: int = 40) -> bool:
 # Entry point
 # ---------------------------------------------------------------------------
 '''
-python.exe qa/measurement/probes.py --run-all 100 60s
+python.exe qa/measurement/probes.py --run-all 400 60s
 '''
 
 if __name__ == "__main__":
@@ -975,11 +991,11 @@ if __name__ == "__main__":
     elif cmd == "--charts":
         generate_charts()
 
-    elif cmd == "--monitor":
-        if len(sys.argv) < 3:
-            print("Usage: python probes.py --monitor <flask-pid> [duration_seconds]")
-        else:
-            run_resource_monitor(int(sys.argv[2]), int(sys.argv[3]) if len(sys.argv) > 3 else 30)
+    # elif cmd == "--monitor":
+    #     if len(sys.argv) < 3:
+    #         print("Usage: python probes.py --monitor <flask-pid> [duration_seconds]")
+    #     else:
+    #         run_resource_monitor(int(sys.argv[2]), int(sys.argv[3]) if len(sys.argv) > 3 else 30)
 
     elif cmd == "--comparison-charts":
         generate_comparison_charts()

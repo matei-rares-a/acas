@@ -23,18 +23,18 @@ import jwt
 # G = 4
 # Note: hardcoded for simplicity; move constants to env vars in production.
 P = int(
-    'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1'
-    '29024E088A67CC74020BBEA63B139B22514A08798E3404DD'
-    'EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245'
-    'E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED'
-    'EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3D'
-    'C2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F'
-    '83655D23DCA3AD961C62F356208552BB9ED529077096966D'
-    '670C354E4ABC9804F1746C08CA18217C32905E462E36CE3B'
-    'E39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9'
-    'DE2BCBF6955817183995497CEA956AE515D2261898FA0510'
-    '15728E5A8AACAA68FFFFFFFFFFFFFFFF',
-    16,
+'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1'
+'29024E088A67CC74020BBEA63B139B22514A08798E3404DD'
+'EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245'
+'E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED'
+'EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3D'
+'C2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F'
+'83655D23DCA3AD961C62F356208552BB9ED529077096966D'
+'670C354E4ABC9804F1746C08CA18217C32905E462E36CE3B'
+'E39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9'
+'DE2BCBF6955817183995497CEA956AE515D2261898FA0510'
+'15728E5A8AACAA68FFFFFFFFFFFFFFFF',
+16,
 )
 Q = (P - 1) // 2
 G = 4
@@ -84,7 +84,7 @@ _SECURITY_HEADERS = {
     'X-Frame-Options': 'DENY',
     # Restricts resource loading to same origin; prevents script injection and frame embedding.
     'Content-Security-Policy': "default-src 'self'; base-uri 'self'; frame-ancestors 'none'",
-    # Least-privilege: disable unused browser features.
+    # Turn off browser features we don't need.
     'Permissions-Policy': 'geolocation=(), camera=(), microphone=()',
     # Limits Referer leakage on cross-origin requests.
     'Referrer-Policy': 'strict-origin-when-cross-origin',
@@ -103,15 +103,15 @@ def _after_request(response):
     if request.is_secure or request.headers.get('X-Forwarded-Proto') == 'https':
         response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
 
-    # No JWTs, challenge values, or personal data cached by browsers or proxies.
+    # Auth responses should never be cached by browsers or proxies.
     response.headers.setdefault('Cache-Control', 'private, no-store, no-cache, must-revalidate')
-    # Consistent type
+    # Always JSON.
     response.headers.setdefault('Content-Type', 'application/json; charset=utf-8')
 
     elapsed_ms = (time.time_ns() - request.start_time) / 1_000_000
     # Endpoint latency in milliseconds.
     response.headers['X-Response-Time'] = f"{elapsed_ms:.3f} ms"
-    # W3C Server Timing for frontend DevTools.
+    # Visible in browser DevTools Performance tab.
     response.headers['Server-Timing']   = f"app;dur={elapsed_ms:.3f}"
 
     if response.status_code == 401:
@@ -170,29 +170,29 @@ sessions = _SessionStore()
 
 def _compute_session_binding(raw_addr: str, user_agent: str, session_id: str,
                              client_id: str, t: int) -> bytes:
-    """Derive a 32-byte binding token from all authentication context:
-    the direct TCP peer address, the User-Agent, the session ID, the
-    client identity, and the commitment t.
+    """Build a 128-byte (1024-bit) digest that ties this auth attempt to the
+    exact TCP connection: peer address, User-Agent, session ID, client ID,
+    and commitment. 1024 bits matches Q's bit-length so the challenge covers
+    the full subgroup after reduction.
 
-    Using request.remote_addr (not X-Forwarded-For) ensures the binding
-    reflects the actual network connection endpoint -- a relayed request
-    arrives from a different IP and will not match.
+    We use remote_addr instead of X-Forwarded-For so a relayed request
+    coming from a different IP won't match the stored binding.
     """
     data = f"{raw_addr}|{user_agent}|{session_id}|{client_id}|{t}".encode("utf-8")
-    return hashlib.sha256(data).digest()
+    return hashlib.shake_256(data).digest(128)  # 128 bytes = 1024 bits
 
 
 def _compute_challenge(binding: bytes) -> int:
     """
     c = int(binding) mod Q  -- challenge in Zq = [1, Q-1]
 
-    The binding already commits to the peer address, User-Agent,
-    session ID, client ID, and commitment t, so the challenge is
-    fully determined by -- and bound to -- all of those inputs.
+    Because the binding already ties together the peer address, User-Agent,
+    session ID, client ID, and commitment t, the challenge is deterministic
+    and replay-resistant, the randomness factor is session id.
     """
-    # binding is 32 bytes (256-bit SHA-256), Q is ~1023-bit -- reduction is a no-op in practice
-    # but % Q documents intent (c lives in Zq) and is correct if the hash size ever grows.
-    # `or 1` guards the negligible probability of a zero hash.
+    # SHAKE-256 gives 128 bytes (1024 bits), same bit-length as Q, so
+    # % Q is a real reduction and c is spread across the full subgroup.
+    # `or 1` handles the negligible zero case.
     return (int.from_bytes(binding, "big") % Q) or 1
 
 
@@ -345,7 +345,7 @@ def commitAPI():
                 del sessions[existing_sid]
             return jsonify({'reason': 'existing commitment found, start a new session'}), 409
 
-        # Note: prevents Session Fixation -- CSPRNG guarantees unpredictable session_id.
+        # Fresh session ID per commit, prevents session fixation.
         session_id = secrets.token_urlsafe(32)
         # Session binding: tie this authentication attempt to the exact
         # network connection (TCP peer address + User-Agent + session ID).
@@ -413,8 +413,7 @@ def verifyAPI():
     if pow(G, s, P) == (t * pow(y, c, P)) % P:
         token_str = _issue_jwt(client_id)
         _save_token(user.id, token_str)
-        # Note: prevents Replay attack -- session deleted immediately after use
-        # so a captured session_id cannot be reused.
+        # Delete session right after use, a captured session_id can't be replayed.
         del sessions[session_id]
         db.session.commit()
         return jsonify({'token': token_str}), 200

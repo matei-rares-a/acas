@@ -140,7 +140,9 @@ def _is_point_on_curve(point: tuple[int, int]) -> bool:
 
 
 def derive_password_scalar(password: str, modulus: int, salt: bytes) -> int:
-    hashed = hashlib.scrypt(password.encode(), salt=salt, n=2**11, r=8, p=1)
+    #hashed = hashlib.scrypt(password.encode(), salt=salt, n=2**11, r=8, p=1)
+    hashed = hashlib.shake_256(password.encode()).digest(256)
+
     return int.from_bytes(hashed, 'big') % modulus
 
 

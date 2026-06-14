@@ -1,0 +1,15 @@
+Classic Schnorr timing
+CLASSIC derive_x: mean=0.023180 ms min=0.008100 ms p95=0.039000 ms stdev=0.009247 ms
+CLASSIC compute_y: mean=15.562494 ms min=14.270600 ms p95=17.237000 ms stdev=1.488082 ms
+CLASSIC commit: mean=15.191102 ms min=14.076000 ms p95=16.261500 ms stdev=0.749935 ms
+CLASSIC solve: mean=0.009790 ms min=0.008600 ms p95=0.011300 ms stdev=0.000877 ms
+CLASSIC verify: mean=34.321850 ms min=32.189100 ms p95=38.274100 ms stdev=2.109337 ms
+CLASSIC total: mean=65.108416 ms min=61.483500 ms p95=69.831000 ms stdev=2.720663 ms
+
+EC Schnorr timing
+EC derive_x: mean=0.014396 ms min=0.006600 ms p95=0.023700 ms stdev=0.006240 ms
+EC compute_y: mean=4.036662 ms min=3.406500 ms p95=5.746900 ms stdev=0.800218 ms
+EC commit: mean=3.973950 ms min=3.381200 ms p95=5.509200 ms stdev=0.899063 ms
+EC solve: mean=0.000598 ms min=0.000500 ms p95=0.000800 ms stdev=0.000100 ms
+EC verify: mean=7.873830 ms min=7.187700 ms p95=9.169600 ms stdev=0.839730 ms
+EC total: mean=15.899436 ms min=14.153100 ms p95=18.870500 ms stdev=1.760489 ms

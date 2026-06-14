@@ -1,0 +1,57 @@
+Focused PAKE comparison  (iterations=50)
+Protocols: SRP-6a | SPAKE2 | Schnorr-EC (secp256r1 pure Python)
+==================================================================================
+
+SRP-6a  [RFC 5054 2048-bit, SHA-256 KDF, pure Python]
+  SRP register                      mean=   1.172 ms  min=   1.044 ms  p95=   1.401 ms  stdev=  0.175 ms
+  SRP commit                        mean=   0.061 ms  min=   0.049 ms  p95=   0.076 ms  stdev=  0.014 ms
+  SRP challenge                     mean=   0.065 ms  min=   0.049 ms  p95=   0.089 ms  stdev=  0.021 ms
+  SRP solve                         mean=  19.991 ms  min=  18.522 ms  p95=  21.880 ms  stdev=  1.159 ms
+  SRP verify                        mean=  20.363 ms  min=  19.056 ms  p95=  22.019 ms  stdev=  1.071 ms
+  SRP total                         mean=  41.651 ms  min=  38.769 ms  p95=  44.305 ms  stdev=  1.623 ms
+
+SPAKE2  [Ed25519 / M255, pure Python]
+  SPAKE2 start_a                    mean=   2.665 ms  min=   2.351 ms  p95=   3.776 ms  stdev=  0.424 ms
+  SPAKE2 start_b                    mean=   2.935 ms  min=   2.298 ms  p95=   4.636 ms  stdev=  0.883 ms
+  SPAKE2 finish                     mean=   8.587 ms  min=   7.278 ms  p95=  11.985 ms  stdev=  1.594 ms
+  SPAKE2 total                      mean=  14.186 ms  min=  12.029 ms  p95=  19.478 ms  stdev=  2.377 ms
+
+Schnorr-EC  [secp256r1 pure Python wNAF, SHAKE-256 KDF]
+  SCHNORR-EC derive_x               mean=   0.008 ms  min=   0.002 ms  p95=   0.014 ms  stdev=  0.009 ms
+  SCHNORR-EC compute_y              mean=   3.972 ms  min=   3.579 ms  p95=   4.519 ms  stdev=  0.599 ms
+  SCHNORR-EC commit                 mean=   4.040 ms  min=   3.476 ms  p95=   5.204 ms  stdev=  0.689 ms
+  SCHNORR-EC solve                  mean=   0.001 ms  min=   0.001 ms  p95=   0.001 ms  stdev=  0.000 ms
+  SCHNORR-EC verify                 mean=   8.640 ms  min=   7.520 ms  p95=  10.105 ms  stdev=  1.381 ms
+  SCHNORR-EC total                  mean=  16.661 ms  min=  14.765 ms  p95=  19.231 ms  stdev=  2.002 ms
+
+Schnorr-EC (run 2)  [secp256r1 pure Python wNAF, SHAKE-256 KDF]
+  SCHNORR-EC derive_x               mean=   0.009 ms  min=   0.003 ms  p95=   0.016 ms  stdev=  0.004 ms
+  SCHNORR-EC compute_y              mean=   4.260 ms  min=   3.568 ms  p95=   6.643 ms  stdev=  0.829 ms
+  SCHNORR-EC commit                 mean=   4.507 ms  min=   3.483 ms  p95=   6.534 ms  stdev=  1.070 ms
+  SCHNORR-EC solve                  mean=   0.001 ms  min=   0.001 ms  p95=   0.001 ms  stdev=  0.000 ms
+  SCHNORR-EC verify                 mean=   9.099 ms  min=   7.421 ms  p95=  11.774 ms  stdev=  1.648 ms
+  SCHNORR-EC total                  mean=  17.875 ms  min=  14.703 ms  p95=  23.508 ms  stdev=  2.527 ms
+
+Schnorr-EC-Mutual  [dual Schnorr proofs + ECDH session key, SHAKE-256 KDF]
+  SCHNORR-EC-MUT derive_x           mean=   0.006 ms  min=   0.003 ms  p95=   0.010 ms  stdev=  0.002 ms
+  SCHNORR-EC-MUT compute_y          mean=   4.372 ms  min=   3.627 ms  p95=   5.326 ms  stdev=  0.528 ms
+  SCHNORR-EC-MUT mutual_proofs      mean=  27.195 ms  min=  24.066 ms  p95=  29.320 ms  stdev=  2.138 ms
+  SCHNORR-EC-MUT session_key        mean=   9.489 ms  min=   8.346 ms  p95=  10.630 ms  stdev=  0.620 ms
+  SCHNORR-EC-MUT total              mean=  41.062 ms  min=  37.519 ms  p95=  44.663 ms  stdev=  2.639 ms
+
+================================================================================================
+  TABLE 1 — Registration  (one-time cost per account)
+  Protocol                 Total       KDF    Crypto  Note
+  SRP-6a                1.1724  1.1724  0.0000  SHA-256 KDF → verifier v = g^x mod N
+  SPAKE2                0.0000  0.0000  0.0000  no separate registration step (password used directly)
+  Schnorr-EC            3.9803  0.0079  3.9724  SHAKE-256 → x, then Y = x*G stored as public key
+  Schnorr-EC(run2)      4.2684  0.0085  4.2599  SHAKE-256 → x, then Y = x*G  (second run for variance)
+  Schnorr-EC-Mutual     4.3778  0.0057  4.3721  SHAKE-256 → x, Y_c = x*G + server keypair pre-generated  (mutual auth)
+
+  TABLE 2 — Authentication  (cost per login)
+  Protocol                 Total       KDF    Crypto  Note
+  SRP-6a                40.4789  0.0000  40.4789  commit → challenge → solve → verify  (mutual auth + session key)
+  SPAKE2                14.1860  0.0000  14.1860  start_a → start_b → finish  (mutual auth + session key)
+  Schnorr-EC            12.6887  0.0079  12.6808  SHAKE-256 + ZKP exchange  (one-sided proof only)
+  Schnorr-EC(run2)      13.6148  0.0085  13.6062  SHAKE-256 + ZKP exchange  (second run for variance)
+  Schnorr-EC-Mutual     36.6899  0.0057  36.6842  SHAKE-256 + dual Schnorr proofs + ECDH session key  (mutual auth + session key)

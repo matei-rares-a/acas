@@ -1,25 +1,20 @@
 """
-Authlib-backed OAuth 2.0 authorization server (RFC 6749 + RFC 7636 PKCE).
+OAuth 2.0 server backed by the Authlib library (RFC 6749 + RFC 7636 PKCE).
 
-This module provides a reference-compliant OAuth2 implementation using the
-Authlib library for comparison with ZKP-based auth.
-
-Password verification uses SHA-256 (same as the custom OAuth implementations)
-so that all three OAuth variants share an identical, negligible credential-check
-cost. This isolates the pure protocol overhead in benchmark comparisons.
+This is a third OAuth implementation alongside the hand-rolled PKCE and Simple
+flows. Having all three lets the benchmarks compare protocol overhead directly.
+Password hashing is SHA-256 in all three, so the credential check cost is the
+same and doesn't skew the numbers.
 
 Endpoints:
   POST /authlib/register
   POST /authlib/oauth/authorize
   POST /authlib/oauth/token
 
-Note on request encoding
-------------------------
-Authlib's FlaskOAuth2Request reads parameters from request.values (query
-string + form), NOT from JSON. Therefore all calls to the authorize and
-token endpoints must use application/x-www-form-urlencoded (the HTTP
-standard for OAuth2), not application/json. The benchmark and Locust tasks
-use data=... (not json=...) accordingly.
+One thing worth noting: Authlib reads parameters from request.values (query
+string + form body), not from JSON. So authorize and token calls must use
+application/x-www-form-urlencoded, not application/json. The benchmarks and
+Locust tasks use data=... for exactly this reason.
 """
 
 import hashlib
