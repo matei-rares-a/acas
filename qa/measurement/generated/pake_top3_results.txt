@@ -1,79 +1,107 @@
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
-│  Top-4 PAKE Benchmark  —  100 iterations                                               │
-│  SRP-6a  |  SPAKE2  |  Schnorr-EC-Mutual  |  Schnorr-EC-Lib (C-backed)                 │
+│  Top-6 PAKE Benchmark  —  5 iterations                                                 │
+│  SRP-6a  |  SPAKE2  |  Schnorr-EC-Mutual  |  Schnorr-EC-Lib  |  Schnorr-PoW  |  Schnorr-NIZKP│
 └────────────────────────────────────────────────────────────────────────────────────────┘
 
   SRP-6a  [RFC 5054 2048-bit MODP, SHA-256 KDF]
   ┌───────────────────┬───────────┬───────────┬───────────┬──────────┐
   │ Stage             │ mean      │ min       │ p95       │ stdev    │
   ├───────────────────┼───────────┼───────────┼───────────┼──────────┤
-  │ SRP-6a  register  │ 1.163 ms  │ 1.055 ms  │ 1.302 ms  │ 0.110 ms │
-  │ SRP-6a  commit    │ 0.066 ms  │ 0.051 ms  │ 0.092 ms  │ 0.012 ms │
-  │ SRP-6a  challenge │ 0.066 ms  │ 0.053 ms  │ 0.088 ms  │ 0.015 ms │
-  │ SRP-6a  solve     │ 19.865 ms │ 18.859 ms │ 21.144 ms │ 0.843 ms │
-  │ SRP-6a  verify    │ 20.210 ms │ 18.995 ms │ 21.663 ms │ 0.748 ms │
-  │ SRP-6a  total     │ 41.371 ms │ 39.276 ms │ 43.474 ms │ 1.243 ms │
+  │ SRP-6a  register  │ 1.281 ms  │ 1.091 ms  │ 1.373 ms  │ 0.121 ms │
+  │ SRP-6a  commit    │ 0.095 ms  │ 0.084 ms  │ 0.092 ms  │ 0.016 ms │
+  │ SRP-6a  challenge │ 0.088 ms  │ 0.085 ms  │ 0.088 ms  │ 0.005 ms │
+  │ SRP-6a  solve     │ 22.332 ms │ 20.758 ms │ 22.784 ms │ 0.928 ms │
+  │ SRP-6a  verify    │ 22.738 ms │ 21.878 ms │ 23.359 ms │ 0.730 ms │
+  │ SRP-6a  total     │ 46.535 ms │ 45.600 ms │ 46.909 ms │ 0.994 ms │
   └───────────────────┴───────────┴───────────┴───────────┴──────────┘
 
   SPAKE2  [Ed25519 / M255, + HMAC key confirmation]
-  ┌─────────────────────┬──────────┬──────────┬───────────┬──────────┐
-  │ Stage               │ mean     │ min      │ p95       │ stdev    │
-  ├─────────────────────┼──────────┼──────────┼───────────┼──────────┤
-  │ SPAKE2  start_a     │ 2.601 ms │ 2.297 ms │ 2.925 ms  │ 0.316 ms │
-  │ SPAKE2  start_b     │ 2.592 ms │ 2.219 ms │ 2.707 ms  │ 0.370 ms │
-  │ SPAKE2  finish_a    │ 3.940 ms │ 3.502 ms │ 4.383 ms  │ 0.304 ms │
-  │ SPAKE2  finish_b    │ 3.971 ms │ 3.513 ms │ 4.400 ms  │ 0.315 ms │
-  │ SPAKE2  finish_wall │ 4.069 ms │ 3.606 ms │ 4.669 ms  │ 0.383 ms │
-  │ SPAKE2  confirm     │ 0.018 ms │ 0.014 ms │ 0.024 ms  │ 0.005 ms │
-  │ SPAKE2  total       │ 9.281 ms │ 8.399 ms │ 10.544 ms │ 0.555 ms │
-  └─────────────────────┴──────────┴──────────┴───────────┴──────────┘
+  ┌─────────────────────┬──────────┬──────────┬──────────┬──────────┐
+  │ Stage               │ mean     │ min      │ p95      │ stdev    │
+  ├─────────────────────┼──────────┼──────────┼──────────┼──────────┤
+  │ SPAKE2  start_a     │ 2.771 ms │ 2.724 ms │ 2.780 ms │ 0.035 ms │
+  │ SPAKE2  start_b     │ 2.743 ms │ 2.715 ms │ 2.756 ms │ 0.024 ms │
+  │ SPAKE2  finish_a    │ 4.275 ms │ 4.168 ms │ 4.335 ms │ 0.077 ms │
+  │ SPAKE2  finish_b    │ 4.418 ms │ 4.127 ms │ 4.367 ms │ 0.349 ms │
+  │ SPAKE2  finish_wall │ 4.453 ms │ 4.220 ms │ 4.367 ms │ 0.323 ms │
+  │ SPAKE2  confirm     │ 0.030 ms │ 0.020 ms │ 0.030 ms │ 0.013 ms │
+  │ SPAKE2  total       │ 9.997 ms │ 9.749 ms │ 9.955 ms │ 0.320 ms │
+  └─────────────────────┴──────────┴──────────┴──────────┴──────────┘
 
-  Schnorr-EC-Mutual  [secp256r1, SHAKE-256 KDF, dual proofs + ECDH]
-  ┌────────────────────────┬───────────┬───────────┬───────────┬──────────┐
-  │ Stage                  │ mean      │ min       │ p95       │ stdev    │
-  ├────────────────────────┼───────────┼───────────┼───────────┼──────────┤
-  │ Schnorr  derive_x      │ 0.010 ms  │ 0.006 ms  │ 0.015 ms  │ 0.008 ms │
-  │ Schnorr  compute_y     │ 4.486 ms  │ 3.855 ms  │ 5.639 ms  │ 0.535 ms │
-  │ Schnorr  mutual_proofs │ 27.666 ms │ 24.719 ms │ 29.634 ms │ 1.325 ms │
-  │ Schnorr  session_key   │ 10.577 ms │ 9.464 ms  │ 11.930 ms │ 0.748 ms │
-  │ Schnorr  total         │ 42.740 ms │ 39.524 ms │ 45.477 ms │ 1.715 ms │
-  └────────────────────────┴───────────┴───────────┴───────────┴──────────┘
+  Schnorr-EC-Mutual  [secp256r1, SHAKE-256 KDF, dual proofs + JWT]
+  ┌──────────────────────────────────┬───────────┬───────────┬───────────┬──────────┐
+  │ Stage                            │ mean      │ min       │ p95       │ stdev    │
+  ├──────────────────────────────────┼───────────┼───────────┼───────────┼──────────┤
+  │ Schnorr-EC-Mutual  derive_x      │ 0.015 ms  │ 0.009 ms  │ 0.012 ms  │ 0.011 ms │
+  │ Schnorr-EC-Mutual  compute_y     │ 4.300 ms  │ 3.787 ms  │ 4.376 ms  │ 0.402 ms │
+  │ Schnorr-EC-Mutual  mutual_proofs │ 28.756 ms │ 26.323 ms │ 31.155 ms │ 2.679 ms │
+  │ Schnorr-EC-Mutual  jwt_token     │ 0.179 ms  │ 0.156 ms  │ 0.197 ms  │ 0.031 ms │
+  │ Schnorr-EC-Mutual  total         │ 33.251 ms │ 31.169 ms │ 35.110 ms │ 2.417 ms │
+  └──────────────────────────────────┴───────────┴───────────┴───────────┴──────────┘
 
-  Schnorr-EC-Lib-Mutual  [secp256r1, C-backed (OpenSSL), dual proofs + ECDH]
-  ┌──────────────────────────┬──────────┬──────────┬───────────┬──────────┐
-  │ Stage                    │ mean     │ min      │ p95       │ stdev    │
-  ├──────────────────────────┼──────────┼──────────┼───────────┼──────────┤
-  │ Schnorr-C  derive_x      │ 0.006 ms │ 0.003 ms │ 0.010 ms  │ 0.002 ms │
-  │ Schnorr-C  compute_y     │ 0.042 ms │ 0.030 ms │ 0.055 ms  │ 0.025 ms │
-  │ Schnorr-C  mutual_proofs │ 9.036 ms │ 7.838 ms │ 10.035 ms │ 0.618 ms │
-  │ Schnorr-C  session_key   │ 0.078 ms │ 0.055 ms │ 0.117 ms  │ 0.032 ms │
-  │ Schnorr-C  total         │ 9.163 ms │ 7.939 ms │ 10.208 ms │ 0.631 ms │
-  └──────────────────────────┴──────────┴──────────┴───────────┴──────────┘
+  Schnorr-EC-Lib-Mutual  [secp256r1, C-backed (OpenSSL), dual proofs + JWT]
+  ┌──────────────────────────────────────┬──────────┬──────────┬──────────┬──────────┐
+  │ Stage                                │ mean     │ min      │ p95      │ stdev    │
+  ├──────────────────────────────────────┼──────────┼──────────┼──────────┼──────────┤
+  │ Schnorr-EC-Lib-Mutual  derive_x      │ 0.008 ms │ 0.007 ms │ 0.009 ms │ 0.001 ms │
+  │ Schnorr-EC-Lib-Mutual  compute_y     │ 0.063 ms │ 0.046 ms │ 0.064 ms │ 0.017 ms │
+  │ Schnorr-EC-Lib-Mutual  mutual_proofs │ 9.313 ms │ 8.826 ms │ 9.473 ms │ 0.487 ms │
+  │ Schnorr-EC-Lib-Mutual  jwt_token     │ 0.126 ms │ 0.098 ms │ 0.135 ms │ 0.020 ms │
+  │ Schnorr-EC-Lib-Mutual  total         │ 9.510 ms │ 8.979 ms │ 9.709 ms │ 0.495 ms │
+  └──────────────────────────────────────┴──────────┴──────────┴──────────┴──────────┘
+
+  Schnorr-PoW-Mutual  [RFC 3526 Group 14 2048-bit MODP, same math as server protocol + JWT]
+  ┌────────────────────────────┬────────────┬────────────┬────────────┬──────────┐
+  │ Stage                      │ mean       │ min        │ p95        │ stdev    │
+  ├────────────────────────────┼────────────┼────────────┼────────────┼──────────┤
+  │ Schnorr-PoW  derive_x      │ 0.008 ms   │ 0.008 ms   │ 0.008 ms   │ 0.000 ms │
+  │ Schnorr-PoW  compute_y     │ 15.783 ms  │ 15.384 ms  │ 15.777 ms  │ 0.540 ms │
+  │ Schnorr-PoW  mutual_proofs │ 141.341 ms │ 138.661 ms │ 142.614 ms │ 3.128 ms │
+  │ Schnorr-PoW  jwt_token     │ 0.161 ms   │ 0.159 ms   │ 0.161 ms   │ 0.003 ms │
+  │ Schnorr-PoW  total         │ 157.293 ms │ 154.450 ms │ 158.207 ms │ 3.577 ms │
+  └────────────────────────────┴────────────┴────────────┴────────────┴──────────┘
+
+  Schnorr-NIZKP-Mutual  [secp256r1, Fiat-Shamir non-interactive (zksk-style), OpenSSL + JWT]
+  ┌────────────────────────────┬──────────┬──────────┬──────────┬──────────┐
+  │ Stage                      │ mean     │ min      │ p95      │ stdev    │
+  ├────────────────────────────┼──────────┼──────────┼──────────┼──────────┤
+  │ Schnorr-NIZKP  derive_x    │ 0.009 ms │ 0.006 ms │ 0.009 ms │ 0.001 ms │
+  │ Schnorr-NIZKP  compute_y   │ 0.070 ms │ 0.045 ms │ 0.076 ms │ 0.019 ms │
+  │ Schnorr-NIZKP  nizkp_proof │ 9.597 ms │ 9.139 ms │ 9.681 ms │ 0.572 ms │
+  │ Schnorr-NIZKP  jwt_token   │ 0.131 ms │ 0.084 ms │ 0.148 ms │ 0.027 ms │
+  │ Schnorr-NIZKP  total       │ 9.806 ms │ 9.367 ms │ 9.881 ms │ 0.573 ms │
+  └────────────────────────────┴──────────┴──────────┴──────────┴──────────┘
 
   SUMMARY
-  ┌───────────────────────┬──────────────┬──────────────┬───────────┬────────────┐
-  │ Protocol              │ Registration │ Auth (login) │ Total     │ vs fastest │
-  ├───────────────────────┼──────────────┼──────────────┼───────────┼────────────┤
-  │ SRP-6a                │ 1.163 ms     │ 40.208 ms    │ 41.371 ms │ 4.41x      │
-  │ SPAKE2                │ N/A          │ 9.281 ms     │ 9.281 ms  │ 1.02x      │
-  │ Schnorr-EC-Mutual     │ 4.497 ms     │ 38.253 ms    │ 42.740 ms │ 4.19x      │
-  │ Schnorr-EC-Lib-Mutual │ 0.048 ms     │ 9.121 ms     │ 9.163 ms  │ 1.00x      │
-  └───────────────────────┴──────────────┴──────────────┴───────────┴────────────┘
+  ┌───────────────────────┬──────────────┬──────────────┬────────────┬────────────┐
+  │ Protocol              │ Registration │ Auth (login) │ Total      │ vs fastest │
+  ├───────────────────────┼──────────────┼──────────────┼────────────┼────────────┤
+  │ SRP-6a                │ 1.281 ms     │ 45.254 ms    │ 46.535 ms  │ 4.79x      │
+  │ SPAKE2                │ N/A          │ 9.997 ms     │ 9.997 ms   │ 1.06x      │
+  │ Schnorr-EC-Mutual     │ 4.315 ms     │ 28.950 ms    │ 33.251 ms  │ 3.06x      │
+  │ Schnorr-EC-Lib-Mutual │ 0.071 ms     │ 9.447 ms     │ 9.510 ms   │ 1.00x      │
+  │ Schnorr-PoW-Mutual    │ 15.791 ms    │ 141.511 ms   │ 157.293 ms │ 14.98x     │
+  │ Schnorr-NIZKP-Mutual  │ 0.078 ms     │ 9.737 ms     │ 9.806 ms   │ 1.03x      │
+  └───────────────────────┴──────────────┴──────────────┴────────────┴────────────┘
   * Registration is a one-time cost, not on the login hot-path.
 
   FEATURE COMPARISON
-  ┌─────────────────────────┬───────────────┬───────────┬──────────────────┬─────────────────┐
-  │ Property                │ SRP-6a        │ SPAKE2    │ Schnorr-EC-Mut   │ Schnorr-EC-Lib  │
-  ├─────────────────────────┼───────────────┼───────────┼──────────────────┼─────────────────┤
-  │ Mutual authentication   │ YES           │ YES       │ YES              │ YES             │
-  │ Session key established │ YES           │ YES       │ YES              │ YES             │
-  │ Password never sent     │ YES           │ YES       │ YES              │ YES             │
-  │ Server-breach resistant │ YES           │ YES *     │ NO               │ NO              │
-  │ Standardised (RFC/IETF) │ RFC 5054      │ Draft     │ NO               │ NO              │
-  │ KDF on login path       │ NO            │ NO        │ Minimal (SHAKE)  │ Minimal (SHAKE) │
-  │ Group / curve           │ 2048-bit MODP │ Ed25519   │ secp256r1 P-256  │ secp256r1 P-256 │
-  │ Security level          │ ~112 bits     │ ~128 bits │ ~128 bits        │ ~128 bits       │
-  │ EC ops                  │ N/A           │ N/A       │ Pure Python wNAF │ OpenSSL (C)     │
-  └─────────────────────────┴───────────────┴───────────┴──────────────────┴─────────────────┘
+  ┌─────────────────────────┬───────────────┬────────────┬──────────────────┬─────────────────┬─────────────────┬─────────────────┐
+  │ Property                │ SRP-6a        │ SPAKE2     │ Schnorr-EC-Mut   │ Schnorr-EC-Lib  │ Schnorr-PoW     │ Schnorr-NIZKP   │
+  ├─────────────────────────┼───────────────┼────────────┼──────────────────┼─────────────────┼─────────────────┼─────────────────┤
+  │ Mutual authentication   │ YES           │ YES        │ YES              │ YES             │ YES             │ YES             │
+  │ Session key established │ YES           │ YES        │ YES              │ YES             │ YES             │ YES             │
+  │ Password never sent     │ YES           │ YES        │ YES              │ YES             │ YES             │ YES             │
+  │ Server-breach resistant │ YES           │ YES *      │ NO               │ NO              │ NO              │ NO              │
+  │ Standardised (RFC/IETF) │ RFC 5054      │ Draft      │ NO               │ NO              │ NO              │ NO              │
+  │ KDF on login path       │ NO            │ NO         │ Minimal (SHAKE)  │ Minimal (SHAKE) │ Minimal (SHAKE) │ Minimal (SHAKE) │
+  │ Group / curve           │ 2048-bit MODP │ Ed25519    │ secp256r1 P-256  │ secp256r1 P-256 │ 2048-bit MODP   │ secp256r1 P-256 │
+  │ Security level          │ ~112 bits     │ ~128 bits  │ ~128 bits        │ ~128 bits       │ ~112 bits       │ ~128 bits       │
+  │ Crypto backend          │ srp (C/Py)    │ spake2 lib │ Pure Python wNAF │ OpenSSL (C)     │ Python pow()    │ OpenSSL (C)     │
+  │ Same math as server     │ NO            │ NO         │ NO               │ NO              │ YES             │ NO              │
+  │ Non-interactive (1 RTT) │ NO            │ NO         │ NO               │ NO              │ NO              │ YES             │
+  └─────────────────────────┴───────────────┴────────────┴──────────────────┴─────────────────┴─────────────────┴─────────────────┘
   * SPAKE2+ (server-breach resistant) is not in the spake2 library used here.
   Schnorr-EC-Lib: c*Y (arbitrary-point mult) still uses pure Python wNAF; all k*G via OpenSSL.
+  Schnorr-PoW: uses Python built-in pow(a, b, n) — same group and same interactive construction as the actual server.
+  Schnorr-NIZKP: Fiat-Shamir transform (c = SHA-256(T_c||Y_c||T_s||Y_s||ctx)) — zksk-style, no server challenge round-trip.

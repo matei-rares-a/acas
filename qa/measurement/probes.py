@@ -190,11 +190,6 @@ def audit_traffic_content(output_md: str = str(_GENERATED / "audit_traffic_conte
     print(f"Audit report written to: {out.resolve()}")
 
 
-# ---------------------------------------------------------------------------
-# Probe 3 -  Extract parts of server.py that ensure a protection for some attacks
-# # Ex: is_subgroup_member / del sessions[...] (Replay) / secrets.randbelow (entropy)
-# TODO: Manual
-# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # Shared chart helper
@@ -432,37 +427,37 @@ def generate_charts(latency_data: dict | None = None, output_dir: str = str(_GEN
 # ---------------------------------------------------------------------------
 
 
-def run_resource_monitor(flask_pid: int, duration_seconds: int = 30,
-                         output_csv: str = str(_GENERATED / "monitor_resources.csv")):
-    """Monitor CPU, RAM, and sessions for a running Flask process."""
-    try:
-        import psutil
-    except ImportError:
-        print("psutil not installed. Run: pip install psutil")
-        return
+# def run_resource_monitor(flask_pid: int, duration_seconds: int = 30,
+#                          output_csv: str = str(_GENERATED / "monitor_resources.csv")):
+#     """Monitor CPU, RAM, and sessions for a running Flask process."""
+#     try:
+#         import psutil
+#     except ImportError:
+#         print("psutil not installed. Run: pip install psutil")
+#         return
 
-    process = psutil.Process(flask_pid)
-    output_path = Path(output_csv)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+#     process = psutil.Process(flask_pid)
+#     output_path = Path(output_csv)
+#     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    print(f"Monitoring PID {flask_pid} for {duration_seconds}s -> {output_path}")
-    with output_path.open("w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["timestamp", "cpu_percent", "ram_mb", "active_sessions"])
-        for _ in range(duration_seconds):
-            ts = time.strftime("%H:%M:%S")
-            cpu = process.cpu_percent(interval=1)
-            ram = process.memory_info().rss / 1024 / 1024
-            sessions = len(server.sessions)
-            writer.writerow([ts, f"{cpu:.2f}", f"{ram:.2f}", sessions])
-            # Note: server.sessions tracks only ZKP in-flight commit sessions.
-            # OAuth2 PKCE / Simple / Authlib sessions are persisted in the DB
-            # (OAuthAuthorizationCode / Token models) and are not held in this
-            # dict, so active_sessions here reflects ZKP state only.
-            expired = [sid for sid, s in server.sessions.items()
-                       if s["created_at"] < time.time() - 5]
-            if expired:
-                print(f"[{ts}] {len(expired)} session(s) expired and will be cleaned on next verify.")
+#     print(f"Monitoring PID {flask_pid} for {duration_seconds}s -> {output_path}")
+#     with output_path.open("w", newline="") as f:
+#         writer = csv.writer(f)
+#         writer.writerow(["timestamp", "cpu_percent", "ram_mb", "active_sessions"])
+#         for _ in range(duration_seconds):
+#             ts = time.strftime("%H:%M:%S")
+#             cpu = process.cpu_percent(interval=1)
+#             ram = process.memory_info().rss / 1024 / 1024
+#             sessions = len(server.sessions)
+#             writer.writerow([ts, f"{cpu:.2f}", f"{ram:.2f}", sessions])
+#             # Note: server.sessions tracks only ZKP in-flight commit sessions.
+#             # OAuth2 PKCE / Simple / Authlib sessions are persisted in the DB
+#             # (OAuthAuthorizationCode / Token models) and are not held in this
+#             # dict, so active_sessions here reflects ZKP state only.
+#             expired = [sid for sid, s in server.sessions.items()
+#                        if s["created_at"] < time.time() - 5]
+#             if expired:
+#                 print(f"[{ts}] {len(expired)} session(s) expired and will be cleaned on next verify.")
 
 
 # ---------------------------------------------------------------------------
@@ -637,10 +632,11 @@ def run_server_internals_benchmark(
             "stdev": _stats.stdev(params_times),
         }
 
-        # POST /register (first call creates, rest return 409 -- measures full path)
-        reg_client_id = "internals_reg_bench_user"
+        # POST /register — fresh client_id each iteration so every call goes
+        # through the full path: DB lookup → is_subgroup_member → INSERT.
         reg_times = []
-        for _ in range(iterations):
+        for i in range(iterations):
+            reg_client_id = f"internals_reg_bench_{i}"
             t0 = time.perf_counter_ns()
             c.post("/register", json={"client_id": reg_client_id, "secret_y": str(y)})
             reg_times.append((time.perf_counter_ns() - t0) / 1e6)
@@ -1003,24 +999,20 @@ if __name__ == "__main__":
     elif cmd == "--server-internals":
         run_server_internals_benchmark()
 
-    elif cmd == "--all-offline":
-        audit_traffic_content()
-        generate_charts()
-        generate_comparison_charts()
-        run_server_internals_benchmark()
-
-    elif cmd == "--run-all":
-        # Optional args: --run-all [locust_users] [locust_runtime]
-        # e.g.  python probes.py --run-all 100 60s
-        locust_users   = int(sys.argv[2]) if len(sys.argv) > 2 else 100
-        locust_runtime = sys.argv[3]      if len(sys.argv) > 3 else "60s"
-
-        # -- Phase 1: no live server required --------------------------------
-        print("\n=== Phase 1: offline measurements ===")
+    elif cmd == "--offline":
+        
+        print("\n=== offline measurements ===")
         _run("benchmark.py (latency + throughput CSVs)",[_PYTHON, "qa/measurement/benchmark.py"])
         audit_traffic_content()
         generate_charts()
         run_server_internals_benchmark()
+        generate_comparison_charts()
+    
+    elif cmd == "--locust":
+        # Optional args: --run-all [locust_users] [locust_runtime]
+        # e.g.  python probes.py --run-all 100 60s
+        locust_users   = int(sys.argv[2]) if len(sys.argv) > 2 else 100
+        locust_runtime = sys.argv[3]      if len(sys.argv) > 3 else "60s"
 
         # -- Phase 2: live server required -----------------------------------
         print("\n=== Phase 2: live-server measurements (4 dedicated servers) ===")

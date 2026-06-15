@@ -8,7 +8,8 @@ same and doesn't skew the numbers.
 
 Endpoints:
   POST /authlib/register
-  POST /authlib/oauth/authorize
+  GET  /authlib/oauth/authorize   -- validates params, stores pending request, returns HTML form
+  POST /authlib/oauth/authorize   -- authenticates user, issues authorization code
   POST /authlib/oauth/token
 
 One thing worth noting: Authlib reads parameters from request.values (query
@@ -23,7 +24,7 @@ import secrets
 import time
 import warnings
 from datetime import datetime, timedelta, timezone
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlparse, urlencode
 
 from authlib.deprecate import AuthlibDeprecationWarning
 
@@ -37,7 +38,23 @@ import jwt as pyjwt
 from authlib.integrations.flask_oauth2 import AuthorizationServer
 from authlib.oauth2.rfc6749 import grants, ClientMixin, AuthorizationCodeMixin, TokenMixin
 from authlib.oauth2.rfc7636 import CodeChallenge
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, redirect, request
+
+
+def _html_login_form_authlib(action_url: str, auth_request_id: str, hidden: dict) -> str:
+    """HTML login form with auth_request_id and extra OAuth2 hidden fields."""
+    hidden_inputs = '\n'.join(
+        f'<input type="hidden" name="{k}" value="{v}">'
+        for k, v in hidden.items() if v
+    )
+    return f"""<!DOCTYPE html><html><body>
+<form method="post" action="{action_url}">
+<input type="hidden" name="auth_request_id" value="{auth_request_id}">
+{hidden_inputs}
+<input name="username" placeholder="Username"><br>
+<input name="password" type="password" placeholder="Password"><br>
+<button type="submit">Login</button>
+</form></body></html>"""
 
 
 # Allow HTTP during development / testing. Set AUTHLIB_FORCE_HTTPS=1 in production.
@@ -63,11 +80,12 @@ _AUTHLIB_PASSWORDS:      dict[str, str]       = {}
 _AUTHLIB_AUTH_CODES:     dict[str, "_AuthCode"] = {}
 _AUTHLIB_TOKENS:         dict[str, "_Token"]  = {}
 _AUTHLIB_REFRESH_TOKENS: dict[str, "_Token"]  = {}
+_AUTHLIB_PENDING:        dict[str, dict]       = {}   # GET → POST pending requests
 
 
 def clear_authlib_state() -> None:
     for store in (_AUTHLIB_PASSWORDS, _AUTHLIB_AUTH_CODES,
-                  _AUTHLIB_TOKENS, _AUTHLIB_REFRESH_TOKENS):
+                  _AUTHLIB_TOKENS, _AUTHLIB_REFRESH_TOKENS, _AUTHLIB_PENDING):
         store.clear()
 
 
@@ -291,52 +309,90 @@ def authlib_register():
     return jsonify({"status": "Authlib user registered"}), 201
 
 
+@authlib_bp.route('/oauth/authorize', methods=['GET'])
+def authlib_authorize_get():
+    '''GET /authlib/oauth/authorize -- RFC 6749 §4.1.1 authorization request.
+
+    Validates OAuth2 + PKCE parameters, stores a pending request keyed by
+    auth_request_id, and returns an HTML login form (same pattern as the
+    hand-rolled PKCE flow).  The form POSTs back to the same URL with
+    auth_request_id, username, and password.
+    '''
+    from server_oauth import _html_login_form  # reuse shared form helper
+
+    client_id             = request.args.get("client_id", "").strip()
+    redirect_uri          = request.args.get("redirect_uri", "").strip()
+    code_challenge        = request.args.get("code_challenge", "").strip()
+    code_challenge_method = request.args.get("code_challenge_method", "").strip()
+    scope                 = request.args.get("scope", "openid profile").strip()
+    state                 = request.args.get("state", "")
+
+    if not client_id or not redirect_uri or not code_challenge:
+        return jsonify({"error": "invalid_request", "error_description": "missing required parameters"}), 400
+    if code_challenge_method != "S256":
+        return jsonify({"error": "invalid_request", "error_description": "only S256 supported"}), 400
+    if redirect_uri not in AUTHLIB_ALLOWED_REDIRECT_URIS:
+        return jsonify({"error": "invalid_request", "error_description": "redirect_uri not allowed"}), 400
+
+    auth_request_id = secrets.token_urlsafe(32)
+    _AUTHLIB_PENDING[auth_request_id] = {
+        "client_id":             client_id,
+        "redirect_uri":          redirect_uri,
+        "code_challenge":        code_challenge,
+        "code_challenge_method": code_challenge_method,
+        "scope":                 scope,
+        "state":                 state,
+        "expires_at":            time.time() + AUTHLIB_AUTH_CODE_TTL,
+    }
+    from flask import make_response
+    html = _html_login_form('/authlib/oauth/authorize', auth_request_id)
+    return make_response(html, 200, {"Content-Type": "text/html; charset=utf-8"})
+
+
 @authlib_bp.route('/oauth/authorize', methods=['POST'])
 def authlib_authorize():
-    '''POST /authlib/oauth/authorize
+    '''POST /authlib/oauth/authorize -- RFC 6749 §4.1.2 authorization response.
 
-    Authorization code grant with mandatory PKCE (S256).
-    Authlib reads OAuth2 parameters from request.values (form + query string).
-    Resource-owner credentials (username/password) are also sent as form fields.
-    The view authenticates the user first, then calls Authlib to issue the code.
-
-    Returns JSON with the authorization code (not a redirect) for test/benchmark
-    clients that expect JSON.
+    Reads auth_request_id (from GET phase), username, and password from the
+    submitted form.  Authenticates the resource owner, generates an authorization
+    code directly (all OAuth2 params come from _AUTHLIB_PENDING, not from the
+    POST body), and returns a 302 redirect — identical pattern to the hand-rolled
+    PKCE and Simple flows.
     '''
-    # Resource-owner authentication from form fields
-    username = request.form.get("username", "").strip()
-    password = request.form.get("password", "")
-    pw_hash  = _AUTHLIB_PASSWORDS.get(username)
+    auth_request_id = request.form.get("auth_request_id", "").strip()
+    username        = request.form.get("username", "").strip()
+    password        = request.form.get("password", "")
 
+    pending = _AUTHLIB_PENDING.pop(auth_request_id, None)
+    if not pending or pending["expires_at"] < time.time():
+        return jsonify({"error": "invalid_request", "error_description": "authorization request not found or expired"}), 400
+
+    pw_hash = _AUTHLIB_PASSWORDS.get(username)
     if not pw_hash or not secrets.compare_digest(pw_hash, _hash_password(password)):
         return jsonify({
             "error":             "access_denied",
             "error_description": "invalid credentials",
         }), 401
 
-    # Hand control to Authlib -- grant_user is the authenticated subject.
-    # Resolve the grant explicitly to avoid the DeprecationWarning that fires
-    # when grant= is omitted (will become mandatory in Authlib v1.8).
-    oauth2_req = _authorization.create_oauth2_request(None)
-    grant      = _authorization.get_authorization_grant(oauth2_req)
-    resp       = _authorization.create_authorization_response(grant_user=username, grant=grant)
+    # Generate authorization code directly — all OAuth2 params are in pending,
+    # so the POST body only needs credentials (identical to PKCE/Simple flow).
+    code = secrets.token_urlsafe(48)
+    _AUTHLIB_AUTH_CODES[code] = _AuthCode(
+        code=code,
+        client_id=pending["client_id"],
+        redirect_uri=pending["redirect_uri"],
+        scope=pending["scope"],
+        code_challenge=pending["code_challenge"],
+        code_challenge_method=pending["code_challenge_method"],
+        subject=username,
+    )
 
-    # Authlib returns a 302 redirect with ?code=... in Location.
-    # Convert to JSON for test/benchmark clients that expect JSON.
-    if resp.status_code in (302, 303):
-        loc  = resp.headers.get("Location", "")
-        qs   = parse_qs(urlparse(loc).query)
-        code = qs.get("code", [None])[0]
-        if not code:
-            return jsonify({"error": "authorization_failed"}), 500
-        return jsonify({
-            "code":         code,
-            "redirect_uri": request.form.get("redirect_uri", AUTHLIB_REDIRECT_URI),
-            "expires_in":   AUTHLIB_AUTH_CODE_TTL,
-        }), 200
-
-    # Authlib may return 200 with a JSON body for response_mode=json
-    return resp
+    # RFC 6749 §4.1.2 — redirect back to client with authorization code.
+    params: dict[str, str] = {"code": code}
+    if pending.get("state"):
+        params["state"] = pending["state"]
+    location = pending["redirect_uri"] + "?" + urlencode(params)
+    return redirect(location, code=302)
 
 
 @authlib_bp.route('/oauth/token', methods=['POST'])

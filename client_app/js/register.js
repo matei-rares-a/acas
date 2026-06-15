@@ -60,5 +60,9 @@ async function register() {
     }
 }
 
-// tie enter-key
+// tie enter-key and button click
 handleEnterKey(register);
+document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('register-btn').addEventListener('click', register);
+    document.getElementById('clear-monitor-btn').addEventListener('click', clearNetworkMonitor);
+});

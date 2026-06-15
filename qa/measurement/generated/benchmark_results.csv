@@ -1,6 +1,9 @@
 operation,mean_ms,min_ms,max_ms,p95_ms,stdev_ms
-commitment_t = g^r mod p (ms),15.818117,14.4158,23.447,17.5516,1.172037
-ZKP solve s = (r + c*x) mod Q (ms),0.00947,0.009,0.0105,0.0101,0.000359
-ZKP verify math (ms),33.794442,32.1564,36.6018,35.5693,0.900509
-OAuth2 PKCE S256 challenge (ms),0.002006,0.0016,0.0263,0.0022,0.002466
-OAuth2 Simple hash check (ms),0.001268,0.0011,0.0087,0.0013,0.000756
+derive_x = SHAKE-256(pw+salt) mod Q (ms),0.002819,0.0024,0.0236,0.003,0.002109
+compute_y = g^x mod p (ms),15.473868,14.263,19.8497,17.2625,1.017269
+commitment_t = g^r mod p (ms),15.435981,14.1415,19.7701,18.8948,1.234806
+ZKP solve s = (r + c*x) mod Q (ms),0.00946,0.0089,0.0324,0.0096,0.002368
+ZKP verify math (ms),34.224843,31.5991,38.9314,36.798,1.452586
+"ZKP subgroup check pow(v,Q,P)==1 (ms)",18.820306,17.4419,24.5206,21.1142,1.127507
+OAuth2 PKCE S256 challenge (ms),0.003972,0.0025,0.0288,0.0096,0.003431
+OAuth2 Simple hash check (ms),0.002247,0.002,0.0096,0.003,0.000816

@@ -35,7 +35,7 @@
                             <input type="text" id="server-url" placeholder="http://localhost:5000" value="http://localhost:5000">
                         </div>
 
-                        <button class="btn btn-primary" id="login-btn" onclick="authenticate()">
+                        <button class="btn btn-primary" id="login-btn">
                             Login
                         </button>
 
@@ -51,11 +51,11 @@
                     </div>
                     -->
 
-                    <div id="auth-success" class="auth-success" style="display: none;">
+                    <div id="auth-success" class="auth-success">
                         <h2>Authentication Successful!</h2>
                         <p>You have been authenticated using zero-knowledge proof.</p>
                         <div class="token-display" id="token-display"></div>
-                        <button class="btn btn-primary" onclick="resetForm()">Login Again</button>
+                        <button class="btn btn-primary" id="reset-btn">Login Again</button>
                     </div>
                 </div>
             </div>
@@ -66,7 +66,7 @@
             <div class="network-monitor">
                 <div class="monitor-header">
                     <h2>Network Monitor</h2>
-                    <button class="monitor-btn" id="clear-monitor-btn" onclick="clearNetworkMonitor()">Clear</button>
+                    <button class="monitor-btn" id="clear-monitor-btn">Clear</button>
                 </div>
                 <div class="monitor-content" id="network-log">
                     <div class="log-item log-info">Monitor ready. Requests/responses will appear here.</div>

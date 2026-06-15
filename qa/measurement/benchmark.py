@@ -211,35 +211,26 @@ def run_throughput_sweep(
             rows.append({"users": burst, "method": "OAuth2 Simple", "rps": rps})
             print(f"    OAuth2 Simple: {simple_ok}/{burst} OK  {rps:.2f} RPS")
 
-            # -- Authlib PKCE: authorize (form) + token (form) ---------------------
+            # -- Authlib PKCE: GET authorize + POST authorize + token  (3 calls, RFC 6749 §4.1)
             t0 = time.perf_counter()
             authlib_ok = 0
             for _ in range(burst):
                 code_verifier = secrets_module.token_urlsafe(48)
                 challenge = pkce_challenge(code_verifier)
-                auth_resp = c.post(
-                    "/authlib/oauth/authorize",
-                    data={
-                        "response_type": "code",
-                        "client_id": AUTHLIB_CLIENT_ID,
-                        "redirect_uri": AUTHLIB_REDIRECT_URI,
-                        "username": client_id_base,
-                        "password": password,
-                        "scope": "openid profile",
-                        "code_challenge": challenge,
-                        "code_challenge_method": "S256",
-                    },
+                code, ok = _oauth_authorize(
+                    c, "authlib/oauth", AUTHLIB_CLIENT_ID, AUTHLIB_REDIRECT_URI,
+                    client_id_base, password,
+                    code_challenge=challenge, code_challenge_method="S256",
                 )
-                if auth_resp.status_code != 200:
-                    continue
-                c.post("/authlib/oauth/token", data={
-                    "grant_type": "authorization_code",
-                    "client_id": AUTHLIB_CLIENT_ID,
-                    "redirect_uri": AUTHLIB_REDIRECT_URI,
-                    "code": auth_resp.get_json()["code"],
-                    "code_verifier": code_verifier,
-                })
-                authlib_ok += 1
+                if ok and code:
+                    c.post("/authlib/oauth/token", data={
+                        "grant_type":    "authorization_code",
+                        "client_id":     AUTHLIB_CLIENT_ID,
+                        "redirect_uri":  AUTHLIB_REDIRECT_URI,
+                        "code":          code,
+                        "code_verifier": code_verifier,
+                    })
+                    authlib_ok += 1
             elapsed = time.perf_counter() - t0
             rps = round(authlib_ok / elapsed, 4) if elapsed > 0 else 0
             rows.append({"users": burst, "method": "Authlib PKCE", "rps": rps})
@@ -380,16 +371,25 @@ def _benchmark_latency(iterations=100):
 
     results = {}
 
-    # derive_times = [timeit.timeit(_derive, number=1) * 1000 for _ in range(iterations)]
-    # results["derive_password_x (ms)"] = {
-    #     "mean": statistics.mean(derive_times),
-    #     "min": min(derive_times),
-    #     "max": max(derive_times),
-    #     "p95": sorted(derive_times)[int(iterations * 0.95)],
-    #     "stdev": statistics.stdev(derive_times),
-    # }
+    derive_times = [timeit.timeit(_derive, number=1) * 1000 for _ in range(iterations)]
+    results["derive_x = SHAKE-256(pw+salt) mod Q (ms)"] = {
+        "mean":  statistics.mean(derive_times),
+        "min":   min(derive_times),
+        "max":   max(derive_times),
+        "p95":   sorted(derive_times)[int(iterations * 0.95)],
+        "stdev": statistics.stdev(derive_times),
+    }
 
     x = _derive()
+    compute_y_times = [timeit.timeit(lambda: pow(G, x, P), number=1) * 1000 for _ in range(iterations)]
+    results["compute_y = g^x mod p (ms)"] = {
+        "mean":  statistics.mean(compute_y_times),
+        "min":   min(compute_y_times),
+        "max":   max(compute_y_times),
+        "p95":   sorted(compute_y_times)[int(iterations * 0.95)],
+        "stdev": statistics.stdev(compute_y_times),
+    }
+
     y = pow(G, x, P)
     commit_times = [timeit.timeit(lambda: _commitment(x), number=1) * 1000 for _ in range(iterations)]
     results["commitment_t = g^r mod p (ms)"] = {
@@ -421,6 +421,20 @@ def _benchmark_latency(iterations=100):
         "max": max(verify_times),
         "p95": sorted(verify_times)[int(iterations * 0.95)],
         "stdev": statistics.stdev(verify_times),
+    }
+
+    # Subgroup membership check: pow(v, Q, P) == 1
+    # Called by server.is_subgroup_member() on every received commitment_t
+    # and public key Y — prevents Small Subgroup Attack.
+    # Exponent Q = (P-1)/2 is a ~2048-bit safe-prime order, so this is a
+    # full large-exponent modular exponentiation, same cost class as g^r mod P.
+    subgroup_times = [timeit.timeit(lambda: 1 < t < P and pow(t, Q, P) == 1, number=1) * 1000 for _ in range(iterations)]
+    results["ZKP subgroup check pow(v,Q,P)==1 (ms)"] = {
+        "mean":  statistics.mean(subgroup_times),
+        "min":   min(subgroup_times),
+        "max":   max(subgroup_times),
+        "p95":   sorted(subgroup_times)[int(iterations * 0.95)],
+        "stdev": statistics.stdev(subgroup_times),
     }
 
     oauth_pkce_times = [timeit.timeit(_oauth_pkce_hash, number=1) * 1000 for _ in range(iterations)]
@@ -546,27 +560,24 @@ def _benchmark_e2e_flows(iterations=100):
             "max": max(simple_times), "p95": sorted(simple_times)[int(len(simple_times) * 0.95)],
         }
 
-        # -- Authlib PKCE: authorize (form) + token (form) ---------------------
-        # Authlib reads OAuth2 params from request.values (form-encoded), not JSON.
+        # -- Authlib PKCE: GET authorize + POST authorize + token  (3 calls, RFC 6749 §4.1)
         authlib_times = []
         for _ in range(iterations):
             t0 = _time.perf_counter()
             code_verifier = secrets_module.token_urlsafe(48)
             challenge = pkce_challenge(code_verifier)
-            auth_resp = c.post(
-                "/authlib/oauth/authorize",
-                data={
-                    "response_type": "code", "client_id": AUTHLIB_CLIENT_ID,
-                    "redirect_uri": AUTHLIB_REDIRECT_URI, "username": client_id,
-                    "password": password, "scope": "openid profile",
-                    "code_challenge": challenge, "code_challenge_method": "S256",
-                },
+            code, ok = _oauth_authorize(
+                c, "authlib/oauth", AUTHLIB_CLIENT_ID, AUTHLIB_REDIRECT_URI,
+                client_id, password,
+                code_challenge=challenge, code_challenge_method="S256",
             )
-            if auth_resp.status_code != 200:
+            if not (ok and code):
                 continue
             c.post("/authlib/oauth/token", data={
-                "grant_type": "authorization_code", "client_id": AUTHLIB_CLIENT_ID,
-                "redirect_uri": AUTHLIB_REDIRECT_URI, "code": auth_resp.get_json()["code"],
+                "grant_type":    "authorization_code",
+                "client_id":     AUTHLIB_CLIENT_ID,
+                "redirect_uri":  AUTHLIB_REDIRECT_URI,
+                "code":          code,
                 "code_verifier": code_verifier,
             })
             authlib_times.append((_time.perf_counter() - t0) * 1000)

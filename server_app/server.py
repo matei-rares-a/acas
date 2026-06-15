@@ -61,6 +61,23 @@ _default_db_uri = f"sqlite:///{os.path.join(_db_path, 'auth.db')}"
 _db_uri = os.environ.get('ACAS_DB_URI', _default_db_uri)
 app.config['SQLALCHEMY_DATABASE_URI'] = _db_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# SQLite: busy timeout so concurrent writers retry instead of failing immediately.
+# app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+#     "connect_args": {"timeout": 30},   # seconds to wait on a locked DB
+# }
+
+
+# # Enable WAL journal mode for better concurrent write throughput under Locust load.
+# from sqlalchemy import event as _sa_event
+# from sqlalchemy.engine import Engine as _Engine
+# import sqlite3 as _sqlite3
+
+# @_sa_event.listens_for(_Engine, "connect")
+# def _set_sqlite_wal(dbapi_conn, _conn_record):
+#     if isinstance(dbapi_conn, _sqlite3.Connection):
+#         dbapi_conn.execute("PRAGMA journal_mode=WAL")
+#         dbapi_conn.execute("PRAGMA synchronous=NORMAL")
+        
 CORS(app, resources={r"/*": {"origins": "*"}})
 db.init_app(app)
 with app.app_context():
@@ -302,22 +319,18 @@ def registerAPI():
     secret = validate_int_field(data, 'secret_y')
     if not client_id or secret is None:
         return jsonify({'reason': 'missing parameters'}), 400
+    if User.query.filter_by(client_id=client_id).first():
+        return jsonify({'reason': 'already registered'}), 409
     if not is_subgroup_member(secret):
         return jsonify({'reason': 'invalid public value'}), 422
-    is_new = register_user_in_db(client_id, secret)
-    if not is_new:
-        return jsonify({'reason': 'already registered'}), 409
+    register_user_in_db(client_id, secret)
     return jsonify({'status': 'Registered'}), 201
 
 
-def register_user_in_db(client_id: str, secret_y: int) -> bool:
-    """Insert user credentials. Returns True if newly created, False if already exists."""
-    user = User.query.filter_by(client_id=client_id).first()
-    if user:
-        return False
+def register_user_in_db(client_id: str, secret_y: int) -> None:
+    """Insert user credentials. Caller must ensure user does not already exist."""
     db.session.add(User(client_id=client_id, secret_y=secret_y.to_bytes(256, 'big')))
     db.session.commit()
-    return True
 
 
 init_oauth(app, db, User, AuthToken, SECRET)
@@ -410,6 +423,7 @@ def verifyAPI():
         return jsonify({'reason': 'user not found'}), 404
 
     y, t, c = int.from_bytes(user.secret_y, 'big'), sess['t'], sess['c']
+    # left == right
     if pow(G, s, P) == (t * pow(y, c, P)) % P:
         token_str = _issue_jwt(client_id)
         _save_token(user.id, token_str)

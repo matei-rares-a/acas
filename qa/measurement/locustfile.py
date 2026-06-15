@@ -47,7 +47,7 @@ _PORT_AUTHLIB = 5003
 
 class ZKPUser(HttpUser):
     host = f"http://127.0.0.1:{_PORT_ZKP}"
-    wait_time = between(0.5, 1.5)
+    
 
     def on_start(self):
         self._client_id = f"locust_{secrets_module.token_hex(8)}"
@@ -102,7 +102,7 @@ class ZKPUser(HttpUser):
 
 class OAuthPKCEUser(HttpUser):
     host = f"http://127.0.0.1:{_PORT_PKCE}"
-    wait_time = between(0.5, 1.5)
+    
 
     def on_start(self):
         self._client_id = f"locust_{secrets_module.token_hex(8)}"
@@ -196,7 +196,7 @@ class OAuthPKCEUser(HttpUser):
 
 class OAuthSimpleUser(HttpUser):
     host = f"http://127.0.0.1:{_PORT_SIMPLE}"
-    wait_time = between(0.5, 1.5)
+    
 
     def on_start(self):
         self._client_id = f"locust_{secrets_module.token_hex(8)}"
@@ -285,7 +285,7 @@ class OAuthSimpleUser(HttpUser):
 
 class AuthlibUser(HttpUser):
     host = f"http://127.0.0.1:{_PORT_AUTHLIB}"
-    wait_time = between(0.5, 1.5)
+    
 
     def on_start(self):
         self._client_id = f"locust_{secrets_module.token_hex(8)}"
@@ -299,44 +299,68 @@ class AuthlibUser(HttpUser):
         start         = _time.perf_counter()
         code_verifier = secrets_module.token_urlsafe(48)
         challenge     = pkce_challenge(code_verifier)
-        authorize = self.client.post(
+
+        # 1) GET authorize — validate params, receive HTML form with auth_request_id
+        get_resp = self.client.get(
             "/authlib/oauth/authorize",
-            data={
+            params={
                 "response_type":         "code",
                 "client_id":             AUTHLIB_CLIENT_ID,
                 "redirect_uri":          AUTHLIB_REDIRECT_URI,
-                "username":              self._client_id,
-                "password":              self._password,
                 "scope":                 "openid profile",
                 "code_challenge":        challenge,
                 "code_challenge_method": "S256",
             },
-            name="/authlib/oauth/authorize",
+            name="GET /authlib/oauth/authorize",
+            allow_redirects=False,
         )
-        if authorize.status_code != 200:
+        if get_resp.status_code != 200:
             self.environment.events.request.fire(
                 request_type="AUTHLIB", name="full_authlib_pkce_login",
                 response_time=(_time.perf_counter() - start) * 1000,
                 response_length=0,
-                exception=RuntimeError(f"authorize failed: {authorize.status_code}"),
+                exception=RuntimeError(f"GET authorize failed: {get_resp.status_code}"),
                 context={},
             )
             return
-        code = authorize.json().get("code")
-        if not code:
+        m = _re.search(r'name="auth_request_id"\s+value="([^"]+)"', get_resp.text)
+        auth_req_id = m.group(1) if m else ""
+
+        # 2) POST authorize — submit only credentials (OAuth2 params are in pending store)
+        authorize = self.client.post(
+            "/authlib/oauth/authorize",
+            data={"auth_request_id": auth_req_id,
+                  "username": self._client_id,
+                  "password": self._password},
+            name="/authlib/oauth/authorize",
+            allow_redirects=False,
+        )
+        if authorize.status_code != 302:
             self.environment.events.request.fire(
                 request_type="AUTHLIB", name="full_authlib_pkce_login",
                 response_time=(_time.perf_counter() - start) * 1000,
                 response_length=0,
-                exception=RuntimeError("no code in response"),
+                exception=RuntimeError(f"POST authorize failed: {authorize.status_code}"),
                 context={},
             )
             return
+        loc   = authorize.headers.get("Location", "")
+        codes = _parse_qs(_urlparse(loc).query).get("code")
+        if not codes:
+            self.environment.events.request.fire(
+                request_type="AUTHLIB", name="full_authlib_pkce_login",
+                response_time=(_time.perf_counter() - start) * 1000,
+                response_length=0,
+                exception=RuntimeError("no code in redirect"), context={},
+            )
+            return
+
+        # 3) POST token — exchange code for access token
         token_resp = self.client.post(
             "/authlib/oauth/token",
             data={
                 "grant_type":    "authorization_code",
-                "code":          code,
+                "code":          codes[0],
                 "client_id":     AUTHLIB_CLIENT_ID,
                 "redirect_uri":  AUTHLIB_REDIRECT_URI,
                 "code_verifier": code_verifier,

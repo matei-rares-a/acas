@@ -1,23 +1,25 @@
 """
-Top-3 PAKE comparison: SRP-6a vs SPAKE2 vs Schnorr-EC-Mutual.
+Top-6 PAKE comparison: SRP-6a | SPAKE2 | Schnorr-EC-Mutual | Schnorr-EC-Lib | Schnorr-PoW | Schnorr-NIZKP.
 
-All three protocols offer mutual authentication and a session key,
+All six protocols offer mutual authentication and a session credential,
 making this a fair apples-to-apples benchmark.
 
 Protocols
-  SRP-6a           : RFC 5054 2048-bit group, SHA-256 KDF (srp library, pure Python).
-  SPAKE2           : Ed25519 / M255 group (spake2 library, pure Python).
-  Schnorr-EC-Mutual: secp256r1 + dual Schnorr proofs + ECDH session key (pure Python wNAF).
+  SRP-6a               : RFC 5054 2048-bit group, SHA-256 KDF (srp library).
+  SPAKE2               : Ed25519 / M255 group (spake2 library).
+  Schnorr-EC-Mutual    : secp256r1, dual interactive Schnorr proofs + JWT (pure Python wNAF).
+  Schnorr-EC-Lib-Mutual: secp256r1, dual interactive Schnorr proofs + JWT (OpenSSL C-backed).
+  Schnorr-PoW-Mutual   : RFC 3526 Group 14 2048-bit MODP, same math as server + JWT.
+  Schnorr-NIZKP-Mutual : secp256r1, dual non-interactive Schnorr (Fiat-Shamir / zksk-style) + JWT.
 
-All three
+All six
   - Never transmit the password
   - Provide mutual authentication (both sides are verified)
-  - Derive a shared session key
-  - Are pure-Python (no C extensions)
+  - Issue a session JWT after successful authentication
 
 Run:
-    python qa/measurement/pake_top3_compare.py
-    python qa/measurement/pake_top3_compare.py 200
+    python qa/measurement/pake_top_compare.py
+    python qa/measurement/pake_top_compare.py 200
 """
 
 import hashlib
@@ -25,7 +27,10 @@ import secrets
 import statistics
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import jwt as _jwt
 
 import srp
 from spake2 import SPAKE2_A, SPAKE2_B
@@ -33,6 +38,7 @@ from cryptography.hazmat.primitives.asymmetric.ec import (
     SECP256R1 as _SECP256R1,
     derive_private_key as _ec_derive_private_key,
     ECDH as _ECDH,
+    EllipticCurvePublicNumbers as _ECPublicNumbers,
 )
 
 _QA_PATH = Path(__file__).resolve().parents[1]
@@ -42,6 +48,9 @@ for _p in (_QA_PATH, _MEASUREMENT_PATH):
         sys.path.insert(0, str(_p))
 
 from ec_compare import (     # noqa: E402
+    EC_P as _EC_P,
+    EC_A as _EC_A,
+    EC_B as _EC_B,
     EC_ORDER as _EC_ORDER,
     EC_GENERATOR as _EC_GENERATOR,
     _scalar_mult as _ec_scalar_mult,
@@ -54,6 +63,59 @@ _GENERATED = Path(__file__).resolve().parent / "generated"
 _GENERATED.mkdir(exist_ok=True)
 
 _FIXED_SALT = b'pake_top3_compare_salt_2026'
+_JWT_SECRET = 'dev-only-server-secret-at-least-32-bytes-long'
+
+
+def _jwt_sign(client_id: str) -> str:
+    """Server issues HS256 JWT (mirrors server._issue_jwt)."""
+    now = datetime.now(timezone.utc)
+    return _jwt.encode(
+        {'client_id': client_id, 'iat': now, 'exp': now + timedelta(seconds=3600)},
+        _JWT_SECRET, algorithm='HS256',
+    )
+
+
+def _jwt_verify(token: str) -> dict:
+    """Client verifies JWT signature and returns payload."""
+    return _jwt.decode(token, _JWT_SECRET, algorithms=['HS256'])
+
+# ---------------------------------------------------------------------------
+# Schnorr-PoW group parameters — same RFC 3526 Group 14 (2048-bit) as the server
+# ---------------------------------------------------------------------------
+_POW_P = int(
+    'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1'
+    '29024E088A67CC74020BBEA63B139B22514A08798E3404DD'
+    'EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245'
+    'E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED'
+    'EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3D'
+    'C2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F'
+    '83655D23DCA3AD961C62F356208552BB9ED529077096966D'
+    '670C354E4ABC9804F1746C08CA18217C32905E462E36CE3B'
+    'E39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9'
+    'DE2BCBF6955817183995497CEA956AE515D2261898FA0510'
+    '15728E5A8AACAA68FFFFFFFFFFFFFFFF',
+    16,
+)
+_POW_Q = (_POW_P - 1) // 2
+_POW_G = 4
+
+def _pow_subgroup_member(v: int) -> bool:
+    """True iff v is a non-trivial element of the Schnorr subgroup of order Q.
+    Mirrors server.is_subgroup_member() — prevents Small Subgroup Attack."""
+    return 1 < v < _POW_P and pow(v, _POW_Q, _POW_P) == 1
+
+
+def _ec_point_on_curve(pt: tuple) -> bool:
+    """True iff pt satisfies secp256r1: y² ≡ x³ + ax + b (mod p).
+    For a prime-order curve (cofactor=1) this is sufficient — prevents
+    Invalid Curve Attack. No n*P==O check needed."""
+    x, y = pt
+    return (y * y - x * x * x - _EC_A * x - _EC_B) % _EC_P == 0
+
+
+_POW_SERVER_SK = int.from_bytes(
+    hashlib.sha256(b'schnorr_pow_server_key_2026').digest(), 'big') % _POW_Q or 1
+_POW_SERVER_Y  = pow(_POW_G, _POW_SERVER_SK, _POW_P)
 
 # Pre-computed server keypair for Schnorr-EC-Mutual (deterministic, reproducible)
 _EC_SERVER_SK = int.from_bytes(
@@ -264,15 +326,79 @@ def run_spake2(password: str, iterations: int) -> dict:
     return {k: _summarize(f'SPAKE2  {k}', v) for k, v in stats.items()}
 
 
+
 # ---------------------------------------------------------------------------
-# 3. Schnorr-EC-Mutual  (secp256r1, dual Schnorr proofs + ECDH session key)
+# 3. Schnorr-PoW-Mutual  (RFC 3526 Group 14 2048-bit MODP, same math as the server)
+#
+# Stage breakdown (mirrors the actual server protocol):
+#   derive_x      : SHAKE-256(password + salt) → private scalar x mod Q
+#   compute_y     : Y_c = G^x mod P  (client public key, stored at registration)
+#   mutual_proofs : both sides pick r, compute T=G^r mod P, share Fiat-Shamir
+#                   challenge c, compute s=r+c*sk mod Q, verify G^s == T*Y^c mod P
+#   jwt_token     : server signs HS256 JWT, client verifies (mirrors actual server protocol)
+# ---------------------------------------------------------------------------
+def run_schnorr_pow_mutual(password: str, iterations: int) -> dict:
+    stats: dict[str, list[float]] = {
+        k: [] for k in ('derive_x', 'compute_y', 'mutual_proofs', 'jwt_token', 'total')
+    }
+    for _ in range(iterations):
+        # KDF: SHAKE-256 → private scalar x  (same derivation as in the server protocol)
+        t0 = time.perf_counter()
+        hashed = hashlib.shake_256(password.encode() + _FIXED_SALT).digest(256)
+        x = int.from_bytes(hashed, 'big') % _POW_Q or 1
+        stats['derive_x'].append((time.perf_counter() - t0) * 1000)
+
+        # Registration: Y_c = G^x mod P
+        t0 = time.perf_counter()
+        Y_c = pow(_POW_G, x, _POW_P)
+        stats['compute_y'].append((time.perf_counter() - t0) * 1000)
+
+        # Mutual Schnorr proofs: client proves x, server proves _POW_SERVER_SK
+        t0 = time.perf_counter()
+        r_c = secrets.randbelow(_POW_Q - 1) + 1
+        T_c = pow(_POW_G, r_c, _POW_P)
+        r_s = secrets.randbelow(_POW_Q - 1) + 1
+        T_s = pow(_POW_G, r_s, _POW_P)
+        # Interactive Schnorr: server picks c randomly
+        c = secrets.randbelow(_POW_Q - 1) + 1
+        s_c = (r_c + c * x) % _POW_Q
+        s_s = (r_s + c * _POW_SERVER_SK) % _POW_Q
+        # Subgroup check on received commitments (mirrors server.is_subgroup_member)
+        # Server checks T_c; client checks T_s — prevents Small Subgroup Attack
+        if not _pow_subgroup_member(T_s):
+            raise RuntimeError('Schnorr-PoW-Mutual: T_s not in subgroup')
+        if not _pow_subgroup_member(T_c):
+            raise RuntimeError('Schnorr-PoW-Mutual: T_c not in subgroup')
+        # Verify: G^s == T * Y^c  mod P
+        if pow(_POW_G, s_c, _POW_P) != (T_c * pow(Y_c, c, _POW_P)) % _POW_P:
+            raise RuntimeError('Schnorr-PoW-Mutual: client proof failed')
+        if pow(_POW_G, s_s, _POW_P) != (T_s * pow(_POW_SERVER_Y, c, _POW_P)) % _POW_P:
+            raise RuntimeError('Schnorr-PoW-Mutual: server proof failed')
+        stats['mutual_proofs'].append((time.perf_counter() - t0) * 1000)
+
+        # JWT: server signs token, client verifies (mirrors actual server protocol)
+        t0 = time.perf_counter()
+        token = _jwt_sign('alice')
+        _jwt_verify(token)
+        stats['jwt_token'].append((time.perf_counter() - t0) * 1000)
+
+        stats['total'].append(
+            stats['derive_x'][-1] + stats['compute_y'][-1] +
+            stats['mutual_proofs'][-1] + stats['jwt_token'][-1]
+        )
+    return {k: _summarize(f'Schnorr-PoW  {k}', v) for k, v in stats.items()}
+
+
+
+# ---------------------------------------------------------------------------
+# 4. Schnorr-EC-Mutual  (secp256r1, dual Schnorr proofs + ECDH session key)
 #
 # Stage breakdown:
 #   derive_x      : SHAKE-256(password + salt) → private scalar x
 #   compute_y     : Y_c = x·G  (client public key, stored server-side at registration)
 #   mutual_proofs : both sides pick nonces, compute commits, derive Fiat-Shamir
 #                   challenge, exchange responses, verify each other's proof
-#   session_key   : ECDH — x·Y_server == sk_server·Y_client → HKDF → K
+#   jwt_token     : server signs HS256 JWT, client verifies (mirrors actual server protocol)
 # ---------------------------------------------------------------------------
 def _derive_x(password: str) -> int:
     hashed = hashlib.shake_256(password.encode() + _FIXED_SALT).digest(256)
@@ -281,7 +407,7 @@ def _derive_x(password: str) -> int:
 
 def run_schnorr_ec_mutual(password: str, iterations: int) -> dict:
     stats: dict[str, list[float]] = {
-        k: [] for k in ('derive_x', 'compute_y', 'mutual_proofs', 'session_key', 'total')
+        k: [] for k in ('derive_x', 'compute_y', 'mutual_proofs', 'jwt_token', 'total')
     }
     for _ in range(iterations):
         # KDF: SHAKE-256 → client private scalar x
@@ -300,37 +426,39 @@ def run_schnorr_ec_mutual(password: str, iterations: int) -> dict:
         T_c = _ec_scalar_mult(r_c, _EC_GENERATOR)
         r_s = secrets.randbelow(_EC_ORDER - 1) + 1
         T_s = _ec_scalar_mult(r_s, _EC_GENERATOR)
-        c_bytes = hashlib.sha256(
-            T_c[0].to_bytes(32, 'big') + T_c[1].to_bytes(32, 'big') +
-            T_s[0].to_bytes(32, 'big') + T_s[1].to_bytes(32, 'big')
-        ).digest()
-        c = int.from_bytes(c_bytes, 'big') % _EC_ORDER or 1
+        # Interactive Schnorr: server picks c randomly (not Fiat-Shamir)
+        c = secrets.randbelow(_EC_ORDER - 1) + 1
         s_c = (r_c + c * x) % _EC_ORDER
         s_s = (r_s + c * _EC_SERVER_SK) % _EC_ORDER
+        # Curve check on received commitments — prevents Invalid Curve Attack
+        # Server checks T_c; client checks T_s
+        if not _ec_point_on_curve(T_s):
+            raise RuntimeError('Schnorr-EC-Mutual: T_s not on curve')
+        if not _ec_point_on_curve(T_c):
+            raise RuntimeError('Schnorr-EC-Mutual: T_c not on curve')
         if _ec_scalar_mult(s_c, _EC_GENERATOR) != _ec_point_add(T_c, _ec_scalar_mult(c, Y_c)):
             raise RuntimeError('Schnorr-EC-Mutual: client proof failed')
         if _ec_scalar_mult(s_s, _EC_GENERATOR) != _ec_point_add(T_s, _ec_scalar_mult(c, _EC_SERVER_Y)):
             raise RuntimeError('Schnorr-EC-Mutual: server proof failed')
         stats['mutual_proofs'].append((time.perf_counter() - t0) * 1000)
 
-        # Session key: ECDH  x·Y_server (client) == sk_server·Y_c (server)
+        # JWT: server signs token, client verifies (mirrors actual server protocol)
         t0 = time.perf_counter()
-        K_c = _ec_scalar_mult(x, _EC_SERVER_Y)
-        K_s = _ec_scalar_mult(_EC_SERVER_SK, Y_c)
-        if K_c != K_s:
-            raise RuntimeError('Schnorr-EC-Mutual: session key mismatch')
-        _ = hashlib.sha256(K_c[0].to_bytes(32, 'big')).digest()  # HKDF step
-        stats['session_key'].append((time.perf_counter() - t0) * 1000)
+        token = _jwt_sign('alice')
+        _jwt_verify(token)
+        stats['jwt_token'].append((time.perf_counter() - t0) * 1000)
 
         stats['total'].append(
             stats['derive_x'][-1] + stats['compute_y'][-1] +
-            stats['mutual_proofs'][-1] + stats['session_key'][-1]
+            stats['mutual_proofs'][-1] + stats['jwt_token'][-1]
         )
-    return {k: _summarize(f'Schnorr  {k}', v) for k, v in stats.items()}
+    return {k: _summarize(f'Schnorr-EC-Mutual  {k}', v) for k, v in stats.items()}
+
+
 
 
 # ---------------------------------------------------------------------------
-# 4. Schnorr-EC-Lib-Mutual  (secp256r1, C-backed via cryptography, dual proofs + ECDH)
+# 5. Schnorr-EC-Lib-Mutual  (secp256r1, C-backed via cryptography, dual proofs + ECDH)
 #
 # Identical protocol to Schnorr-EC-Mutual but all k*G operations use
 # cryptography (OpenSSL) instead of pure Python wNAF:
@@ -340,7 +468,7 @@ def run_schnorr_ec_mutual(password: str, iterations: int) -> dict:
 # ---------------------------------------------------------------------------
 def run_schnorr_ec_lib_mutual(password: str, iterations: int) -> dict:
     stats: dict[str, list[float]] = {
-        k: [] for k in ('derive_x', 'compute_y', 'mutual_proofs', 'session_key', 'total')
+        k: [] for k in ('derive_x', 'compute_y', 'mutual_proofs', 'jwt_token', 'total')
     }
     for _ in range(iterations):
         # KDF: SHAKE-256 → client private scalar x
@@ -365,13 +493,18 @@ def run_schnorr_ec_lib_mutual(password: str, iterations: int) -> dict:
         T_s_nums = _ec_derive_private_key(r_s, _SECP256R1_CURVE).public_key().public_numbers()
         T_s = (T_s_nums.x, T_s_nums.y)
 
-        c_bytes = hashlib.sha256(
-            T_c[0].to_bytes(32, 'big') + T_c[1].to_bytes(32, 'big') +
-            T_s[0].to_bytes(32, 'big') + T_s[1].to_bytes(32, 'big')
-        ).digest()
-        c = int.from_bytes(c_bytes, 'big') % _EC_ORDER or 1
+        # Interactive Schnorr: server picks c randomly (not Fiat-Shamir)
+        c = secrets.randbelow(_EC_ORDER - 1) + 1
         s_c = (r_c + c * x) % _EC_ORDER
         s_s = (r_s + c * _EC_SERVER_SK) % _EC_ORDER
+
+        # Curve check via cryptography (OpenSSL) — raises ValueError if not on curve
+        # Server checks T_c; client checks T_s — prevents Invalid Curve Attack
+        try:
+            _ECPublicNumbers(T_c[0], T_c[1], _SECP256R1_CURVE).public_key()
+            _ECPublicNumbers(T_s[0], T_s[1], _SECP256R1_CURVE).public_key()
+        except Exception as exc:
+            raise RuntimeError(f'EC-lib-Mutual: commitment not on curve: {exc}') from exc
 
         # s_c*G — C-backed; T_c + c*Y_c — pure Python (arbitrary point)
         sG_c = _ec_derive_private_key(s_c % _EC_ORDER or 1, _SECP256R1_CURVE).public_key().public_numbers()
@@ -388,17 +521,104 @@ def run_schnorr_ec_lib_mutual(password: str, iterations: int) -> dict:
             raise RuntimeError('EC-lib-Mutual: server proof failed')
         stats['mutual_proofs'].append((time.perf_counter() - t0) * 1000)
 
-        # ECDH session key: x.exchange(ECDH, Y_server) — fully C-backed
+        # JWT: server signs token, client verifies (mirrors actual server protocol)
         t0 = time.perf_counter()
-        shared = x_key.exchange(_ECDH(), _EC_SERVER_PUB_KEY)
-        _ = hashlib.sha256(shared).digest()   # HKDF step
-        stats['session_key'].append((time.perf_counter() - t0) * 1000)
+        token = _jwt_sign('alice')
+        _jwt_verify(token)
+        stats['jwt_token'].append((time.perf_counter() - t0) * 1000)
 
         stats['total'].append(
             stats['derive_x'][-1] + stats['compute_y'][-1] +
-            stats['mutual_proofs'][-1] + stats['session_key'][-1]
+            stats['mutual_proofs'][-1] + stats['jwt_token'][-1]
         )
-    return {k: _summarize(f'Schnorr-C  {k}', v) for k, v in stats.items()}
+    return {k: _summarize(f'Schnorr-EC-Lib-Mutual  {k}', v) for k, v in stats.items()}
+
+
+# ---------------------------------------------------------------------------
+# 6. Schnorr-NIZKP-Mutual  (secp256r1, non-interactive Fiat-Shamir, zksk-style, C-backed)
+#
+# Non-interactive variant of Schnorr-EC-Lib-Mutual.  The challenge is NOT
+# sent by the server — both sides derive it deterministically from the
+# commitments via SHA-256 (Fiat-Shamir transform), as zksk/petlib would do.
+# This collapses 2 round-trips to 1 and makes the proof standalone (NIZK).
+#
+# Stage breakdown:
+#   derive_x    : SHAKE-256(password + salt) → private scalar x
+#   compute_y   : Y_c = x·G  (OpenSSL C-backed)
+#   nizkp_proof : dual non-interactive Schnorr proofs  [Fiat-Shamir, C-backed r*G, s*G]
+#   jwt_token   : server signs HS256 JWT, client verifies
+# ---------------------------------------------------------------------------
+def run_schnorr_nizkp_mutual(password: str, iterations: int) -> dict:
+    stats: dict[str, list[float]] = {
+        k: [] for k in ('derive_x', 'compute_y', 'nizkp_proof', 'jwt_token', 'total')
+    }
+    for _ in range(iterations):
+        # KDF: SHAKE-256 → client private scalar x
+        t0 = time.perf_counter()
+        x = _derive_x(password)
+        stats['derive_x'].append((time.perf_counter() - t0) * 1000)
+
+        # x*G — C-backed via OpenSSL
+        t0 = time.perf_counter()
+        x_key = _ec_derive_private_key(x, _SECP256R1_CURVE)
+        Y_nums = x_key.public_key().public_numbers()
+        Y_c = (Y_nums.x, Y_nums.y)
+        stats['compute_y'].append((time.perf_counter() - t0) * 1000)
+
+        # Non-interactive dual Schnorr proofs (Fiat-Shamir transform)
+        t0 = time.perf_counter()
+        r_c = secrets.randbelow(_EC_ORDER - 1) + 1
+        T_c_nums = _ec_derive_private_key(r_c, _SECP256R1_CURVE).public_key().public_numbers()
+        T_c = (T_c_nums.x, T_c_nums.y)
+
+        r_s = secrets.randbelow(_EC_ORDER - 1) + 1
+        T_s_nums = _ec_derive_private_key(r_s, _SECP256R1_CURVE).public_key().public_numbers()
+        T_s = (T_s_nums.x, T_s_nums.y)
+
+        # Fiat-Shamir challenge: c = SHA-256(T_c || Y_c || T_s || Y_s || context)
+        # No server round-trip — challenge derived deterministically from public values
+        h = hashlib.sha256()
+        for coord in (T_c[0], T_c[1], Y_c[0], Y_c[1],
+                      T_s[0], T_s[1], _EC_SERVER_Y_LIB[0], _EC_SERVER_Y_LIB[1]):
+            h.update(coord.to_bytes(32, 'big'))
+        h.update(b'schnorr-nizkp-auth')
+        c = int.from_bytes(h.digest(), 'big') % _EC_ORDER or 1
+
+        s_c = (r_c + c * x) % _EC_ORDER
+        s_s = (r_s + c * _EC_SERVER_SK) % _EC_ORDER
+
+        # Curve check via OpenSSL — prevents Invalid Curve Attack
+        try:
+            _ECPublicNumbers(T_c[0], T_c[1], _SECP256R1_CURVE).public_key()
+            _ECPublicNumbers(T_s[0], T_s[1], _SECP256R1_CURVE).public_key()
+        except Exception as exc:
+            raise RuntimeError(f'NIZKP: commitment not on curve: {exc}') from exc
+
+        # Verify: s*G == T + c*Y  (s*G — C-backed; c*Y — pure Python wNAF)
+        sG_c = _ec_derive_private_key(s_c % _EC_ORDER or 1, _SECP256R1_CURVE).public_key().public_numbers()
+        lhs_c = (sG_c.x, sG_c.y)
+        rhs_c = _ec_point_add(T_c, _ec_scalar_mult(c, Y_c))
+        if lhs_c != rhs_c:
+            raise RuntimeError('NIZKP: client proof failed')
+
+        sG_s = _ec_derive_private_key(s_s % _EC_ORDER or 1, _SECP256R1_CURVE).public_key().public_numbers()
+        lhs_s = (sG_s.x, sG_s.y)
+        rhs_s = _ec_point_add(T_s, _ec_scalar_mult(c, _EC_SERVER_Y_LIB))
+        if lhs_s != rhs_s:
+            raise RuntimeError('NIZKP: server proof failed')
+        stats['nizkp_proof'].append((time.perf_counter() - t0) * 1000)
+
+        # JWT: server signs token, client verifies
+        t0 = time.perf_counter()
+        token = _jwt_sign('alice')
+        _jwt_verify(token)
+        stats['jwt_token'].append((time.perf_counter() - t0) * 1000)
+
+        stats['total'].append(
+            stats['derive_x'][-1] + stats['compute_y'][-1] +
+            stats['nizkp_proof'][-1] + stats['jwt_token'][-1]
+        )
+    return {k: _summarize(f'Schnorr-NIZKP  {k}', v) for k, v in stats.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -411,14 +631,16 @@ def _write_results(
     spake2_res: dict,
     ec_mut_res: dict,
     ec_lib_mut_res: dict,
+    pow_mut_res: dict,
+    nizkp_res: dict,
 ) -> None:
     lines: list[str] = []
 
     W = 90
     lines.append('┌' + '─' * (W - 2) + '┐')
-    title = f'  Top-4 PAKE Benchmark  —  {iterations} iterations'
+    title = f'  Top-6 PAKE Benchmark  —  {iterations} iterations'
     lines.append('│' + title.ljust(W - 2) + '│')
-    lines.append('│' + '  SRP-6a  |  SPAKE2  |  Schnorr-EC-Mutual  |  Schnorr-EC-Lib (C-backed)'.ljust(W - 2) + '│')
+    lines.append('│' + '  SRP-6a  |  SPAKE2  |  Schnorr-EC-Mutual  |  Schnorr-EC-Lib  |  Schnorr-PoW  |  Schnorr-NIZKP'.ljust(W - 2) + '│')
     lines.append('└' + '─' * (W - 2) + '┘')
     lines.append('')
 
@@ -434,13 +656,23 @@ def _write_results(
     )
     lines.append('')
     lines += _build_timing_table(
-        'Schnorr-EC-Mutual  [secp256r1, SHAKE-256 KDF, dual proofs + ECDH]',
-        _timing_rows(ec_mut_res, ['derive_x', 'compute_y', 'mutual_proofs', 'session_key', 'total']),
+        'Schnorr-EC-Mutual  [secp256r1, SHAKE-256 KDF, dual proofs + JWT]',
+        _timing_rows(ec_mut_res, ['derive_x', 'compute_y', 'mutual_proofs', 'jwt_token', 'total']),
     )
     lines.append('')
     lines += _build_timing_table(
-        'Schnorr-EC-Lib-Mutual  [secp256r1, C-backed (OpenSSL), dual proofs + ECDH]',
-        _timing_rows(ec_lib_mut_res, ['derive_x', 'compute_y', 'mutual_proofs', 'session_key', 'total']),
+        'Schnorr-EC-Lib-Mutual  [secp256r1, C-backed (OpenSSL), dual proofs + JWT]',
+        _timing_rows(ec_lib_mut_res, ['derive_x', 'compute_y', 'mutual_proofs', 'jwt_token', 'total']),
+    )
+    lines.append('')
+    lines += _build_timing_table(
+        'Schnorr-PoW-Mutual  [RFC 3526 Group 14 2048-bit MODP, same math as server protocol + JWT]',
+        _timing_rows(pow_mut_res, ['derive_x', 'compute_y', 'mutual_proofs', 'jwt_token', 'total']),
+    )
+    lines.append('')
+    lines += _build_timing_table(
+        'Schnorr-NIZKP-Mutual  [secp256r1, Fiat-Shamir non-interactive (zksk-style), OpenSSL + JWT]',
+        _timing_rows(nizkp_res, ['derive_x', 'compute_y', 'nizkp_proof', 'jwt_token', 'total']),
     )
     lines.append('')
 
@@ -453,19 +685,29 @@ def _write_results(
                  + spake2_res['finish_wall']['mean_ms'] + spake2_res['confirm']['mean_ms'])
     ec_reg     = ec_mut_res['derive_x']['mean_ms'] + ec_mut_res['compute_y']['mean_ms']
     ec_auth    = (ec_mut_res['derive_x']['mean_ms'] + ec_mut_res['mutual_proofs']['mean_ms']
-                  + ec_mut_res['session_key']['mean_ms'])
+                  + ec_mut_res['jwt_token']['mean_ms'])
     ec_total   = ec_mut_res['total']['mean_ms']
     ecl_reg    = ec_lib_mut_res['derive_x']['mean_ms'] + ec_lib_mut_res['compute_y']['mean_ms']
     ecl_auth   = (ec_lib_mut_res['derive_x']['mean_ms'] + ec_lib_mut_res['mutual_proofs']['mean_ms']
-                  + ec_lib_mut_res['session_key']['mean_ms'])
+                  + ec_lib_mut_res['jwt_token']['mean_ms'])
     ecl_total  = ec_lib_mut_res['total']['mean_ms']
-    fastest    = min(srp_auth, sp_auth, ec_auth, ecl_auth)
+    pow_reg    = pow_mut_res['derive_x']['mean_ms'] + pow_mut_res['compute_y']['mean_ms']
+    pow_auth   = (pow_mut_res['derive_x']['mean_ms'] + pow_mut_res['mutual_proofs']['mean_ms']
+                  + pow_mut_res['jwt_token']['mean_ms'])
+    pow_total  = pow_mut_res['total']['mean_ms']
+    nizkp_reg   = nizkp_res['derive_x']['mean_ms'] + nizkp_res['compute_y']['mean_ms']
+    nizkp_auth  = (nizkp_res['derive_x']['mean_ms'] + nizkp_res['nizkp_proof']['mean_ms']
+                   + nizkp_res['jwt_token']['mean_ms'])
+    nizkp_total = nizkp_res['total']['mean_ms']
+    fastest    = min(srp_auth, sp_auth, ec_auth, ecl_auth, pow_auth, nizkp_auth)
 
     sum_rows = [
-        ('SRP-6a',               f'{srp_reg:.3f} ms',  f'{srp_auth:.3f} ms',  f'{srp_total:.3f} ms',  f'{srp_auth/fastest:.2f}x'),
-        ('SPAKE2',               'N/A',                 f'{sp_auth:.3f} ms',   f'{sp_total:.3f} ms',   f'{sp_auth/fastest:.2f}x'),
-        ('Schnorr-EC-Mutual',    f'{ec_reg:.3f} ms',    f'{ec_auth:.3f} ms',   f'{ec_total:.3f} ms',   f'{ec_auth/fastest:.2f}x'),
-        ('Schnorr-EC-Lib-Mutual', f'{ecl_reg:.3f} ms',  f'{ecl_auth:.3f} ms',  f'{ecl_total:.3f} ms',  f'{ecl_auth/fastest:.2f}x'),
+        ('SRP-6a',                 f'{srp_reg:.3f} ms',   f'{srp_auth:.3f} ms',   f'{srp_total:.3f} ms',   f'{srp_auth/fastest:.2f}x'),
+        ('SPAKE2',                 'N/A',                  f'{sp_auth:.3f} ms',    f'{sp_total:.3f} ms',    f'{sp_auth/fastest:.2f}x'),
+        ('Schnorr-EC-Mutual',      f'{ec_reg:.3f} ms',     f'{ec_auth:.3f} ms',    f'{ec_total:.3f} ms',    f'{ec_auth/fastest:.2f}x'),
+        ('Schnorr-EC-Lib-Mutual',  f'{ecl_reg:.3f} ms',    f'{ecl_auth:.3f} ms',   f'{ecl_total:.3f} ms',   f'{ecl_auth/fastest:.2f}x'),
+        ('Schnorr-PoW-Mutual',     f'{pow_reg:.3f} ms',    f'{pow_auth:.3f} ms',   f'{pow_total:.3f} ms',   f'{pow_auth/fastest:.2f}x'),
+        ('Schnorr-NIZKP-Mutual',   f'{nizkp_reg:.3f} ms',  f'{nizkp_auth:.3f} ms', f'{nizkp_total:.3f} ms', f'{nizkp_auth/fastest:.2f}x'),
     ]
     sum_headers = ['Protocol', 'Registration', 'Auth (login)', 'Total', 'vs fastest']
     sum_widths = [max(len(sum_headers[i]), max(len(r[i]) for r in sum_rows)) for i in range(5)]
@@ -482,18 +724,20 @@ def _write_results(
 
     # --- Feature table ---
     feat_rows = [
-        ('Mutual authentication',    'YES',           'YES',       'YES',              'YES'),
-        ('Session key established',  'YES',           'YES',       'YES',              'YES'),
-        ('Password never sent',      'YES',           'YES',       'YES',              'YES'),
-        ('Server-breach resistant',  'YES',           'YES *',     'NO',               'NO'),
-        ('Standardised (RFC/IETF)',  'RFC 5054',      'Draft',     'NO',               'NO'),
-        ('KDF on login path',        'NO',            'NO',        'Minimal (SHAKE)', 'Minimal (SHAKE)'),
-        ('Group / curve',            '2048-bit MODP', 'Ed25519',   'secp256r1 P-256', 'secp256r1 P-256'),
-        ('Security level',           '~112 bits',     '~128 bits', '~128 bits',       '~128 bits'),
-        ('EC ops',                   'N/A',           'N/A',       'Pure Python wNAF', 'OpenSSL (C)'),
+        ('Mutual authentication',    'YES',           'YES',       'YES',               'YES',               'YES',           'YES'),
+        ('Session key established',  'YES',           'YES',       'YES',               'YES',               'YES',           'YES'),
+        ('Password never sent',      'YES',           'YES',       'YES',               'YES',               'YES',           'YES'),
+        ('Server-breach resistant',  'YES',           'YES *',     'NO',                'NO',                'NO',            'NO'),
+        ('Standardised (RFC/IETF)',  'RFC 5054',      'Draft',     'NO',                'NO',                'NO',            'NO'),
+        ('KDF on login path',        'NO',            'NO',        'Minimal (SHAKE)',   'Minimal (SHAKE)',   'Minimal (SHAKE)', 'Minimal (SHAKE)'),
+        ('Group / curve',            '2048-bit MODP', 'Ed25519',   'secp256r1 P-256',  'secp256r1 P-256',  '2048-bit MODP', 'secp256r1 P-256'),
+        ('Security level',           '~112 bits',     '~128 bits', '~128 bits',        '~128 bits',        '~112 bits',     '~128 bits'),
+        ('Crypto backend',           'srp (C/Py)',    'spake2 lib','Pure Python wNAF',  'OpenSSL (C)',      'Python pow()',  'OpenSSL (C)'),
+        ('Same math as server',      'NO',            'NO',        'NO',                'NO',                'YES',           'NO'),
+        ('Non-interactive (1 RTT)',  'NO',            'NO',        'NO',                'NO',                'NO',            'YES'),
     ]
-    feat_headers = ['Property', 'SRP-6a', 'SPAKE2', 'Schnorr-EC-Mut', 'Schnorr-EC-Lib']
-    feat_widths = [max(len(feat_headers[i]), max(len(r[i]) for r in feat_rows)) for i in range(5)]
+    feat_headers = ['Property', 'SRP-6a', 'SPAKE2', 'Schnorr-EC-Mut', 'Schnorr-EC-Lib', 'Schnorr-PoW', 'Schnorr-NIZKP']
+    feat_widths = [max(len(feat_headers[i]), max(len(r[i]) for r in feat_rows)) for i in range(7)]
 
     lines.append('  FEATURE COMPARISON')
     lines.append('  ' + _box_top(feat_widths))
@@ -504,6 +748,8 @@ def _write_results(
     lines.append('  ' + _box_bottom(feat_widths))
     lines.append('  * SPAKE2+ (server-breach resistant) is not in the spake2 library used here.')
     lines.append('  Schnorr-EC-Lib: c*Y (arbitrary-point mult) still uses pure Python wNAF; all k*G via OpenSSL.')
+    lines.append('  Schnorr-PoW: uses Python built-in pow(a, b, n) — same group and same interactive construction as the actual server.')
+    lines.append('  Schnorr-NIZKP: Fiat-Shamir transform (c = SHA-256(T_c||Y_c||T_s||Y_s||ctx)) — zksk-style, no server challenge round-trip.')
     lines.append('')
 
     path.write_text('\n'.join(lines), encoding='utf-8')
@@ -514,41 +760,55 @@ def _write_results(
 # ---------------------------------------------------------------------------
 def compare(password: str = 'compare-password', iterations: int = 100) -> None:
     print('=' * 90)
-    print('  Top-4 PAKE comparison: SRP-6a  |  SPAKE2  |  Schnorr-EC-Mutual  |  Schnorr-EC-Lib')
-    print('  All protocols: mutual auth + session key | ~128-bit security')
+    print('  Top-6 PAKE comparison: SRP-6a  |  SPAKE2  |  Schnorr-EC-Mutual  |  Schnorr-EC-Lib  |  Schnorr-PoW  |  Schnorr-NIZKP')
+    print('  All protocols: mutual auth + session JWT')
     print(f'  Iterations: {iterations}')
     print('=' * 90)
 
-    print('\n[1/4] SRP-6a  (srp library, RFC 5054 2048-bit group, SHA-256 KDF) ...')
+    print('\n[1/6] SRP-6a  (srp library, RFC 5054 2048-bit group, SHA-256 KDF) ...')
     srp_res = run_srp('alice', password, iterations)
     _section(
         'SRP-6a — RFC 5054 2048-bit MODP, SHA-256 KDF, mutual auth + session key',
         srp_res, ['register', 'commit', 'challenge', 'solve', 'verify', 'total'],
     )
 
-    print('\n[2/4] SPAKE2  (spake2 library, Ed25519 / M255 group) ...')
+    print('\n[2/6] SPAKE2  (spake2 library, Ed25519 / M255 group) ...')
     spake2_res = run_spake2(password, iterations)
     _section(
         'SPAKE2 — Ed25519 / M255, HMAC key confirmation, explicit mutual auth',
         spake2_res, ['start_a', 'start_b', 'finish_a', 'finish_b', 'finish_wall', 'confirm', 'total'],
     )
 
-    print('\n[3/4] Schnorr-EC-Mutual  (secp256r1 pure Python wNAF, SHAKE-256 KDF) ...')
+    print('\n[3/6] Schnorr-EC-Mutual  (secp256r1 pure Python wNAF, SHAKE-256 KDF) ...')
     ec_mut_res = run_schnorr_ec_mutual(password, iterations)
     _section(
-        'Schnorr-EC-Mutual — secp256r1, dual Schnorr proofs + ECDH session key  [pure Python]',
-        ec_mut_res, ['derive_x', 'compute_y', 'mutual_proofs', 'session_key', 'total'],
+        'Schnorr-EC-Mutual — secp256r1, dual Schnorr proofs + JWT  [pure Python]',
+        ec_mut_res, ['derive_x', 'compute_y', 'mutual_proofs', 'jwt_token', 'total'],
     )
 
-    print('\n[4/4] Schnorr-EC-Lib-Mutual  (secp256r1 C-backed via cryptography, SHAKE-256 KDF) ...')
+    print('\n[4/6] Schnorr-EC-Lib-Mutual  (secp256r1 C-backed via cryptography, SHAKE-256 KDF) ...')
     ec_lib_mut_res = run_schnorr_ec_lib_mutual(password, iterations)
     _section(
-        'Schnorr-EC-Lib-Mutual — secp256r1 C-backed (OpenSSL), dual proofs + ECDH session key',
-        ec_lib_mut_res, ['derive_x', 'compute_y', 'mutual_proofs', 'session_key', 'total'],
+        'Schnorr-EC-Lib-Mutual — secp256r1 C-backed (OpenSSL), dual proofs + JWT',
+        ec_lib_mut_res, ['derive_x', 'compute_y', 'mutual_proofs', 'jwt_token', 'total'],
+    )
+
+    print('\n[5/6] Schnorr-PoW-Mutual  (RFC 3526 Group 14 2048-bit MODP, Python pow(), same math as server) ...')
+    pow_mut_res = run_schnorr_pow_mutual(password, iterations)
+    _section(
+        'Schnorr-PoW-Mutual — 2048-bit MODP, dual Schnorr proofs + JWT  [Python pow()]',
+        pow_mut_res, ['derive_x', 'compute_y', 'mutual_proofs', 'jwt_token', 'total'],
+    )
+
+    print('\n[6/6] Schnorr-NIZKP-Mutual  (secp256r1 C-backed, Fiat-Shamir non-interactive, zksk-style) ...')
+    nizkp_res = run_schnorr_nizkp_mutual(password, iterations)
+    _section(
+        'Schnorr-NIZKP-Mutual — secp256r1, Fiat-Shamir dual proofs + JWT  [zksk-style, OpenSSL]',
+        nizkp_res, ['derive_x', 'compute_y', 'nizkp_proof', 'jwt_token', 'total'],
     )
 
     output_path = _GENERATED / 'pake_top3_results.txt'
-    _write_results(output_path, iterations, srp_res, spake2_res, ec_mut_res, ec_lib_mut_res)
+    _write_results(output_path, iterations, srp_res, spake2_res, ec_mut_res, ec_lib_mut_res, pow_mut_res, nizkp_res)
     print(f'\n  Results written to: {output_path}')
 
 

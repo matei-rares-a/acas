@@ -1,5 +1,5 @@
 operation,mean_ms,min_ms,max_ms,p95_ms
-ZKP full flow (KDF + commit + verify) (ms),63.43087,58.6359,81.6517,77.6969
-OAuth2 PKCE login (authorize + token) (ms),2.298137,1.8001,23.8367,3.1705
-OAuth2 Simple login (authorize + token) (ms),2.394144,1.8305,20.9219,2.4091
-Authlib PKCE full flow (authorize + token) (ms),0.829844,0.7137,1.1169,1.0011
+ZKP full flow (KDF + commit + verify) (ms),63.331082,58.2436,87.191,77.4919
+OAuth2 PKCE login (authorize + token) (ms),2.183364,1.7251,16.011,2.7559
+OAuth2 Simple login (authorize + token) (ms),1.946297,1.6999,5.1661,2.2752
+Authlib PKCE full flow (authorize + token) (ms),0.928169,0.8177,1.4911,1.0954

@@ -124,3 +124,8 @@ async function authenticate() {
 }
 
 handleEnterKey(authenticate);
+document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('login-btn').addEventListener('click', authenticate);
+    document.getElementById('reset-btn').addEventListener('click', resetForm);
+    document.getElementById('clear-monitor-btn').addEventListener('click', clearNetworkMonitor);
+});

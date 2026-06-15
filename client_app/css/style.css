@@ -197,6 +197,7 @@ body{
 }
 
 .auth-success{
+    display:none;
     text-align:center;
     padding:20px;
 }
