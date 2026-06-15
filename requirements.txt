@@ -9,7 +9,11 @@ urllib3>=2.6.3
 authlib
 sympy
 gevent
-# optional - required by main_probes.py --charts, comparision.py, generates.py
+waitress
+# pake_top_compare.py
+srp
+pysnark
+gmpy2
+# optional - required by probes.py --charts
 matplotlib
 pandas
-psutil

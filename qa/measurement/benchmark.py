@@ -464,7 +464,7 @@ def _benchmark_latency(iterations=100):
 # All protocols are timed from first per-authentication client action to last HTTP response.
 # Derivation of long-term keys (derive_password_x / register) is excluded for all.
 # Per-authentication ephemeral client crypto IS included in all timers:
-#   ZKP         : KDF(password→x) + rand_r + g^r mod P  +  2 HTTP calls  + s = (r + c*x) mod Q
+#   ZKP         : KDF(password->x) + rand_r + g^r mod P  +  2 HTTP calls  + s = (r + c*x) mod Q
 #   OAuth2 PKCE : code_verifier gen + S256 challenge    +  3 HTTP calls  (GET+POST authorize + token)
 #   OAuth2 Simple:                                          3 HTTP calls  (GET+POST authorize + token)
 #   Authlib PKCE: code_verifier gen + S256 challenge    +  2 HTTP calls  (POST authorize + token)

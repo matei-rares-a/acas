@@ -633,7 +633,7 @@ def run_server_internals_benchmark(
         }
 
         # POST /register — fresh client_id each iteration so every call goes
-        # through the full path: DB lookup → is_subgroup_member → INSERT.
+        # through the full path: DB lookup -> is_subgroup_member -> INSERT.
         reg_times = []
         for i in range(iterations):
             reg_client_id = f"internals_reg_bench_{i}"
@@ -887,7 +887,6 @@ def _run(label: str, args: list, check: bool = True) -> int:
     return r.returncode
 
 
-# All servers use file-based SQLite for a fair comparison (same I/O conditions).
 def _start_server(port: int) -> subprocess.Popen:
     db_dir = _PROJECT_ROOT / "server_app" / "db"
     db_dir.mkdir(parents=True, exist_ok=True)
@@ -896,7 +895,8 @@ def _start_server(port: int) -> subprocess.Popen:
     bootstrap = (
         "import sys; sys.path.insert(0, 'server_app'); "
         "import server; "
-        f"server.app.run(host='127.0.0.1', port={port}, debug=False, use_reloader=False)"
+        "from waitress import serve; "
+        f"serve(server.app, host='127.0.0.1', port={port}, threads=32, channel_timeout=60)"
     )
     return subprocess.Popen([_PYTHON, "-c", bootstrap], cwd=_PROJECT_ROOT, env=env)
 

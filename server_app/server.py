@@ -15,13 +15,9 @@ from datetime import datetime, timedelta, timezone
 
 import jwt
 
-# ---------------------------------------------------------------------------
-# Schnorr group parameters  (P = 2Q + 1 safe prime, G = 4)
-# ---------------------------------------------------------------------------
-# P = 11731722534755988379582498904317031585514431212880510373180315650809605302410493595610739947214327053090791642864835392206070266585210162380812213540641579
+# P = RFC 3526 Group 14, 2048-bit MODP prime
 # Q = (P - 1) // 2
 # G = 4
-# Note: hardcoded for simplicity; move constants to env vars in production.
 P = int(
 'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1'
 '29024E088A67CC74020BBEA63B139B22514A08798E3404DD'
@@ -39,16 +35,9 @@ P = int(
 Q = (P - 1) // 2
 G = 4
 
-# Python's jwt gives warning if secret is shorter than 32
 SECRET      = 'dev-only-server-secret-at-least-32-bytes-long'
 SESSION_TTL = 10        # seconds -- commit -> verify window
-# Second commit within 50 ms = race, first writer wins.
-# Second commit after 50 ms = hijack attempt, both sessions invalidated.
 COMMIT_RACE_WINDOW_S = 0.050   # 50 ms: two commits within this window = race
-'''
-Note: the server choses the auth scheme
-Simplicity: support similar schemes Bearer (RFC 6750).
-'''
 SUPPORTED_AUTH_SCHEMES = {"bearer", "token", "jwt", "dpop"}
 
 # ---------------------------------------------------------------------------
@@ -95,15 +84,10 @@ def _before_request():
 
 
 _SECURITY_HEADERS = {
-    # Prevents MIME-type sniffing; reduces XSS-style misinterpretation.
     'X-Content-Type-Options': 'nosniff',
-    # Blocks iframe embedding; prevents clickjacking.
     'X-Frame-Options': 'DENY',
-    # Restricts resource loading to same origin; prevents script injection and frame embedding.
     'Content-Security-Policy': "default-src 'self'; base-uri 'self'; frame-ancestors 'none'",
-    # Turn off browser features we don't need.
     'Permissions-Policy': 'geolocation=(), camera=(), microphone=()',
-    # Limits Referer leakage on cross-origin requests.
     'Referrer-Policy': 'strict-origin-when-cross-origin',
 }
 
@@ -137,7 +121,7 @@ def _after_request(response):
     return response
 
 
-# Note: in-memory store; replace with DB for production.
+# in-memory session store
 class _SessionStore(dict):
     """dict with a built-in reverse index: client_id -> session_id.
 
@@ -187,29 +171,13 @@ sessions = _SessionStore()
 
 def _compute_session_binding(raw_addr: str, user_agent: str, session_id: str,
                              client_id: str, t: int) -> bytes:
-    """Build a 128-byte (1024-bit) digest that ties this auth attempt to the
-    exact TCP connection: peer address, User-Agent, session ID, client ID,
-    and commitment. 1024 bits matches Q's bit-length so the challenge covers
-    the full subgroup after reduction.
-
-    We use remote_addr instead of X-Forwarded-For so a relayed request
-    coming from a different IP won't match the stored binding.
-    """
+    """128-byte SHAKE-256 digest binding the auth attempt to the TCP connection."""
     data = f"{raw_addr}|{user_agent}|{session_id}|{client_id}|{t}".encode("utf-8")
     return hashlib.shake_256(data).digest(128)  # 128 bytes = 1024 bits
 
 
 def _compute_challenge(binding: bytes) -> int:
-    """
-    c = int(binding) mod Q  -- challenge in Zq = [1, Q-1]
-
-    Because the binding already ties together the peer address, User-Agent,
-    session ID, client ID, and commitment t, the challenge is deterministic
-    and replay-resistant, the randomness factor is session id.
-    """
-    # SHAKE-256 gives 128 bytes (1024 bits), same bit-length as Q, so
-    # % Q is a real reduction and c is spread across the full subgroup.
-    # `or 1` handles the negligible zero case.
+    """c = int(binding) mod Q, challenge in [1, Q-1]."""
     return (int.from_bytes(binding, "big") % Q) or 1
 
 
@@ -228,8 +196,7 @@ def validate_int_field(data: dict, key: str):
 
 
 def is_subgroup_member(value: int) -> bool:
-    """True iff value is a non-trivial element of the Schnorr subgroup of order Q.
-    Prevents Small Subgroup attack -- rejects y or t outside the subgroup."""
+    """True iff value is in the Schnorr subgroup of order Q."""
     return 1 < value < P and pow(value, Q, P) == 1
 
 
@@ -358,7 +325,7 @@ def commitAPI():
                 del sessions[existing_sid]
             return jsonify({'reason': 'existing commitment found, start a new session'}), 409
 
-        # Fresh session ID per commit, prevents session fixation.
+        # fresh session ID per commit
         session_id = secrets.token_urlsafe(32)
         # Session binding: tie this authentication attempt to the exact
         # network connection (TCP peer address + User-Agent + session ID).
@@ -405,7 +372,7 @@ def verifyAPI():
     raw_addr_now, ua_now = _get_peer()
     stored_binding = sess.get('binding')
 
-    #NOTE: check for binding mismatch to prevent relay/MITM attack
+    #check for binding mismatch
     current_binding = _compute_session_binding(raw_addr_now, ua_now, session_id, client_id, sess['t'])
     if stored_binding and current_binding != stored_binding:
         original_ip = sess.get("raw_addr", "unknown")

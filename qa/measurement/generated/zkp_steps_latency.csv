@@ -1,4 +1,4 @@
 operation,mean_ms,min_ms,max_ms,p95_ms,stdev_ms
-/login/commit (server side),20.816133,18.1976,31.8955,26.3574,2.342545
-/login/verify (server side),27.786146,24.2038,41.2571,36.9315,3.414943
-HTTP RTT: commit + verify (no client crypto),48.630021,43.285,66.0222,59.073,4.732185
+/login/commit (server side),19.910414,18.1413,25.4635,23.3501,1.360751
+/login/verify (server side),27.347408,24.6287,45.4106,38.1269,3.534573
+HTTP RTT: commit + verify (no client crypto),47.283604,43.5749,64.526,56.6676,3.865894

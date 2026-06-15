@@ -93,6 +93,7 @@ class BaseTestSuite:
     @pytest.fixture(autouse=True)
     def reset_state(self):
         server.app.config["TESTING"] = True
+        server.app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
         with server.app.app_context():
             server.db.session.remove()
             server.db.drop_all()
@@ -116,6 +117,7 @@ class OAuthTestSuite(BaseTestSuite):
     @pytest.fixture(autouse=True)
     def reset_state(self):
         server.app.config["TESTING"] = True
+        server.app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
         with server.app.app_context():
             server.db.session.remove()
             server.db.drop_all()

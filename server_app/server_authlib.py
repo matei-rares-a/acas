@@ -75,12 +75,11 @@ AUTHLIB_ACCESS_TOKEN_TTL      = 3600  # seconds
 # ---------------------------------------------------------------------------
 # State stores
 # ---------------------------------------------------------------------------
-# Note: in-memory stores for simplicity; replace with DB in production.
 _AUTHLIB_PASSWORDS:      dict[str, str]       = {}
 _AUTHLIB_AUTH_CODES:     dict[str, "_AuthCode"] = {}
 _AUTHLIB_TOKENS:         dict[str, "_Token"]  = {}
 _AUTHLIB_REFRESH_TOKENS: dict[str, "_Token"]  = {}
-_AUTHLIB_PENDING:        dict[str, dict]       = {}   # GET → POST pending requests
+_AUTHLIB_PENDING:        dict[str, dict]       = {}   # GET -> POST pending requests
 
 
 def clear_authlib_state() -> None:

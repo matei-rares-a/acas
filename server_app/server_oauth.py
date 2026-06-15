@@ -31,7 +31,6 @@ ALLOWED_SCOPES = {"openid", "profile", "read:data", "write:data"}
 # ---------------------------------------------------------------------------
 # State stores  (one dict per implementation for deterministic comparison)
 # ---------------------------------------------------------------------------
-# Note: in-memory stores for simplicity; replace with DB in production.
 # Separate state stores make comparison deterministic between implementations.
 OAUTH_PASSWORD_HASHES     = {"pkce": {}, "simple": {}}
 OAUTH_AUTHORIZATION_CODES = {"pkce": {}, "simple": {}}
