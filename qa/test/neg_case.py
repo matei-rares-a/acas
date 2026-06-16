@@ -7,8 +7,8 @@ from qa_utils import server, derive_password_x, register_user, start_commit, Bas
 
 class TestNegativeCases(BaseTestSuite):
 
-    def test_wrong_password_proof_is_rejected_and_session_is_deleted(self, client):
-        """Attacker with stolen y but wrong password sends invalid s; server rejects and deletes session."""
+    def test_wrong_password_returns_401_and_clears_session(self, client):
+        """Login with wrong password: verify step returns 401 and session is removed."""
         client_id = "client_test"
         correct_password = "correct-password"
         wrong_password = "wrong-password"
@@ -30,8 +30,8 @@ class TestNegativeCases(BaseTestSuite):
         assert session_id not in server.sessions
 
 
-    def test_replay_attack_reusing_verify_payload_is_rejected(self, client):
-        """Replay attack: reusing an already-consumed session_id is rejected with 404."""
+    def test_reusing_consumed_session_returns_404(self, client):
+        """Verify with an already-used session_id returns 404."""
         client_id = "replay_test"
         password = "replay-password"
 
@@ -55,8 +55,8 @@ class TestNegativeCases(BaseTestSuite):
         assert replay_verify.get_json() == {"reason": "invalid session_id"}
 
 
-    def test_verify_rejects_expired_session_and_cleans_up_state(self, client, monkeypatch):
-        """Session expiry (DoS prevention): verifying after SESSION_TTL seconds is rejected and the session is cleaned up."""
+    def test_verify_after_session_expiry_returns_401(self, client, monkeypatch):
+        """Verify after SESSION_TTL has elapsed returns 401 and session is removed."""
         client_id = "timeout_test"
         password = "timeout-password"
 
@@ -78,8 +78,8 @@ class TestNegativeCases(BaseTestSuite):
         assert session_id not in server.sessions
 
 
-    def test_second_commit_same_user_returns_conflict_and_invalidates_old_session(self, client):
-        """Double-commit prevention (hijack guard): a second commit for the same user drops the old session and returns 409."""
+    def test_duplicate_commit_returns_409_and_clears_old_session(self, client):
+        """Second commit for the same user while one is already pending returns 409."""
         client_id = "alice_test"
         password = "alice-password"
         register_user(client, client_id, password)
@@ -104,8 +104,8 @@ class TestNegativeCases(BaseTestSuite):
         active_for_client = [s for s in server.sessions.values() if s["client_id"] == client_id]
         assert len(active_for_client) == 0  
 
-    def test_register_rejects_duplicate_client_id_with_conflict(self, client):
-        """Duplicate registration is rejected with 409; original credentials are preserved."""
+    def test_register_with_existing_client_id_returns_409(self, client):
+        """Registering a client_id that is already taken returns 409 and keeps original credentials."""
         client_id = "test_user"
         initial_password = "initial-password-version1"
         second_password = "second-password-version2"
