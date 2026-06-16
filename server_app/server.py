@@ -15,7 +15,10 @@ from datetime import datetime, timedelta, timezone
 
 import jwt
 
-# P = RFC 3526 Group 14, 2048-bit MODP prime
+# ---------------------------------------------------------------------------
+# Schnorr group parameters  (P = 2Q + 1 safe prime, G = 4)
+# ---------------------------------------------------------------------------
+# P = 11731722534755988379582498904317031585514431212880510373180315650809605302410493595610739947214327053090791642864835392206070266585210162380812213540641579
 # Q = (P - 1) // 2
 # G = 4
 P = int(
@@ -35,9 +38,14 @@ P = int(
 Q = (P - 1) // 2
 G = 4
 
+# Python's jwt gives warning if secret is shorter than 32
 SECRET      = 'dev-only-server-secret-at-least-32-bytes-long'
 SESSION_TTL = 10        # seconds -- commit -> verify window
 COMMIT_RACE_WINDOW_S = 0.050   # 50 ms: two commits within this window = race
+'''
+Note: the server choses the auth scheme
+Simplicity: support similar schemes Bearer (RFC 6750).
+'''
 SUPPORTED_AUTH_SCHEMES = {"bearer", "token", "jwt", "dpop"}
 
 # ---------------------------------------------------------------------------
@@ -84,10 +92,15 @@ def _before_request():
 
 
 _SECURITY_HEADERS = {
+    # Prevents MIME-type sniffing; reduces XSS-style misinterpretation.
     'X-Content-Type-Options': 'nosniff',
+    # Blocks iframe embedding; prevents clickjacking.
     'X-Frame-Options': 'DENY',
+    # Restricts resource loading to same origin; prevents script injection and frame embedding.
     'Content-Security-Policy': "default-src 'self'; base-uri 'self'; frame-ancestors 'none'",
+    # Turn off browser features we don't need.
     'Permissions-Policy': 'geolocation=(), camera=(), microphone=()',
+    # Limits Referer leakage on cross-origin requests.
     'Referrer-Policy': 'strict-origin-when-cross-origin',
 }
 
@@ -325,7 +338,7 @@ def commitAPI():
                 del sessions[existing_sid]
             return jsonify({'reason': 'existing commitment found, start a new session'}), 409
 
-        # fresh session ID per commit
+        # Fresh session ID per commit, prevents session fixation.
         session_id = secrets.token_urlsafe(32)
         # Session binding: tie this authentication attempt to the exact
         # network connection (TCP peer address + User-Agent + session ID).
@@ -372,7 +385,7 @@ def verifyAPI():
     raw_addr_now, ua_now = _get_peer()
     stored_binding = sess.get('binding')
 
-    #check for binding mismatch
+    #NOTE: check for binding mismatch to prevent relay/MITM attack
     current_binding = _compute_session_binding(raw_addr_now, ua_now, session_id, client_id, sess['t'])
     if stored_binding and current_binding != stored_binding:
         original_ip = sess.get("raw_addr", "unknown")
