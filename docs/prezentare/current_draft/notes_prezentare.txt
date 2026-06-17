@@ -1,0 +1,17 @@
+-----------------------
+Protocolul este evaluat critic față de amenințările relevante pentru autentificarea la distanță, prin prisma schemei Schnorr și a deciziilor arhitecturale.
+Rezistența la interceptare nu depinde de TLS, ci de dificultatea logaritmului discret; transcriptul (t, c, s) nu permite deducerea lui x deoarece r este aleator și nedezvăluit, asigurând secret perfect.
+Eliminarea secretului partajat pe server: se stochează doar cheia publică y, ceea ce neutralizează impactul scurgerilor de date și împiedică impersonarea după compromitere.
+Atenuarea replay și session hijacking: provocări unice per sesiune și legare de canal a JWT cu expirare scurtă și ancorare de context.
+Validare descentralizată a identității, aliniată identității auto-suverane; securitatea depinde de demonstrația Schnorr și parametri corecți, nu de terți.
+Testele confirmă corectitudinea ecuației G^s ≡ t · y^c (mod P), proprietatea zero-knowledge pe transport și respingerea atacurilor replay, hijacking, data breach și simulator.
+Limitări: latență mai mare decât OAuth 2.0, stare temporară între commit și verify afectând scalarea, client_id în clar compromite anonimitatea metadatelor, JWT devine singurul artefact post-verificare.
+Alte constrângeri: derivare simplificată a secretului cu SHA-256 pe client, fallback la parametri slabi, lipsa semnării și pinning-ului parametrilor publici, politici CORS permisive, sesiuni în memorie, SQLite, chei secrete statice, TTL sesiune 5 s și fereastră 50 ms instabile în afara laboratorului.
+Direcții de îmbunătățire: KDF robust (scrypt/Argon2) cu salt local securizat, eliminarea fallback-urilor slabe, validare parametri prin pinning,  migrare la ECC, considerarea SRP/PAKE/J-PAKE.
+Scalabilitate și securitate operațională: sesiuni în Redis, migrare la PostgreSQL/MySQL, semnături JWT asimetrice, rate limiting, jurnalizare structurată, liste de revocare, TLS obligatoriu și CORS stricte, pe termen lung PoP tokens pentru reducerea riscurilor bearer.
+
+----------------------
+tot ce am gasit 
+
+***, Nostr Community Group: HTTP Schnorr Authentication Draft, https://nostrcg.github.io/http-schnorr-auth, ultima accesare: 30/05/2026. -
+----------------------
