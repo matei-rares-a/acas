@@ -35,6 +35,7 @@ P = int(
 '15728E5A8AACAA68FFFFFFFFFFFFFFFF',
 16,
 )
+print(P.bit_length())
 Q = (P - 1) // 2
 G = 4
 
