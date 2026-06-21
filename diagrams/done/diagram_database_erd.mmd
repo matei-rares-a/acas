@@ -1,23 +1,30 @@
 erDiagram
-    USER {
-        int     id         PK
-        string  client_id  UK
-        bytes   secret_y
-        datetime created_at
-    }
+	direction TB
+	USER {
+		int id PK ""  
+		string client_id UK ""  
+		bytes secret_y  ""  
+		datetime created_at  ""  
+	}
 
-    AUTH_TOKEN {
-        int     id         PK
-        int     user_id    FK
-        string  token      UK
-        datetime created_at
-    }
 
-    PERSO_DATA {
-        int     id         PK
-        int     user_id    FK
-        string  message    UK
-    }
+	DATA {
+		int id PK ""  
+		int client_id UK ""  
+		string color  ""  
+	}
 
-    USER ||--o| AUTH_TOKEN : "has (at most 1 active token)"
-    USER ||--o| PERSO_DATA : "has (at most 1 data record)"
+	AUTH_TOKEN {
+		int id PK ""  
+		int user_id FK ""  
+		string token UK ""  
+		datetime created_at  ""  
+	}
+	OAUTH_CREDENTIAL {
+		int id PK ""  
+		string impl  ""  
+		string client_id  ""  
+		string pw_hash  ""  
+	}
+
+	style USER :stroke-width:2px,stroke-dasharray: 0
