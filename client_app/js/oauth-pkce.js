@@ -220,3 +220,14 @@ async function oauthLogin() {
         btn.innerHTML = 'Login with OAuth PKCE';
     }
 }
+
+document.addEventListener('DOMContentLoaded', function () {
+    const registerBtn = document.getElementById('register-btn');
+    if (registerBtn) registerBtn.addEventListener('click', oauthRegister);
+
+    const loginBtn = document.getElementById('login-btn');
+    if (loginBtn) loginBtn.addEventListener('click', oauthLogin);
+
+    const clearBtn = document.getElementById('clear-monitor-btn');
+    if (clearBtn) clearBtn.addEventListener('click', clearNetworkMonitor);
+});

@@ -1,0 +1,209 @@
+/**
+ * OAuth 2.0 PKCE callback handler.
+ * Extracted from oauth-callback.html to comply with Content-Security-Policy
+ * (no inline scripts).  Requires auth.js and network-monitor.js to be loaded first.
+ */
+
+const PKCE_CLIENT_ID = 'acas-pkce-client';
+
+// Minimal PKCE helpers (mirrored from oauth-pkce.js) needed to compute
+// the real code_challenge from the recovered code_verifier for display.
+function _base64UrlEncode(bytes) {
+    let binary = '';
+    bytes.forEach(b => binary += String.fromCharCode(b));
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+async function _computeCodeChallenge(verifier) {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+    return _base64UrlEncode(new Uint8Array(digest));
+}
+
+function addCallbackStatus(message) {
+    const el = document.getElementById('callback-status-content');
+    if (el) {
+        el.innerHTML += `<div class="status-item">${message}</div>`;
+        el.scrollTop = el.scrollHeight;
+    }
+}
+
+async function handleCallback() {
+    const params = new URLSearchParams(window.location.search);
+    const code   = params.get('code');
+    const state  = params.get('state');
+    const error  = params.get('error');
+
+    // Error from authorization server
+    if (error) {
+        const desc = params.get('error_description') || error;
+        showAlert(`Authorization error: ${desc}`, 'error');
+        addCallbackStatus(`Authorization server returned error: ${desc}`);
+        return;
+    }
+
+    if (!code) {
+        addCallbackStatus('No authorization code in URL. Waiting for redirect...');
+        return;
+    }
+
+    addCallbackStatus(`Step 4: Authorization code received from server redirect.`);
+    addCallbackStatus(`&nbsp;&nbsp;code  = ${code.substring(0, 12)}...`);
+    addCallbackStatus(`&nbsp;&nbsp;state = ${state || '(none)'}`);
+
+    // ------------------------------------------------------------------
+    // Decode state: may be a base64url-encoded JSON {n, cv} payload
+    // (set by oauthLogin() to survive cross-origin redirects) or a
+    // plain nonce string (legacy).  Fall back to sessionStorage.
+    // ------------------------------------------------------------------
+    let csrfNonce    = state;
+    let codeVerifier = null;
+    let statePayload = null;
+    try {
+        const pad      = '='.repeat((4 - (state.length % 4)) % 4);
+        const jsonStr  = atob((state + pad).replace(/-/g, '+').replace(/_/g, '/'));
+        const payload  = JSON.parse(jsonStr);
+        if (payload && payload.cv) {
+            csrfNonce    = payload.n;
+            codeVerifier = payload.cv;
+            statePayload = payload;
+            addCallbackStatus('&nbsp;&nbsp;State decoded: PKCE payload (n + cv) recovered.');
+        }
+    } catch (_) {
+        // plain state string; fall back to sessionStorage below
+    }
+
+    const savedState  = sessionStorage.getItem('oauth_state');
+    const serverUrl   = sessionStorage.getItem('oauth_server_url') || 'http://localhost:5000';
+    const redirectUri = sessionStorage.getItem('oauth_redirect_uri')
+                        || (window.location.origin + window.location.pathname);
+
+    // Fallback: read code_verifier from sessionStorage (same-origin flow)
+    if (!codeVerifier) {
+        codeVerifier = sessionStorage.getItem('oauth_code_verifier');
+    }
+
+    // Compute the real code_challenge so the GET authorize entry shows
+    // the actual value that was sent to the server (not a placeholder).
+    const codeChallenge = codeVerifier
+        ? await _computeCodeChallenge(codeVerifier)
+        : '(not recovered)';
+
+    // ------------------------------------------------------------------
+    // Reconstruct browser-navigation steps in the network monitor.
+    // Steps 1-3 are browser redirects / form POSTs (not fetch() calls);
+    // so the monkey-patch cannot capture them automatically.  We rebuild
+    // them from the data we have at this point.
+    // ------------------------------------------------------------------
+    const authorizeUrl = `${serverUrl}/oauth/pkce/authorize`;
+
+    // Step 1: Client -> Server: GET /oauth/pkce/authorize
+    const authorizeParams = {
+        response_type:         'code',
+        client_id:             PKCE_CLIENT_ID,
+        redirect_uri:          redirectUri,
+        state:                 state ? state.substring(0, 30) + '...' : '(none)',
+        code_challenge:        codeChallenge + '  [SHA-256/S256, server stores this]',
+        code_challenge_method: 'S256',
+        scope:                 'openid profile',
+    };
+    NetworkMonitor.addLog('request', 'GET authorize  <i style="color:#aaa">(browser navigation, reconstructed)</i>', {
+        url:    authorizeUrl,
+        method: 'GET',
+        params: authorizeParams,
+    });
+    NetworkMonitor.addLog('response', 'GET authorize: 200 HTML login form  <i style="color:#aaa">(browser navigation, reconstructed)</i>', {
+        status: 200,
+        body:   'Server returned HTML login form (user entered credentials directly on auth server)',
+    });
+
+    // Step 2: User submits credentials: POST /oauth/pkce/authorize
+    // Credentials were saved to localStorage by the server-rendered form
+    // (same origin = localhost:5000, shared across tabs).
+    const demoUser = localStorage.getItem('_demo_oauth_user') || '(not captured)';
+    const demoPass = localStorage.getItem('_demo_oauth_pass') || '(not captured)';
+    localStorage.removeItem('_demo_oauth_user');
+    localStorage.removeItem('_demo_oauth_pass');
+    NetworkMonitor.addLog('request', 'POST authorize  <i style="color:#aaa">(form submit | Authorization Server tab | reconstructed)</i>', {
+        url:    authorizeUrl,
+        method: 'POST',
+        note:   'Submitted from the Authorization Server tab. Credentials were entered on the auth server login page and are not actually visible to the client app.',
+        body:   {
+            auth_request_id: '(server-side opaque token, not exposed to client)',
+            username:        demoUser,
+            password:        demoPass,
+        },
+    });
+
+    // Step 3: Server 302 redirect back to callback
+    NetworkMonitor.addLog('redirect', `POST authorize: 302 -> ${redirectUri}  <i style="color:#aaa">(browser navigation, reconstructed)</i>`, {
+        status:   302,
+        location: `${redirectUri}?code=${code.substring(0, 12)}…&state=…`,
+        note:     'Server verified credentials, issued authorization code, redirected browser to redirect_uri',
+    });
+
+    // Validate state (CSRF protection)
+    addCallbackStatus('Step 5: Validating state (CSRF check)...');
+    if (savedState && savedState !== csrfNonce) {
+        showAlert('State mismatch: possible CSRF attack. Aborting.', 'error');
+        addCallbackStatus('&nbsp;&nbsp;CSRF check FAILED: state does not match!');
+        return;
+    }
+    addCallbackStatus('&nbsp;&nbsp;State valid.');
+
+    if (!codeVerifier) {
+        showAlert('No code_verifier found in state or session. Cannot complete token exchange.', 'error');
+        addCallbackStatus('Missing code_verifier: state payload invalid and sessionStorage empty.');
+        return;
+    }
+
+    addCallbackStatus(`&nbsp;&nbsp;code_verifier = ${codeVerifier.substring(0, 20)}... (recovered OK)`);
+
+    // Clean up session storage
+    sessionStorage.removeItem('oauth_state');
+    sessionStorage.removeItem('oauth_code_verifier');
+    sessionStorage.removeItem('oauth_server_url');
+    sessionStorage.removeItem('oauth_redirect_uri');
+
+    // Exchange code for token
+    addCallbackStatus('Step 6: POST /oauth/pkce/token, exchanging code for access token...');
+    addCallbackStatus('&nbsp;&nbsp;Server recomputes SHA-256(code_verifier) and matches code_challenge');
+
+    try {
+        const tokenResp = await fetch(`${serverUrl}/oauth/pkce/token`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Accept':       'application/json',
+            },
+            body: JSON.stringify({
+                grant_type:    'authorization_code',
+                code,
+                client_id:     PKCE_CLIENT_ID,
+                redirect_uri:  redirectUri,
+                code_verifier: codeVerifier,
+            }),
+            mode: 'cors',
+        });
+
+        const result = await tokenResp.json();
+
+        if (!tokenResp.ok) {
+            throw new Error(result.error_description || result.error || 'Token exchange failed');
+        }
+
+        addCallbackStatus('Authentication successful!');
+
+        document.getElementById('auth-success').style.display = 'block';
+        document.getElementById('token-display').textContent   = result.access_token;
+        showAlert('Authentication successful!', 'success');
+    } catch (err) {
+        showAlert(`Token exchange error: ${err.message}`, 'error');
+        addCallbackStatus(`Error: ${err.message}`);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    const clearBtn = document.getElementById('clear-monitor-btn');
+    if (clearBtn) clearBtn.addEventListener('click', clearNetworkMonitor);
+
+    handleCallback();
+});
