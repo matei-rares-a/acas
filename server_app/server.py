@@ -107,7 +107,7 @@ _SECURITY_HEADERS = {
 
 @app.after_request
 def _after_request(response):
-    if not request.path.startswith('/login') and not request.path.startswith('/register') and not request.path.startswith('/parameters') and not request.path.startswith('/health') and not request.path.startswith('/data'):
+    if not response.content_type.startswith('application/json'):
         return response
     response.headers['Request-ID'] = request.headers.get('Request-ID', str(uuid.uuid4()))
     response.headers['API-Version'] = 'S1.0'
