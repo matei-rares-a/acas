@@ -185,9 +185,8 @@ sessions = _SessionStore()
 
 def _compute_session_binding(raw_addr: str, user_agent: str, session_id: str,
                              client_id: str, t: int) -> bytes:
-    """128-byte SHAKE-256 digest binding the auth attempt to the TCP connection."""
     data = f"{raw_addr}|{user_agent}|{session_id}|{client_id}|{t}".encode("utf-8")
-    return hashlib.shake_256(data).digest(256)  
+    return hashlib.shake_256(data).digest(128)  
 
 
 def _compute_challenge(binding: bytes) -> int:
@@ -293,8 +292,7 @@ def getParametersAPI():
 
 @app.route('/register', methods=['POST'])
 def registerAPI():
-    '''POST /register: client sends client_id and secret_y=G^x; server stores it.
-    No auth guard on this endpoint (simplicity; protect with shared secret in production).'''
+    '''POST /register: client sends client_id and secret_y=G^x; server stores it.'''
     data = request.get_json() or {}
     client_id = data.get('client_id')
     secret = validate_int_field(data, 'secret_y')
@@ -314,8 +312,7 @@ def register_user_in_db(client_id: str, secret_y: int) -> None:
     db.session.commit()
 
 
-init_oauth(app, db, User, AuthToken, SECRET)
-init_authlib(app, SECRET)
+
 
 @app.route('/login/commit', methods=['POST'])
 def commitAPI():
@@ -339,11 +336,7 @@ def commitAPI():
                 del sessions[existing_sid]
             return jsonify({'reason': 'existing commitment found, start a new session'}), 409
 
-        # Fresh session ID per commit, prevents session fixation.
         session_id = secrets.token_urlsafe(32)
-        # Session binding: tie this authentication attempt to the exact
-        # network connection (TCP peer address + User-Agent + session ID).
-        # request.remote_addr is the direct peer -- not spoofable via headers.
         raw_addr, user_agent = _get_peer()
         binding = _compute_session_binding(raw_addr, user_agent, session_id, client_id, t)
         challenge_c = _compute_challenge(binding)
@@ -386,7 +379,6 @@ def verifyAPI():
     raw_addr_now, ua_now = _get_peer()
     stored_binding = sess.get('binding')
 
-    #NOTE: check for binding mismatch to prevent relay/MITM attack
     current_binding = _compute_session_binding(raw_addr_now, ua_now, session_id, client_id, sess['t'])
     if stored_binding and current_binding != stored_binding:
         original_ip = sess.get("raw_addr", "unknown")
@@ -447,6 +439,9 @@ def dataAcessApi():
     db.session.commit()
     return jsonify({'message': 'personal data updated'}), 201 if created else 200
 
+
+init_oauth(app, db, User, AuthToken, SECRET)
+init_authlib(app, SECRET)
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------

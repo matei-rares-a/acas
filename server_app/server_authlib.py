@@ -386,7 +386,7 @@ def authlib_authorize():
         subject=username,
     )
 
-    # RFC 6749 §4.1.2 — redirect back to client with authorization code.
+    # redirect back to client with authorization code.
     params: dict[str, str] = {"code": code}
     if pending.get("state"):
         params["state"] = pending["state"]

@@ -2,7 +2,6 @@
 
 let P = 2089n;
 let Q = (P - 1n) / 2n;
-//subgroup generator of order Q (g = h^2 mod p with h = 2)
 let G = 4n;
 
 /**
@@ -47,7 +46,7 @@ async function fetchParameters(serverUrl) {
 // Derives private scalar x from password using SHAKE-256(client_id:password).
 async function derivePasswordX(password, client_id = '') {
     const inputBytes = new TextEncoder().encode(`${client_id}:${password}`);
-    const digestBytes = new Uint8Array(shake_256.create(2176).update(inputBytes).array()); // 272 bytes = 2176 bits, eliminates bias when reducing mod Q (2047-bit)
+    const digestBytes = new Uint8Array(shake_256.create(2176).update(inputBytes).array()); 
     let value = 0n;
     for (const b of digestBytes) {
         value = (value << 8n) + BigInt(b);

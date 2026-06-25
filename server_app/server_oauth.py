@@ -186,7 +186,7 @@ def _html_login_form(action_url, auth_request_id, error=None):
         '</form>'
         # Save credentials to localStorage (same-origin, cross-tab) so the
         # callback page can reconstruct the POST entry in its network monitor.
-        # ⚠️  Demo/educational only; never do this in production.
+        
         '<script>'
         'document.getElementById("login-form").addEventListener("submit", function() {'
         '  try {'

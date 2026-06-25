@@ -264,7 +264,6 @@ def run_schnorr_pow_mutual(password: str, iterations: int) -> dict:
         k: [] for k in ('derive_x', 'compute_y', 'mutual_proofs', 'jwt_token', 'total')
     }
     for _ in range(iterations):
-        # KDF: SHAKE-256 -> x
         t0 = time.perf_counter()
         hashed = hashlib.shake_256(password.encode() + _FIXED_SALT).digest(256)
         x = int.from_bytes(hashed, 'big') % _POW_Q or 1
@@ -330,7 +329,6 @@ def run_schnorr_ec_mutual(password: str, iterations: int) -> dict:
         k: [] for k in ('derive_x', 'compute_y', 'mutual_proofs', 'jwt_token', 'total')
     }
     for _ in range(iterations):
-        # KDF: SHAKE-256 - client private scalar x
         t0 = time.perf_counter()
         x = _derive_x(password)
         stats['derive_x'].append((time.perf_counter() - t0) * 1000)
@@ -346,7 +344,7 @@ def run_schnorr_ec_mutual(password: str, iterations: int) -> dict:
         T_c = _ec_scalar_mult(r_c, _EC_GENERATOR)
         r_s = secrets.randbelow(_EC_ORDER - 1) + 1
         T_s = _ec_scalar_mult(r_s, _EC_GENERATOR)
-        # Interactive Schnorr: server picks c randomly (not Fiat-Shamir)
+
         c = secrets.randbelow(_EC_ORDER - 1) + 1
         s_c = (r_c + c * x) % _EC_ORDER
         s_s = (r_s + c * _EC_SERVER_SK) % _EC_ORDER

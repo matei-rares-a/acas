@@ -4,7 +4,7 @@ async function register() {
     const serverUrl = document.getElementById('server-url').value.trim();
 
     if (!client_id || !password) {
-        showAlert('❌ Please enter client ID and password', 'error');
+        showAlert('Please enter client ID and password', 'error');
         return;
     }
 
@@ -42,18 +42,18 @@ async function register() {
         const result = await response.json();
 
         if (response.ok) {
-            showAlert(`✅ ${result.status} successfully!`, 'success');
+            showAlert(`${result.status} successfully!`, 'success');
 
             document.getElementById('username').value = '';
             document.getElementById('password').value = '';
         } else {
-            showAlert(`❌ Registration failed: ${result.reason}`, 'error');
+            showAlert(`Registration failed: ${result.reason}`, 'error');
         }
 
         btn.disabled = false;
         btn.innerHTML = 'Register';
     } catch (error) {
-        showAlert(`❌ Error: ${error.message}`, 'error');
+        showAlert(`Error: ${error.message}`, 'error');
         const btn = document.getElementById('register-btn');
         btn.disabled = false;
         btn.innerHTML = 'Register';
