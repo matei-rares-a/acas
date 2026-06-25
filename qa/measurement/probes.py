@@ -343,7 +343,7 @@ def generate_charts(latency_data: dict | None = None, output_dir: str = str(_GEN
         (simple_ms,  "OAuth2\nSimple",        "#E65100"),
         (authlib_ms, "Authlib\nPKCE",         "#6A1B9A"),
     ]
-
+    pass
     # Box plot: per-protocol latency distribution with individual data points
     data_for_box   = [d for d, _, _ in protocols if d]
     labels_for_box = [lbl for d, lbl, _ in protocols if d]
@@ -1003,7 +1003,7 @@ if __name__ == "__main__":
         
         print("\n=== offline measurements ===")
         _run("benchmark.py (latency + throughput CSVs)",[_PYTHON, "qa/measurement/benchmark.py"])
-        audit_traffic_content()
+        #audit_traffic_content()
         generate_charts()
         run_server_internals_benchmark()
         generate_comparison_charts()
