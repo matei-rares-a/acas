@@ -187,7 +187,7 @@ def _compute_session_binding(raw_addr: str, user_agent: str, session_id: str,
                              client_id: str, t: int) -> bytes:
     """128-byte SHAKE-256 digest binding the auth attempt to the TCP connection."""
     data = f"{raw_addr}|{user_agent}|{session_id}|{client_id}|{t}".encode("utf-8")
-    return hashlib.shake_256(data).digest(128)  # 128 bytes = 1024 bits
+    return hashlib.shake_256(data).digest(256)  
 
 
 def _compute_challenge(binding: bytes) -> int:
